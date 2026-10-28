@@ -16,8 +16,8 @@ fail() {
 
 [ "$(uname -s)" = "Darwin" ] || fail "Sextant runs on macOS only."
 [ "$(uname -m)" = "arm64" ] || fail "Sextant needs a Mac with Apple silicon."
-supported=$(sw_vers -productVersion | awk -F . '{ print ($1 > 14 || ($1 == 14 && $2 >= 2)) }')
-[ "$supported" = 1 ] || fail "Sextant needs macOS 14.2 or later."
+major=$(sw_vers -productVersion | cut -d . -f 1)
+[ "$major" -ge 26 ] || fail "Sextant needs macOS 26 or later."
 
 work=$(mktemp -d)
 mount="$work/mount"

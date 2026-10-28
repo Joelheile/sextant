@@ -9,7 +9,7 @@ On install, Sextant reads history you already have (browser history, calendar, g
 
 ## Install
 
-Sextant needs a Mac with Apple silicon and macOS 14.2 or later.
+Sextant needs a Mac with Apple silicon and macOS 26 or later.
 
 ```sh
 curl -fsSL https://github.com/Joelheile/sextant/releases/latest/download/install.sh | sh

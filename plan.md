@@ -205,7 +205,7 @@ Done when: **(user)** a fresh Mac installs, grants permissions and shows a map w
 
 ## 14. macOS bundle
 
-`minimumSystemVersion` 14.2.
+`minimumSystemVersion` 26.0, so the search palette can use Apple's on-device model (Foundation Models).
 
 - `Info.plist`: `NSAudioCaptureUsageDescription`, `NSMicrophoneUsageDescription`, `NSAppleEventsUsageDescription`, `NSCalendarsFullAccessUsageDescription`, `NSRemindersFullAccessUsageDescription`, `LSUIElement`.
 - `Entitlements.plist`: `com.apple.security.device.audio-input`, `com.apple.security.automation.apple-events`, `com.apple.security.personal-information.calendars`.
