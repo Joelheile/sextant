@@ -34,15 +34,12 @@ unsafe extern "C" {
 
 pub struct Mac {
     own_pid: i32,
-    /// The Accessibility title of the window read last, to pick the right window to capture.
-    title: String,
 }
 
 impl Mac {
     pub fn new() -> Self {
         Self {
             own_pid: std::process::id() as i32,
-            title: String::new(),
         }
     }
 }
@@ -64,6 +61,24 @@ fn text_attribute(element: &AXUIElement, name: &'static str) -> String {
         .and_then(|value| value.downcast::<CFString>().ok())
         .map(|text| text.to_string())
         .unwrap_or_default()
+}
+
+fn focused_window_text(pid: i32) -> WindowText {
+    // SAFETY: Accessibility calls on elements owned here, each bounded by the timeout.
+    unsafe {
+        let application = AXUIElement::new_application(pid);
+        application.set_messaging_timeout(AX_TIMEOUT);
+        attribute(&application, "AXFocusedWindow")
+            .and_then(|window| window.downcast::<AXUIElement>().ok())
+            .map(|window| {
+                window.set_messaging_timeout(AX_TIMEOUT);
+                WindowText {
+                    title: text_attribute(&window, "AXTitle"),
+                    doc: text_attribute(&window, "AXDocument"),
+                }
+            })
+            .unwrap_or_default()
+    }
 }
 
 impl Sensors for Mac {
@@ -123,23 +138,7 @@ impl Sensors for Mac {
     }
 
     fn window_text(&mut self, app: &App) -> WindowText {
-        // SAFETY: Accessibility calls on elements owned here, each bounded by the timeout.
-        let text = unsafe {
-            let application = AXUIElement::new_application(app.pid);
-            application.set_messaging_timeout(AX_TIMEOUT);
-            attribute(&application, "AXFocusedWindow")
-                .and_then(|window| window.downcast::<AXUIElement>().ok())
-                .map(|window| {
-                    window.set_messaging_timeout(AX_TIMEOUT);
-                    WindowText {
-                        title: text_attribute(&window, "AXTitle"),
-                        doc: text_attribute(&window, "AXDocument"),
-                    }
-                })
-                .unwrap_or_default()
-        };
-        self.title = text.title.clone();
-        text
+        focused_window_text(app.pid)
     }
 
     fn browser_tab(&mut self, app: &App, browser: Browser) -> Result<Tab> {
@@ -148,7 +147,9 @@ impl Sensors for Mac {
 
     fn capture(&mut self, app: &App) -> Result<Shot<Frame>> {
         screen::require_access()?;
-        let image = screen::capture_window(app.pid, &self.title)?;
+        // Read on every capture, whatever the metadata setting: it only picks the window.
+        let title = focused_window_text(app.pid).title;
+        let image = screen::capture_window(app.pid, &title)?;
         let thumb = image.thumb()?;
         Ok(Shot { thumb, image })
     }

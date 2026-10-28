@@ -24,13 +24,13 @@ pub fn storage_used(dir: &Path) -> u64 {
 }
 
 /// Stops everything, closes the database, empties the data folder (models included), then
-/// deletes the key. The key goes last: a folder that could not be emptied stays readable.
+/// deletes the key. The key goes last: a folder that could not be emptied stays readable. A
+/// shutdown that fails does not stop the wipe; its error is reported once the data is gone.
 pub fn delete_everything(dir: &Path, engine: Option<&Engine>, vault: &dyn KeyVault) -> Result<()> {
-    if let Some(engine) = engine {
-        engine.shutdown()?;
-    }
+    let shutdown = engine.map_or(Ok(()), Engine::shutdown);
     empty_dir(dir)?;
-    vault.delete()
+    vault.delete()?;
+    shutdown.context("stopping Sextant before the wipe")
 }
 
 fn empty_dir(dir: &Path) -> Result<()> {
@@ -126,6 +126,21 @@ mod tests {
             !prefs::load(&dir).expect("defaults").onboarded,
             "onboarding starts again"
         );
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn a_failed_shutdown_still_wipes_the_folder_and_the_key_then_reports_it() {
+        let dir = populated("shutdown-fails");
+        let engine = Engine::start(&dir, &TEST_KEY, |_, _| {}).expect("test setup");
+        engine.poison_capture_state();
+        let vault = FakeVault(Cell::new(true));
+
+        let result = delete_everything(&dir, Some(&engine), &vault);
+
+        assert!(result.is_err(), "the shutdown error is reported");
+        assert_eq!(fs::read_dir(&dir).expect("the folder stays").count(), 0);
+        assert!(!vault.0.get(), "the key is gone");
         fs::remove_dir_all(dir).expect("cleanup");
     }
 

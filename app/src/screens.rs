@@ -649,9 +649,7 @@ pub async fn set_retention(state: State<'_, AppState>, days: Option<u32>) -> Rep
 pub async fn delete_everything(app: AppHandle) -> Reply<()> {
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let state = handle.state::<AppState>();
-        let engine = state.engine.get().and_then(|started| started.as_ref().ok());
-        data::delete_everything(&state.dir, engine, &Keychain)
+        handle.state::<AppState>().delete_everything(&Keychain)
     })
     .await
     .map_err(msg)?

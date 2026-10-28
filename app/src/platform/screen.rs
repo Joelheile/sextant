@@ -2,6 +2,7 @@
 //! window of the app, never the whole screen, so other windows on the display are not in the image.
 //! Needs Screen Recording permission. The image goes straight to OCR and is never written out.
 
+use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -10,12 +11,16 @@ use anyhow::{Context, Result, anyhow, bail};
 use block2::RcBlock;
 use objc2::AnyThread;
 use objc2::rc::{Retained, autoreleasepool};
-use objc2_core_foundation::CFRetained;
-use objc2_core_graphics::CGImage;
+use objc2_core_foundation::{CFDictionary, CFNumber, CFNumberType, CFRetained, CFString};
+use objc2_core_graphics::{
+    CGImage, CGWindowListCopyWindowInfo, CGWindowListOption, kCGNullWindowID, kCGWindowNumber,
+};
 use objc2_foundation::NSError;
 use objc2_screen_capture_kit::{
     SCContentFilter, SCScreenshotManager, SCShareableContent, SCStreamConfiguration, SCWindow,
 };
+
+use sextant_core::capture::focused_window;
 
 use super::vision::Frame;
 
@@ -23,8 +28,8 @@ const ANSWER_WAIT: Duration = Duration::from_secs(3);
 /// Smaller windows are palettes and tooltips, not what the user is reading.
 const MIN_SIDE: f64 = 120.0;
 
-/// The window of `pid` that is on screen. `title` picks between several when the Accessibility
-/// title of the focused window is known.
+/// The focused window of `pid`. `title` is its Accessibility title, empty when unknown. Fails when
+/// the window cannot be told apart from the app's other windows.
 pub fn capture_window(pid: i32, title: &str) -> Result<Frame> {
     let (answer, answered) = mpsc::channel::<Result<Frame, String>>();
     let title = title.to_string();
@@ -39,7 +44,7 @@ pub fn capture_window(pid: i32, title: &str) -> Result<Frame> {
             match pick(&content, pid, &title) {
                 Some(window) => shoot(&window, answer.clone()),
                 None => {
-                    let _ = answer.send(Err("no window on screen".into()));
+                    let _ = answer.send(Err("focused window not identified".into()));
                 }
             }
         },
@@ -66,9 +71,34 @@ fn describe(error: *mut NSError) -> String {
     }
 }
 
+/// The window numbers of everything on screen, front to back.
+fn front_to_back() -> Vec<u32> {
+    let options =
+        CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements;
+    let Some(list) = CGWindowListCopyWindowInfo(options, kCGNullWindowID) else {
+        return Vec::new();
+    };
+    (0..list.count())
+        .filter_map(|index| {
+            // SAFETY: the list holds dictionaries, and each `number` is a CFNumber or null.
+            unsafe {
+                let entry = (list.value_at_index(index) as *const CFDictionary).as_ref()?;
+                let key = kCGWindowNumber as *const CFString as *const c_void;
+                let number = (entry.value(key) as *const CFNumber).as_ref()?;
+                let mut id = 0_i32;
+                number
+                    .value(CFNumberType::SInt32Type, (&mut id as *mut i32).cast())
+                    .then_some(id as u32)
+            }
+        })
+        .collect()
+}
+
+/// The focused window of `pid`, or nothing when it cannot be told from the app's other windows.
 fn pick(content: &SCShareableContent, pid: i32, title: &str) -> Option<Retained<SCWindow>> {
+    let order = front_to_back();
     // SAFETY: read-only getters on live SCK objects.
-    let candidates: Vec<Retained<SCWindow>> = unsafe {
+    let mut candidates: Vec<(usize, Retained<SCWindow>)> = unsafe {
         content
             .windows()
             .iter()
@@ -82,13 +112,25 @@ fn pick(content: &SCShareableContent, pid: i32, title: &str) -> Option<Retained<
                     && frame.size.width >= MIN_SIDE
                     && frame.size.height >= MIN_SIDE
             })
+            .filter_map(|window| {
+                let place = order.iter().position(|id| *id == window.windowID())?;
+                Some((place, window))
+            })
             .collect()
     };
-    let titled = candidates.iter().find(|window| {
+    candidates.sort_by_key(|(place, _)| *place);
+    let titles: Vec<String> = candidates
+        .iter()
         // SAFETY: read-only getter.
-        !title.is_empty() && unsafe { window.title() }.is_some_and(|t| t.to_string() == title)
-    });
-    titled.or(candidates.first()).cloned()
+        .map(|(_, window)| {
+            unsafe { window.title() }
+                .map(|t| t.to_string())
+                .unwrap_or_default()
+        })
+        .collect();
+    let titles: Vec<&str> = titles.iter().map(String::as_str).collect();
+    let index = focused_window(&titles, title)?;
+    candidates.into_iter().nth(index).map(|(_, window)| window)
 }
 
 fn shoot(window: &SCWindow, answer: mpsc::Sender<Result<Frame, String>>) {

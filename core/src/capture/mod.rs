@@ -3,6 +3,7 @@
 
 mod browser;
 mod diff;
+mod focus;
 mod gate;
 mod ocr;
 mod triggers;
@@ -14,6 +15,7 @@ use crate::text::host_path;
 
 pub use browser::{Browser, classify};
 pub use diff::{CELL_DELTA, DiffGate, MIN_CELLS, SIDE, Thumb};
+pub use focus::focused_window;
 pub use gate::{Blocked, app, secure_input, session, tab};
 pub use ocr::{MIN_CONFIDENCE, RawLine, lines};
 pub use triggers::{

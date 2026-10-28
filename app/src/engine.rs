@@ -185,6 +185,19 @@ impl Engine {
         Ok(())
     }
 
+    /// Makes [`Engine::shutdown`] fail, as a panic on another thread would.
+    #[cfg(test)]
+    pub(crate) fn poison_capture_state(&self) {
+        let _ = thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let _held = self.audio.lock();
+                    panic!("poisoning the audio state for a test");
+                })
+                .join()
+        });
+    }
+
     /// Starts live capture with `settings`. Does nothing when it already runs.
     pub fn start_capture(&self, settings: Settings) -> Result<()> {
         let mut capture = self
@@ -392,15 +405,15 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
     }
 }
 
-/// Deletes raw data older than the retention the user chose. Forever deletes nothing.
+/// Deletes raw data older than the retention the user chose. Forever deletes nothing. Settings
+/// that cannot be read fall back to the default, so raw rows never outlive it.
 fn enforce_retention(store: &mut Store, dir: &Path) {
-    let days = match prefs::load(dir) {
-        Ok(settings) => settings.retention_days,
-        Err(err) => {
-            eprintln!("retention skipped: {err:#}");
-            return;
-        }
-    };
+    let days = prefs::load(dir)
+        .unwrap_or_else(|err| {
+            eprintln!("retention uses the default: {err:#}");
+            Settings::default()
+        })
+        .retention_days;
     if let Some(days) = days
         && let Err(err) = store.retention(clock::now(), days)
     {
@@ -455,4 +468,53 @@ fn backfill_and_refresh(
         "hours_back": store.hours_back()?,
         "sources": reports,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use sextant_core::fixtures::{TempDb, WEEK_NOW, load, week};
+
+    use super::*;
+
+    fn temp(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("sextant-engine-{}-{label}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("test setup");
+        dir
+    }
+
+    fn with_old_rows() -> (Store, TempDb) {
+        let db = TempDb::new("retention");
+        let mut store = db.open().expect("test setup");
+        load(&mut store, &week(), WEEK_NOW).expect("test setup");
+        assert!(store.counts().expect("counts").events > 0, "test setup");
+        (store, db)
+    }
+
+    #[test]
+    fn retention_runs_with_the_default_when_settings_json_is_broken() {
+        let dir = temp("broken");
+        fs::write(dir.join("settings.json"), "{not json").expect("test setup");
+        let (mut store, _db) = with_old_rows();
+
+        enforce_retention(&mut store, &dir);
+
+        let counts = store.counts().expect("counts");
+        assert_eq!((counts.events, counts.frames), (0, 0));
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn forever_still_deletes_nothing() {
+        let dir = temp("forever");
+        prefs::update(&dir, |s| s.retention_days = None).expect("test setup");
+        let (mut store, _db) = with_old_rows();
+        let before = store.counts().expect("counts").events;
+
+        enforce_retention(&mut store, &dir);
+
+        assert_eq!(store.counts().expect("counts").events, before);
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
 }

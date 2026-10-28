@@ -15,7 +15,6 @@ mod prefs;
 mod screens;
 mod tray;
 
-use std::sync::OnceLock;
 use std::thread;
 
 use anyhow::Context;
@@ -25,21 +24,16 @@ use crate::commands::AppState;
 use crate::engine::Engine;
 
 /// Looks up the key (the Keychain may prompt and wait) and opens the database off the main
-/// thread, then tells the window with a `ready` event.
+/// thread, then tells the window with a `ready` event. "Delete everything" waits for this.
 fn start_engine(app: &AppHandle) {
-    let state = app.state::<AppState>();
     let emitter = app.clone();
-    let started = keys::load_or_create()
-        .and_then(|key| {
-            Engine::start(&state.dir, &key, move |name, payload| {
-                let _ = emitter.emit(name, payload);
-            })
-        })
-        .map_err(|err| format!("{err:#}"));
-    let _ = state.engine.set(started);
-    if let Some(Ok(engine)) = state.engine.get() {
+    app.state::<AppState>().start(|dir| {
+        let key = keys::load_or_create()?;
+        let engine = Engine::start(dir, &key, move |name, payload| {
+            let _ = emitter.emit(name, payload);
+        })?;
         // Capture starts only after onboarding: the permissions are asked there.
-        match prefs::load(&state.dir) {
+        match prefs::load(dir) {
             Ok(settings) if settings.onboarded => {
                 if let Err(err) = engine.start_capture(settings) {
                     eprintln!("capture did not start: {err:#}");
@@ -48,7 +42,8 @@ fn start_engine(app: &AppHandle) {
             Ok(_) => {}
             Err(err) => eprintln!("capture did not start: {err:#}"),
         }
-    }
+        Ok(engine)
+    });
     let _ = app.emit("ready", ());
 }
 
@@ -100,10 +95,7 @@ fn main() -> anyhow::Result<()> {
             screens::delete_everything,
         ])
         .setup(move |app| {
-            app.manage(AppState {
-                dir,
-                engine: OnceLock::new(),
-            });
+            app.manage(AppState::new(dir));
             tray::build(app.handle())?;
             tray::open_window(app.handle())?;
             let handle = app.handle().clone();
