@@ -122,7 +122,7 @@ pub fn request_permission(_name: &str) -> Result<bool> {
     bail!("needs macOS")
 }
 
-pub fn open_settings_pane(_pane: &str) -> Result<()> {
+pub fn open_settings_pane(_pane: &str, _hint: Option<&str>) -> Result<()> {
     bail!("needs macOS")
 }
 

@@ -162,6 +162,10 @@ input:focus-visible {
   gap: 12px;
 }
 
+.permission[aria-current="step"] strong {
+  color: var(--accent);
+}
+
 .folders {
   margin: 10px 0 0 26px;
   display: flex;

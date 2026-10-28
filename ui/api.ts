@@ -209,8 +209,9 @@ export const api = {
   permissionStatus: () => invoke<Permission[]>("permission_status"),
   requestPermission: (name: PermissionName) =>
     invoke<boolean>("request_permission", { name }),
-  openSettingsPane: (pane: SettingsPane) =>
-    invoke<void>("open_settings_pane", { pane }),
+  openSettingsPane: (pane: SettingsPane, dragHint?: string) =>
+    invoke<void>("open_settings_pane", { pane, dragHint }),
+  relaunch: () => invoke<void>("relaunch"),
   pickFolder: (prompt: string) => invoke<string | null>("pick_folder", { prompt }),
   saveChoices: (sources: Sources, gitFolders: string[]) =>
     invoke<Settings>("save_choices", { sources, gitFolders }),

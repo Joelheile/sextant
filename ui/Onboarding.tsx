@@ -329,11 +329,22 @@ function ConnectToClaude({ onFinish }: { onFinish: () => void }) {
   );
 }
 
+/** Keeps the step across "Reopen Sextant", which restarts the app during step 2. */
+const STEP_KEY = "onboardingStep";
+
 export default function Onboarding({ settings, onDone }: { settings: Settings; onDone: () => void }) {
-  const [step, setStep] = useState(1);
+  const [step, setStepState] = useState(() => Number(localStorage.getItem(STEP_KEY)) || 1);
+  const setStep = (next: number) => {
+    localStorage.setItem(STEP_KEY, String(next));
+    setStepState(next);
+  };
+  const finish = () => {
+    localStorage.removeItem(STEP_KEY);
+    onDone();
+  };
   if (step === 1) return <PickSources settings={settings} onNext={() => setStep(2)} />;
   if (step === 2) return <GrantAccess onBack={() => setStep(1)} onNext={() => setStep(3)} />;
   if (step === 3) return <FirstMap onNext={() => setStep(4)} />;
   if (step === 4) return <Audio onBack={() => setStep(3)} onNext={() => setStep(5)} />;
-  return <ConnectToClaude onFinish={onDone} />;
+  return <ConnectToClaude onFinish={finish} />;
 }

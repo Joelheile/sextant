@@ -5,12 +5,10 @@ use std::process::Command;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use objc2::rc::Retained;
 use objc2_app_kit::NSWorkspace;
-use objc2_application_services::{AXIsProcessTrusted, AXIsProcessTrustedWithOptions};
-use objc2_core_foundation::{CFDictionary, CFRunLoop, kCFRunLoopDefaultMode};
-use objc2_core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
-use objc2_foundation::{NSDictionary, NSNumber, NSString};
+use objc2_application_services::AXIsProcessTrusted;
+use objc2_core_foundation::{CFRunLoop, kCFRunLoopDefaultMode};
+use objc2_core_graphics::CGPreflightScreenCaptureAccess;
 use sextant_core::backfill::{
     CalendarRecord, FileRecord, HistoryFile, HistoryKind, Platform, ReminderRecord, parse_spotlight,
 };
@@ -19,6 +17,7 @@ use sextant_core::{Error, Result as CoreResult};
 
 use super::audio::Mac as MacAudio;
 use super::automation;
+use super::drag_panel;
 use super::eventkit::{self, Kind};
 use super::live::Mac;
 use super::speech::{self, Parakeet};
@@ -237,17 +236,6 @@ pub fn automation_status() -> &'static str {
     }
 }
 
-fn request_accessibility() -> bool {
-    let key = NSString::from_str("AXTrustedCheckOptionPrompt");
-    let options: Retained<NSDictionary<NSString, NSNumber>> =
-        NSDictionary::from_retained_objects(&[&*key], &[NSNumber::new_bool(true)]);
-    // SAFETY: NSDictionary and CFDictionary are toll-free bridged and `options` outlives the call.
-    unsafe {
-        let bridged = &*Retained::as_ptr(&options).cast::<CFDictionary>();
-        AXIsProcessTrustedWithOptions(Some(bridged))
-    }
-}
-
 fn request_automation() -> bool {
     let answers: Vec<Option<bool>> = running_browsers()
         .iter()
@@ -256,15 +244,12 @@ fn request_automation() -> bool {
     !answers.is_empty() && answers.iter().all(|answer| *answer == Some(true))
 }
 
-/// Shows the system prompt for `calendar`, `reminders`, `screen-recording`, `accessibility` or
-/// `automation`. Calendar and reminders block until the user answers; the others return whether
-/// access is granted right now, and the user finishes in System Settings.
+/// Shows the system prompt for `calendar`, `reminders` or `automation`. Calendar and reminders
+/// block until the user answers; automation returns whether access is granted right now.
 pub fn request_permission(name: &str) -> Result<bool> {
     let kind = match name {
         "calendar" => Kind::Events,
         "reminders" => Kind::Reminders,
-        "screen-recording" => return Ok(CGRequestScreenCaptureAccess()),
-        "accessibility" => return Ok(request_accessibility()),
         "automation" => return Ok(request_automation()),
         _ => bail!("{name} has no system prompt"),
     };
@@ -303,7 +288,21 @@ const PANES: [(&str, &str); 6] = [
     ("automation", "Privacy_Automation"),
 ];
 
-pub fn open_settings_pane(pane: &str) -> Result<()> {
+/// Tells whether a permission is granted.
+type Granted = fn() -> bool;
+
+/// The panes whose list takes an app dragged in, with the check that tells when it is allowed.
+const DRAG_PANES: [(&str, Granted); 3] = [
+    ("full-disk-access", || safari_status() == "granted"),
+    ("screen-recording", || {
+        screen_recording_status() == "granted"
+    }),
+    ("accessibility", || accessibility_status() == "granted"),
+];
+
+/// Opens `pane` in System Settings. For a pane that takes a dragged app, `hint` also opens the
+/// drag panel with that text.
+pub fn open_settings_pane(pane: &str, hint: Option<&str>) -> Result<()> {
     let (_, anchor) = PANES
         .iter()
         .find(|(name, _)| *name == pane)
@@ -316,6 +315,10 @@ pub fn open_settings_pane(pane: &str) -> Result<()> {
         .context("running open")?;
     if !status.success() {
         bail!("System Settings did not open");
+    }
+    let drag = DRAG_PANES.iter().find(|(name, _)| *name == pane);
+    if let (Some((_, granted)), Some(hint)) = (drag, hint) {
+        drag_panel::show(hint.to_string(), *granted);
     }
     Ok(())
 }

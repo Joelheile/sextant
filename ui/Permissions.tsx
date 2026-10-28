@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Permission, type PermissionName } from "./api";
+import {
+  api,
+  type Permission,
+  type PermissionName,
+  type SettingsPane,
+} from "./api";
 import { t, type Key } from "./i18n";
 
 const PERMISSION_LABEL: Record<PermissionName, Key> = {
@@ -11,16 +16,25 @@ const PERMISSION_LABEL: Record<PermissionName, Key> = {
   automation: "permAutomation",
 };
 
-const LIVE_PANE = {
+/** Permissions the user grants by dragging Sextant into a System Settings list. */
+const DRAG_PANE: Partial<Record<PermissionName, SettingsPane>> = {
+  safari: "full-disk-access",
   "screen-recording": "screen-recording",
   accessibility: "accessibility",
-  automation: "automation",
-} as const;
+};
 
-/** The permissions the chosen sources need, with a button to allow each one. */
+/** These apply only after Sextant starts again. */
+const NEEDS_REOPEN: PermissionName[] = ["safari", "screen-recording"];
+
+const POLL_MS = 1000;
+
+/** The permissions the chosen sources need, with a button to allow each one or all in turn. */
 export default function Permissions() {
   const [permissions, setPermissions] = useState<Permission[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The permission "Allow all" is waiting on, or null when it is not running. */
+  const [walking, setWalking] = useState<PermissionName | null>(null);
+  const [opened, setOpened] = useState<PermissionName[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -32,68 +46,132 @@ export default function Permissions() {
 
   useEffect(() => {
     void refresh();
+    const timer = setInterval(() => void refresh(), POLL_MS);
+    return () => clearInterval(timer);
   }, [refresh]);
 
-  const act = async (permission: Permission) => {
-    try {
-      if (permission.name === "safari") {
-        await api.openSettingsPane("full-disk-access");
-      } else if (permission.name in LIVE_PANE) {
-        const pane = LIVE_PANE[permission.name as keyof typeof LIVE_PANE];
-        // macOS shows its prompt once. After that the user has to switch it on in Settings.
-        if (permission.status === "denied" || !(await api.requestPermission(permission.name))) {
-          await api.openSettingsPane(pane);
-        }
-        await refresh();
-      } else if (permission.status === "undetermined") {
-        await api.requestPermission(permission.name);
-        await refresh();
-      } else {
-        await api.openSettingsPane(permission.name === "calendar" ? "calendars" : "reminders");
+  const act = useCallback(async (permission: Permission) => {
+    const dragPane = DRAG_PANE[permission.name];
+    if (dragPane) {
+      await api.openSettingsPane(dragPane, t("dragHint"));
+      setOpened((names) => [...names, permission.name]);
+    } else if (permission.name === "automation") {
+      // macOS shows its prompt once. After that the user has to switch it on in Settings.
+      if (
+        permission.status === "denied" ||
+        !(await api.requestPermission("automation"))
+      ) {
+        await api.openSettingsPane("automation");
       }
+    } else if (permission.status === "undetermined") {
+      await api.requestPermission(permission.name);
+    } else {
+      await api.openSettingsPane(
+        permission.name === "calendar" ? "calendars" : "reminders",
+      );
+    }
+    await refresh();
+  }, [refresh]);
+
+  /** Moves "Allow all" to the first missing permission after `from`. Prompts move on once
+   * answered; drag panes wait until they are granted or the user presses Next. */
+  const walkFrom = useCallback(async (from: PermissionName | null) => {
+    try {
+      const list = await api.permissionStatus();
+      setPermissions(list);
+      const start =
+        from === null ? 0 : list.findIndex((p) => p.name === from) + 1;
+      const next = list.slice(start).find((p) => p.status !== "granted");
+      setWalking(next?.name ?? null);
+      if (!next) return;
+      await act(next);
+      if (!DRAG_PANE[next.name]) await walkFrom(next.name);
     } catch (err) {
+      setWalking(null);
       setError(String(err));
     }
-  };
+  }, [act]);
+
+  useEffect(() => {
+    if (!walking || !DRAG_PANE[walking]) return;
+    if (permissions?.find((p) => p.name === walking)?.status === "granted")
+      void walkFrom(walking);
+  }, [permissions, walking, walkFrom]);
+
+  const allow = (permission: Permission) =>
+    act(permission).catch((err) => setError(String(err)));
 
   const label = (permission: Permission): Key =>
-    permission.status === "undetermined" && permission.name !== "safari"
+    DRAG_PANE[permission.name] || permission.status === "undetermined"
       ? "allow"
       : "openSettings";
+
+  const missing = permissions?.filter((p) => p.status !== "granted") ?? [];
+  const reopen = missing.some(
+    (p) => NEEDS_REOPEN.includes(p.name) && opened.includes(p.name),
+  );
 
   return (
     <>
       {permissions?.length === 0 && <p className="muted">{t("accessNone")}</p>}
+      {missing.length > 1 && walking === null && (
+        <button type="button" onClick={() => void walkFrom(null)}>
+          {t("allowAll")}
+        </button>
+      )}
       <ul className="choices">
         {permissions?.map((permission) => (
-          <li key={permission.name} className="permission">
+          <li
+            key={permission.name}
+            className="permission"
+            aria-current={walking === permission.name ? "step" : undefined}
+          >
             <span>
               <strong>{t(PERMISSION_LABEL[permission.name])}</strong>
-              <span className={permission.status === "granted" ? "ok" : "muted"}>
+              <span
+                className={permission.status === "granted" ? "ok" : "muted"}
+              >
                 {t(permission.status)}
               </span>
             </span>
-            {permission.status !== "granted" && (
-              <button type="button" className="secondary" onClick={() => void act(permission)}>
-                {t(label(permission))}
+            {walking === permission.name ? (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void walkFrom(permission.name)}
+              >
+                {t("next")}
               </button>
+            ) : (
+              permission.status !== "granted" && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void allow(permission)}
+                >
+                  {t(label(permission))}
+                </button>
+              )
             )}
           </li>
         ))}
       </ul>
-      {permissions?.some((p) => p.name === "safari" && p.status !== "granted") && (
-        <p className="muted">{t("safariRestart")}</p>
+      {reopen && (
+        <p className="muted">
+          {t("reopenHint")}{" "}
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void api.relaunch()}
+          >
+            {t("reopen")}
+          </button>
+        </p>
       )}
-      {permissions?.some((p) => p.name === "screen-recording" && p.status !== "granted") && (
-        <p className="muted">{t("screenRestart")}</p>
-      )}
-      {permissions?.some((p) => p.name === "automation" && p.status !== "granted") && (
-        <p className="muted">{t("automationHint")}</p>
-      )}
+      {permissions?.some(
+        (p) => p.name === "automation" && p.status !== "granted",
+      ) && <p className="muted">{t("automationHint")}</p>}
       {error && <p role="alert">{error}</p>}
-      <button type="button" className="secondary" onClick={() => void refresh()}>
-        {t("checkAgain")}
-      </button>
     </>
   );
 }

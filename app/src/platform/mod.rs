@@ -7,6 +7,8 @@ mod audio;
 #[cfg(target_os = "macos")]
 mod automation;
 #[cfg(target_os = "macos")]
+mod drag_panel;
+#[cfg(target_os = "macos")]
 mod eventkit;
 #[cfg(target_os = "macos")]
 mod live;

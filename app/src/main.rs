@@ -65,6 +65,7 @@ fn main() -> anyhow::Result<()> {
             commands::permission_status,
             commands::request_permission,
             commands::open_settings_pane,
+            commands::relaunch,
             commands::pick_folder,
             commands::save_choices,
             commands::start_backfill,

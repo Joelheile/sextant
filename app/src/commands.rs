@@ -8,7 +8,7 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use serde::Serialize;
 use sextant_core::connect::claude_code_command;
 use sextant_core::{Settings, Sources};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::engine::Engine;
 use crate::keys::KeyVault;
@@ -129,8 +129,8 @@ pub async fn permission_status(state: State<'_, AppState>) -> Reply<Vec<Permissi
     Ok(needed)
 }
 
-/// Shows the system prompt for `calendar`, `reminders`, `screen-recording`, `accessibility` or
-/// `automation`. Returns whether access is granted.
+/// Shows the system prompt for `calendar`, `reminders` or `automation`. Returns whether access is
+/// granted.
 #[tauri::command]
 pub async fn request_permission(name: String) -> Reply<bool> {
     tauri::async_runtime::spawn_blocking(move || platform::request_permission(&name))
@@ -140,10 +140,17 @@ pub async fn request_permission(name: String) -> Reply<bool> {
 }
 
 /// Opens `full-disk-access`, `calendars`, `reminders`, `screen-recording`, `accessibility` or
-/// `automation` in System Settings.
+/// `automation` in System Settings. With `drag_hint`, the first three also get the panel that
+/// holds Sextant's icon to drag into the list.
 #[tauri::command]
-pub async fn open_settings_pane(pane: String) -> Reply<()> {
-    platform::open_settings_pane(&pane).map_err(msg)
+pub async fn open_settings_pane(pane: String, drag_hint: Option<String>) -> Reply<()> {
+    platform::open_settings_pane(&pane, drag_hint.as_deref()).map_err(msg)
+}
+
+/// Quits and opens Sextant again. Screen Recording and Full Disk Access apply only after this.
+#[tauri::command]
+pub fn relaunch(app: AppHandle) {
+    app.restart();
 }
 
 /// The folder dialog with `prompt` as its message. `None` when cancelled.
