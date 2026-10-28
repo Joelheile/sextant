@@ -387,6 +387,16 @@ impl Store {
         )
     }
 
+    /// Hours a week the visible workflows could give back: the estimated benefit of those
+    /// worth handing to an agent (automate or assist).
+    pub fn hours_back(&self) -> Result<f64> {
+        Ok(self.conn.query_row(
+            "SELECT COALESCE(SUM(benefit), 0) FROM workflows WHERE hidden = 0 AND action IN ('automate', 'assist')",
+            [],
+            |row| row.get(0),
+        )?)
+    }
+
     pub fn workflow(&self, id: i64) -> Result<Option<Workflow>> {
         Ok(self
             .read_workflows("WHERE id = ?1", params![id])?

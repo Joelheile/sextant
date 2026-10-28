@@ -7,6 +7,7 @@ use std::time::Duration;
 use rusqlite::{Connection, ErrorCode, OpenFlags, params};
 
 use crate::error::{Error, Result};
+use crate::redact::redact;
 use crate::time::DAY;
 use crate::writer::unpack;
 
@@ -53,9 +54,17 @@ impl Store {
 
     /// A read-only connection to the same file. WAL mode lets it run while the writer writes.
     pub fn reader(&self) -> Result<Self> {
+        let mut reader = Self::open_read_only(&self.path, &self.key)?;
+        reader.utc_offset_s = self.utc_offset_s;
+        Ok(reader)
+    }
+
+    /// Opens an existing database without writing: no migration, no journal change. Fails with
+    /// `SchemaTooOld` when the app has not migrated the file yet.
+    pub fn open_read_only(path: &Path, key: &Key) -> Result<Self> {
         let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-        let conn = Connection::open_with_flags(&self.path, flags)?;
-        unlock(&conn, &self.key)?;
+        let conn = Connection::open_with_flags(path, flags)?;
+        unlock(&conn, key)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         let found = user_version(&conn)?;
         if found != MIGRATIONS.len() as i32 {
@@ -66,14 +75,46 @@ impl Store {
         }
         Ok(Self {
             conn,
-            path: self.path.clone(),
-            key: self.key,
-            utc_offset_s: self.utc_offset_s,
+            path: path.to_path_buf(),
+            key: *key,
+            utc_offset_s: 0,
         })
     }
 
     pub fn set_utc_offset(&mut self, seconds: i32) {
         self.utc_offset_s = seconds;
+    }
+
+    pub fn utc_offset(&self) -> i32 {
+        self.utc_offset_s
+    }
+
+    /// Removes every backfill event so a new backfill replaces the old one instead of doubling it.
+    pub fn clear_backfill(&mut self) -> Result<usize> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM events WHERE source = 'backfill'", [])?)
+    }
+
+    /// Appends one `handoffs` row (plan.md §8 `report_handoff`) on a short-lived write
+    /// connection, so a read-only reader can report. Returns the row id.
+    pub fn record_handoff(
+        &self,
+        workflow_id: i64,
+        ts: i64,
+        status: &str,
+        note: &str,
+    ) -> Result<i64> {
+        self.workflow(workflow_id)?
+            .ok_or(Error::NoWorkflow(workflow_id))?;
+        let conn = Connection::open(&self.path)?;
+        unlock(&conn, &self.key)?;
+        conn.busy_timeout(Duration::from_secs(5))?;
+        conn.execute(
+            "INSERT INTO handoffs(workflow_id, ts, status, note) VALUES (?1, ?2, ?3, ?4)",
+            params![workflow_id, ts, redact(status), redact(note)],
+        )?;
+        Ok(conn.last_insert_rowid())
     }
 
     pub fn schema_version(&self) -> Result<i32> {

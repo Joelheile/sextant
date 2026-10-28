@@ -13,3 +13,7 @@ pub fn data_dir() -> Result<PathBuf> {
     let home = std::env::var_os("HOME").context("HOME is not set")?;
     Ok(PathBuf::from(home).join("Library/Application Support/Sextant"))
 }
+
+pub fn db_path(dir: &std::path::Path) -> PathBuf {
+    dir.join("sextant.db")
+}

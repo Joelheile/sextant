@@ -16,6 +16,10 @@ pub enum Error {
     SchemaTooOld { found: i32, expected: i32 },
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("{0}")]
+    Platform(String),
+    #[error("{0}")]
+    Invalid(String),
     #[error("no workflow with id {0}")]
     NoWorkflow(i64),
     #[error("no correction rule matches this phrase")]

@@ -156,7 +156,7 @@ impl Rng {
 
 type Planned = Vec<(i64, i64)>;
 
-fn at(midnight: i64, hour: i64, minute: i64) -> i64 {
+pub(crate) fn at(midnight: i64, hour: i64, minute: i64) -> i64 {
     midnight + hour * 3600 + minute * 60
 }
 
@@ -246,16 +246,16 @@ fn window(app: &str, title: &str, doc: &str, url: &str) -> Window {
 }
 
 #[derive(Clone, Copy)]
-enum Part {
+pub(crate) enum Part {
     Mail,
     Excel,
     Lex,
 }
 
-type Visit = (i64, i64, i64, Part, i64, bool);
+pub(crate) type Visit = (i64, i64, i64, Part, i64, bool);
 
 /// Per invoice: number offset, German, then (day, hour, minute, part, seconds, copy-event) visits.
-const INVOICES: [(u32, bool, &[Visit]); 5] = [
+pub(crate) const INVOICES: [(u32, bool, &[Visit]); 5] = [
     (
         412,
         false,
@@ -306,7 +306,7 @@ const INVOICES: [(u32, bool, &[Visit]); 5] = [
     ),
 ];
 
-const CLIENTS: [(&str, &str); 5] = [
+pub(crate) const CLIENTS: [(&str, &str); 5] = [
     ("Acme GmbH", "€1,250.00"),
     ("Müller AG", "980,00 €"),
     ("Beta Ltd", "€2,400.00"),
@@ -383,7 +383,7 @@ fn invoices(f: &mut Fixture, monday: i64, week: u32, planned: &mut Planned) {
     }
 }
 
-const SLACK_TEXT: [&str; 5] = [
+pub(crate) const SLACK_TEXT: [&str; 5] = [
     "Anna Keller: standup notes are in the doc",
     "Anna Keller: Can we revisit the pricing for the annual plan before Friday?",
     "Jonas: Rechnung für Müller AG ist raus, danke!",

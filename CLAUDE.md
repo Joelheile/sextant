@@ -20,11 +20,14 @@ Read `plan.md` first. It is the spec: principles, privacy rules (§10), budgets 
 | Lint | `cargo clippy --workspace --all-targets -q -- -D warnings` |
 | Test | `cargo test --workspace -q` |
 | Test core only | `cargo test -p sextant-core -q` |
+| Budget tests (first map, MCP p95, search, refresh) | `cargo test -p sextant-core --release -- --nocapture` |
+| MCP server over stdio | `SEXTANT_HOME=.dev-data cargo run -q -- mcp` (or `sextant mcp` from a build) |
 | Network check | `scripts/check-network.sh` |
 | All checks (Stop hook) | `scripts/stop-hook.sh` |
 
 ## Rules
 
-- Dev builds read and write only `./.dev-data` (`SEXTANT_HOME`, set in `.cargo/config.toml`). Never read `~/Library/Application Support/Sextant` or the `sextant` keychain entry.
+- Dev builds read and write only `./.dev-data` (`SEXTANT_HOME`, set in `.cargo/config.toml`). Never read `~/Library/Application Support/Sextant`, the Claude Desktop config, or the `sextant` keychain entry. Dev builds use the `sextant-dev` entry; tests set `SEXTANT_DEV_KEY` (64 hex digits, debug only) instead.
+- Never run backfill against real browsers, calendar, git or Spotlight in development. Tests use `core/src/profile_fixture.rs` and temp folders.
 - Network code only in `app/src/models.rs`.
 - No `unwrap()` outside tests. `thiserror` in core, `anyhow` in app.
