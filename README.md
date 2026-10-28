@@ -12,10 +12,12 @@ On install, Sextant reads history you already have (browser history, calendar, g
 Sextant needs a Mac with Apple silicon and macOS 14.2 or later.
 
 ```sh
-curl -fsSL https://github.com/<owner>/sextant/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/Joelheile/sextant/releases/latest/download/install.sh | sh
 ```
 
-The script downloads the latest disk image over HTTPS, checks its SHA-256 against the checksum published with the release, copies `Sextant.app` to `/Applications` and opens it. You can also download `Sextant.dmg` from the [releases page](https://github.com/<owner>/sextant/releases/latest) and drag the app to `/Applications`.
+The script downloads the latest disk image over HTTPS, checks its SHA-256 against the checksum published with the release, copies `Sextant.app` to `/Applications` and opens it. You can also download `Sextant.dmg` from the [releases page](https://github.com/Joelheile/sextant/releases/latest) and drag the app to `/Applications`.
+
+While the repository is private, the `curl` command can't download anything. Use the GitHub CLI instead: `gh release download -R Joelheile/sextant -p Sextant.dmg`, then open the disk image and drag the app to `/Applications`.
 
 The app is about 17 MB. The speech models (about 670 MB) are optional and download only after you press "Download".
 
@@ -55,11 +57,10 @@ Dev builds read and write only `./.dev-data`. See `CLAUDE.md` for all commands a
 
 ## Cut a release
 
-You need a paid Apple Developer account and a public GitHub repository.
+You need a paid Apple Developer account. The `curl` installer also needs the repository to be public.
 
-1. Replace `<owner>` in this file and in `scripts/install.sh` with your GitHub user or organization. Push `main`.
-2. Create a "Developer ID Application" certificate, export it as a `.p12` file and encode it: `base64 -i cert.p12 | pbcopy`.
-3. Add these repository secrets (Settings, Secrets and variables, Actions):
+1. Create a "Developer ID Application" certificate, export it as a `.p12` file and encode it: `base64 -i cert.p12 | pbcopy`.
+2. Add these repository secrets (Settings, Secrets and variables, Actions):
 
    | Secret                       | Value                                                                            |
    | ---------------------------- | -------------------------------------------------------------------------------- |
@@ -70,8 +71,8 @@ You need a paid Apple Developer account and a public GitHub repository.
    | `APPLE_PASSWORD`             | An app-specific password from appleid.apple.com                                  |
    | `APPLE_TEAM_ID`              | Your 10-character team ID                                                        |
 
-4. Set the same version in `app/tauri.conf.json`, `package.json` and `Cargo.toml`, commit it, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
-5. The `Release` workflow builds, signs with the hardened runtime, notarizes, staples and publishes `Sextant.dmg`, `Sextant.dmg.sha256` and `install.sh`.
+3. Set the same version in `app/tauri.conf.json`, `package.json` and `Cargo.toml`, commit it, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
+4. The `Release` workflow builds, signs with the hardened runtime, notarizes, staples and publishes `Sextant.dmg`, `Sextant.dmg.sha256` and `install.sh`.
 
 To check a release, run the install command on a Mac that has never seen Sextant. It must open without a Gatekeeper warning, ask for each permission only when its onboarding step needs it, and show a map.
 

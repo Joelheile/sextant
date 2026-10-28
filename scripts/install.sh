@@ -1,11 +1,11 @@
 #!/bin/sh
 # Installs the latest Sextant release:
-#   curl -fsSL https://github.com/<owner>/sextant/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/Joelheile/sextant/releases/latest/download/install.sh | sh
 # It downloads the DMG over HTTPS, checks its SHA-256 against the checksum published with the
 # release, copies Sextant.app into /Applications and opens it.
 set -eu
 
-repo="<owner>/sextant"
+repo="Joelheile/sextant"
 base="https://github.com/$repo/releases/latest/download"
 dest="${SEXTANT_INSTALL_DIR:-/Applications}"
 
