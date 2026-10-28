@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use crate::error::{Error, Result};
-use crate::finder::{Action, WorkflowDetail};
+use crate::finder::{Action, Workflow, WorkflowDetail};
 use crate::store::Store;
 use crate::text::slug;
 use crate::time::label;
@@ -113,6 +113,15 @@ pub fn build(detail: &WorkflowDetail, utc_offset_s: i32) -> String {
         let _ = writeln!(out, "- {reason}");
     }
     out
+}
+
+/// What to paste into Claude once the `SKILL.md` is on disk. It names the workflow id, so the agent
+/// can call `report_handoff` and Sextant can start measuring.
+pub fn prompt(workflow: &Workflow, skill_path: &str) -> String {
+    format!(
+        "Read the skill at {skill_path}. It describes the recurring workflow \"{}\" that Sextant found in my work. Take this work over for me. Show me what you will do before you send, pay or delete anything. Once you run it, call the Sextant tool report_handoff with id {} and status started, so Sextant can measure the hours I get back.",
+        workflow.name, workflow.id
+    )
 }
 
 impl Store {

@@ -12,7 +12,11 @@ use crate::redact::{Secret, redact};
 use crate::time::DAY;
 use crate::writer::unpack;
 
-const MIGRATIONS: &[&str] = &[include_str!("schema_v1.sql"), include_str!("schema_v2.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("schema_v1.sql"),
+    include_str!("schema_v2.sql"),
+    include_str!("schema_v3.sql"),
+];
 
 const EMAIL_SECRET: &str = "email_secret";
 
@@ -174,18 +178,22 @@ impl Store {
         status: &str,
         note: &str,
     ) -> Result<i64> {
-        self.workflow(workflow_id)?
+        let workflow = self
+            .workflow(workflow_id)?
             .ok_or(Error::NoWorkflow(workflow_id))?;
+        let sequence: Vec<&str> = workflow.steps.iter().map(|s| s.key.as_str()).collect();
         let conn = Connection::open(&self.path)?;
         unlock(&conn, &self.key)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.execute(
-            "INSERT INTO handoffs(workflow_id, ts, status, note) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO handoffs(workflow_id, ts, status, note, name, sequence) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 workflow_id,
                 ts,
                 redact(status, &self.secret),
-                redact(note, &self.secret)
+                redact(note, &self.secret),
+                workflow.name,
+                serde_json::to_string(&sequence)?
             ],
         )?;
         Ok(conn.last_insert_rowid())

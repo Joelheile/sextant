@@ -4,6 +4,7 @@ mod capture;
 mod clock;
 mod commands;
 mod connect;
+mod data;
 mod engine;
 mod home;
 mod keys;
@@ -11,6 +12,7 @@ mod mcp;
 mod models;
 mod platform;
 mod prefs;
+mod screens;
 mod tray;
 
 use std::sync::OnceLock;
@@ -80,6 +82,22 @@ fn main() -> anyhow::Result<()> {
             commands::cancel_download,
             commands::set_audio,
             commands::finish_onboarding,
+            screens::workflow_overview,
+            screens::answer_enjoyment,
+            screens::workflow_detail,
+            screens::correct_workflow,
+            screens::automation_plan,
+            screens::write_skill,
+            screens::report_handoff,
+            screens::results,
+            screens::search,
+            screens::weekly_report,
+            screens::save_report_image,
+            screens::storage_used,
+            screens::set_excluded_apps,
+            screens::set_live,
+            screens::set_retention,
+            screens::delete_everything,
         ])
         .setup(move |app| {
             app.manage(AppState {

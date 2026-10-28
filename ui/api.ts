@@ -9,7 +9,13 @@ export type Sources = {
   files: boolean;
 };
 
-export type Live = { metadata: boolean; ocr: boolean; copy: boolean; audio: boolean };
+export type Live = {
+  metadata: boolean;
+  ocr: boolean;
+  copy: boolean;
+  audio: boolean;
+  opaque_browsers: boolean;
+};
 
 export type Settings = {
   excluded_apps: string[];
@@ -20,6 +26,7 @@ export type Settings = {
   sources: Sources;
   git_folders: string[];
   call_apps: string[];
+  retention_days: number | null;
 };
 
 export type PermissionName =
@@ -50,6 +57,118 @@ export type MapRow = {
   cases: number;
   action: string;
   rough: boolean;
+};
+
+export type Enjoyment = "hate" | "dislike" | "neutral" | "unknown" | "like" | "love";
+
+export type Category =
+  | "meeting"
+  | "email"
+  | "spreadsheet"
+  | "crm"
+  | "finance"
+  | "chat"
+  | "planning"
+  | "coding"
+  | "design"
+  | "writing"
+  | "slides"
+  | "calendar"
+  | "social"
+  | "media"
+  | "web"
+  | "other";
+
+export type StepView = {
+  key: string;
+  name: string;
+  category: Category;
+  gap_s: number | null;
+  copies: number;
+};
+
+export type WorkflowRow = {
+  id: number;
+  name: string;
+  steps: StepView[];
+  hours_week: number;
+  cases: number;
+  benefit: number;
+  procrastination: number;
+  action: "automate" | "assist" | "protect" | "ignore" | "watch";
+  kind: "friction" | "promise_gap" | "routine" | "long_tail";
+  enjoyment: Enjoyment;
+  client: boolean;
+  rough: boolean;
+  handed_off: boolean;
+};
+
+export type Overview = {
+  hours_back: number;
+  total: number;
+  ask: WorkflowRow[];
+  ranked: WorkflowRow[];
+  promises: WorkflowRow[];
+  protect: WorkflowRow[];
+};
+
+export type Detail = {
+  workflow: WorkflowRow;
+  reasons: string[];
+  copy_points: { from: string; to: string; copies: number }[];
+  examples: { entity: string; first_ts: number; last_ts: number; path: string[] }[];
+  commitments: { ts: number; source: string; text: string; due_ts: number | null; overdue: boolean }[];
+};
+
+export type RuleName =
+  | "enjoyment"
+  | "client"
+  | "not_automatable"
+  | "rename"
+  | "hide"
+  | "merge"
+  | "split";
+export type Understood = { rule: RuleName; arg: string | null };
+
+export type AutomationPlan = { path: string; prompt: string };
+
+export type ResultRow = {
+  handoff_id: number;
+  workflow_id: number;
+  name: string;
+  ts: number;
+  status: string;
+  note: string;
+  days_before: number;
+  days_after: number;
+  hours_before: number | null;
+  hours_after: number | null;
+  saved: number | null;
+  progress: number;
+};
+
+export type Results = { min_days: number; rows: ResultRow[] };
+
+export type SearchPage = {
+  sessions: {
+    source: "screen" | "mic" | "system";
+    app: string;
+    title: string;
+    url: string;
+    start: number;
+    end: number;
+    lines: { ts: number; text: string }[];
+  }[];
+  next_offset: number | null;
+};
+
+export type WeeklyReport = {
+  from_ts: number;
+  to_ts: number;
+  hours_back: number;
+  hours_saved: number;
+  handoffs: number;
+  top: { categories: Category[]; hours_week: number; action: string }[];
 };
 
 export type FirstMap = { hours_back: number; total: number; rows: MapRow[] };
@@ -92,7 +211,7 @@ export const api = {
     invoke<boolean>("request_permission", { name }),
   openSettingsPane: (pane: SettingsPane) =>
     invoke<void>("open_settings_pane", { pane }),
-  pickFolder: () => invoke<string | null>("pick_folder"),
+  pickFolder: (prompt: string) => invoke<string | null>("pick_folder", { prompt }),
   saveChoices: (sources: Sources, gitFolders: string[]) =>
     invoke<Settings>("save_choices", { sources, gitFolders }),
   startBackfill: () => invoke<void>("start_backfill"),
@@ -107,6 +226,29 @@ export const api = {
   cancelDownload: () => invoke<void>("cancel_download"),
   setAudio: (on: boolean) => invoke<Settings>("set_audio", { on }),
   finishOnboarding: () => invoke<Settings>("finish_onboarding"),
+  workflowOverview: (offset: number, limit: number) =>
+    invoke<Overview>("workflow_overview", { offset, limit }),
+  answerEnjoyment: (id: number, enjoyment: Enjoyment) =>
+    invoke<void>("answer_enjoyment", { id, enjoyment }),
+  workflowDetail: (id: number) => invoke<Detail | null>("workflow_detail", { id }),
+  correctWorkflow: (id: number, phrase: string, steps: string[]) =>
+    invoke<Understood | null>("correct_workflow", { id, phrase, steps }),
+  automationPlan: (id: number, folder: string | null) =>
+    invoke<AutomationPlan>("automation_plan", { id, folder }),
+  writeSkill: (id: number, folder: string | null) =>
+    invoke<string>("write_skill", { id, folder }),
+  reportHandoff: (id: number) => invoke<void>("report_handoff", { id }),
+  results: () => invoke<Results>("results"),
+  search: (query: string, offset: number, limit: number) =>
+    invoke<SearchPage>("search", { query, offset, limit }),
+  weeklyReport: () => invoke<WeeklyReport>("weekly_report"),
+  saveReportImage: (day: string, png: number[]) =>
+    invoke<string>("save_report_image", { day, png }),
+  storageUsed: () => invoke<{ bytes: number }>("storage_used"),
+  setExcludedApps: (apps: string[]) => invoke<Settings>("set_excluded_apps", { apps }),
+  setLive: (live: Live) => invoke<Settings>("set_live", { live }),
+  setRetention: (days: number | null) => invoke<Settings>("set_retention", { days }),
+  deleteEverything: () => invoke<void>("delete_everything"),
 };
 
 /** Calls `handler` when the engine has started or failed to. Resolves once attached. */

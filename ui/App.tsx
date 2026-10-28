@@ -1,14 +1,24 @@
 import { useEffect, useState } from "react";
 import { api, onReady, type Settings } from "./api";
-import CallAudio from "./CallAudio";
-import { t } from "./i18n";
-import MapList from "./MapList";
+import { t, type Key } from "./i18n";
 import Onboarding from "./Onboarding";
+import Privacy from "./Privacy";
+import Results from "./Results";
+import Search from "./Search";
+import Workflows from "./Workflows";
+
+const TABS = [
+  { id: "workflows", label: "tabWorkflows", screen: Workflows },
+  { id: "search", label: "tabSearch", screen: Search },
+  { id: "results", label: "tabResults", screen: Results },
+  { id: "privacy", label: "tabPrivacy", screen: Privacy },
+] as const satisfies readonly { id: string; label: Key; screen: () => React.ReactNode }[];
 
 export default function App() {
   const [ready, setReady] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("workflows");
 
   useEffect(() => {
     const check = () =>
@@ -46,14 +56,23 @@ export default function App() {
   if (!settings.onboarded) {
     return <Onboarding settings={settings} onDone={() => setSettings({ ...settings, onboarded: true })} />;
   }
+  const Screen = TABS.find((candidate) => candidate.id === tab)?.screen ?? Workflows;
   return (
     <main className="shell">
-      <h1>{t("workflowsTitle")}</h1>
-      <MapList headline />
-      <h2>{t("audioTitle")}</h2>
-      <CallAudio />
-      <h2>{t("aboutTitle")}</h2>
-      <p className="muted">{t("aboutBody")}</p>
+      <nav className="tabs" aria-label="Sextant">
+        {TABS.map((candidate) => (
+          <button
+            key={candidate.id}
+            type="button"
+            className={candidate.id === tab ? "tab current" : "tab"}
+            aria-current={candidate.id === tab ? "page" : undefined}
+            onClick={() => setTab(candidate.id)}
+          >
+            {t(candidate.label)}
+          </button>
+        ))}
+      </nav>
+      <Screen />
     </main>
   );
 }

@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type FirstMap, type MapRow } from "./api";
+import { hours } from "./format";
 import { t } from "./i18n";
 
 const PAGE = 20;
-
-function hours(value: number): string {
-  return value.toFixed(1);
-}
 
 function Row({ row, rank }: { row: MapRow; rank: number }) {
   return (

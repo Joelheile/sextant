@@ -321,11 +321,16 @@ pub fn open_settings_pane(pane: &str) -> Result<()> {
 }
 
 /// The macOS folder dialog. `None` when the user cancels.
-pub fn pick_folder() -> Result<Option<String>> {
+pub fn pick_folder(prompt: &str) -> Result<Option<String>> {
     let output = Command::new("osascript")
         .args([
             "-e",
-            r#"POSIX path of (choose folder with prompt "Pick the folder that holds your code")"#,
+            "on run argv",
+            "-e",
+            "POSIX path of (choose folder with prompt (item 1 of argv))",
+            "-e",
+            "end run",
+            prompt,
         ])
         .output()
         .context("running osascript")?;

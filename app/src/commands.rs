@@ -19,10 +19,10 @@ pub struct AppState {
     pub engine: OnceLock<Result<Engine, String>>,
 }
 
-type Reply<T> = Result<T, String>;
+pub(crate) type Reply<T> = Result<T, String>;
 
 impl AppState {
-    fn engine(&self) -> Reply<&Engine> {
+    pub(crate) fn engine(&self) -> Reply<&Engine> {
         match self.engine.get() {
             Some(started) => started.as_ref().map_err(Clone::clone),
             None => Err("Sextant is still starting".into()),
@@ -30,11 +30,11 @@ impl AppState {
     }
 }
 
-fn msg(err: impl Display) -> String {
+pub(crate) fn msg(err: impl Display) -> String {
     err.to_string()
 }
 
-const MAX_ROWS: usize = 200;
+pub(crate) const MAX_ROWS: usize = 200;
 
 /// `false` while the engine starts, `true` once it runs, an error if it could not start. The UI
 /// asks again whenever the `ready` event arrives.
@@ -115,10 +115,10 @@ pub async fn open_settings_pane(pane: String) -> Reply<()> {
     platform::open_settings_pane(&pane).map_err(msg)
 }
 
-/// The folder dialog. `None` when cancelled.
+/// The folder dialog with `prompt` as its message. `None` when cancelled.
 #[tauri::command]
-pub async fn pick_folder() -> Reply<Option<String>> {
-    tauri::async_runtime::spawn_blocking(platform::pick_folder)
+pub async fn pick_folder(prompt: String) -> Reply<Option<String>> {
+    tauri::async_runtime::spawn_blocking(move || platform::pick_folder(&prompt))
         .await
         .map_err(msg)?
         .map_err(msg)

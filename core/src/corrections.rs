@@ -26,7 +26,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    fn name(&self) -> &'static str {
+    pub fn name(&self) -> &'static str {
         match self {
             Self::Enjoyment(_) => "enjoyment",
             Self::Client => "client",
@@ -35,6 +35,15 @@ impl Rule {
             Self::Hide => "hide",
             Self::Merge => "merge",
             Self::Split => "split",
+        }
+    }
+
+    /// The value the rule carries, for showing what was understood.
+    pub fn arg(&self) -> Option<&str> {
+        match self {
+            Self::Enjoyment(e) => Some(e.as_str()),
+            Self::Rename(name) => Some(name),
+            _ => None,
         }
     }
 }
@@ -158,6 +167,21 @@ impl Store {
     /// Takes effect at the next `refresh`.
     pub fn correct(&mut self, ts: i64, phrase: &str, targets: &[Target]) -> Result<Rule> {
         let rule = parse(phrase).ok_or(Error::UnknownCorrection)?;
+        self.apply(ts, phrase, rule, targets)
+    }
+
+    /// The user's answer to the quick enjoyment question. Never inferred, always asked.
+    pub fn answer_enjoyment(
+        &mut self,
+        ts: i64,
+        target: Target,
+        enjoyment: Enjoyment,
+    ) -> Result<Rule> {
+        let phrase = format!("enjoyment: {}", enjoyment.as_str());
+        self.apply(ts, &phrase, Rule::Enjoyment(enjoyment), &[target])
+    }
+
+    fn apply(&mut self, ts: i64, phrase: &str, rule: Rule, targets: &[Target]) -> Result<Rule> {
         let resolved: Vec<(String, bool)> = targets
             .iter()
             .map(|target| match target {

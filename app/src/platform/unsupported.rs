@@ -126,6 +126,6 @@ pub fn open_settings_pane(_pane: &str) -> Result<()> {
     bail!("needs macOS")
 }
 
-pub fn pick_folder() -> Result<Option<String>> {
+pub fn pick_folder(_prompt: &str) -> Result<Option<String>> {
     bail!("needs macOS")
 }

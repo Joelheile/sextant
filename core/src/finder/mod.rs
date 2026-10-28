@@ -10,7 +10,7 @@ mod steps;
 
 use std::collections::{BTreeSet, HashMap};
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use self::episodes::EventRow;
 pub use self::score::{Action, Enjoyment, Kind};
@@ -78,6 +78,17 @@ pub struct CopyPoint {
     pub from: String,
     pub to: String,
     pub copies: usize,
+}
+
+/// How one step follows the next in a workflow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StepLink {
+    pub from: String,
+    pub to: String,
+    pub count: usize,
+    pub median_gap_s: i64,
+    pub copies: usize,
+    pub days: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -478,6 +489,33 @@ impl Store {
             ))
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// For each pair of neighbouring steps that follow each other in the data: how often, how long
+    /// the gap is and how often data was copied by hand.
+    pub fn step_links(&self, workflow: &Workflow) -> Result<Vec<StepLink>> {
+        let mut statement = self.conn.prepare_cached(
+            "SELECT f.count, f.median_gap_s, f.copies, f.days FROM follows f
+             JOIN steps a ON a.id = f.from_step JOIN steps b ON b.id = f.to_step
+             WHERE a.key = ?1 AND b.key = ?2",
+        )?;
+        let mut links = Vec::new();
+        for pair in workflow.steps.windows(2) {
+            let found = statement
+                .query_row(params![pair[0].key, pair[1].key], |row| {
+                    Ok(StepLink {
+                        from: pair[0].name.clone(),
+                        to: pair[1].name.clone(),
+                        count: row.get::<_, i64>(0)? as usize,
+                        median_gap_s: row.get(1)?,
+                        copies: row.get::<_, i64>(2)? as usize,
+                        days: row.get::<_, i64>(3)? as usize,
+                    })
+                })
+                .optional()?;
+            links.extend(found);
+        }
+        Ok(links)
     }
 
     /// Steps, copy points, up to 3 example cases and linked commitments of one workflow.

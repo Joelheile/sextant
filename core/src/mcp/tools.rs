@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use crate::error::{Error, Result};
 use crate::finder::Workflow;
 use crate::redact::{redact, redact_json};
-use crate::search::{Hit, HitSource};
+use crate::search::HitSource;
 use crate::settings::Settings;
 use crate::store::Store;
 use crate::time::{self, iso};
@@ -17,13 +17,10 @@ use crate::writer::unpack;
 
 pub const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
-const SESSION_GAP_S: i64 = 600;
 const DEFAULT_WINDOW_S: i64 = 120;
 const MAX_WINDOW_S: i64 = 3600;
 /// Most frames `context_at` looks at, nearest first.
 const MAX_FRAMES: i64 = 300;
-/// Most batches `search` reads while skipping excluded apps.
-const MAX_BATCHES: usize = 5;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Group {
@@ -231,69 +228,20 @@ fn next_offset(full: bool, offset: usize, taken: usize) -> Value {
     }
 }
 
-struct Session {
-    key: (HitSource, String, String, String),
-    start: i64,
-    end: i64,
-    lines: Vec<(i64, String)>,
-}
-
 fn search(ctx: &Ctx, args: &Value) -> Result<Value> {
     let query = text_arg(args, "query").ok_or_else(|| bad("query is required"))?;
     let from = time_arg(ctx, args, "from", false)?;
     let to = time_arg(ctx, args, "to", true)?;
     let app = text_arg(args, "app");
     let (limit, offset) = page(args);
-
-    let mut hits: Vec<Hit> = Vec::new();
-    let mut raw = offset;
-    for _ in 0..MAX_BATCHES {
-        let batch = ctx.store.search(query, from, to, app, limit, raw)?;
-        let batch_len = batch.len();
-        for hit in batch {
-            raw += 1;
-            if !ctx.settings.is_excluded(&hit.app) {
-                hits.push(hit);
-            }
-            if hits.len() == limit {
-                break;
-            }
-        }
-        if hits.len() == limit || batch_len < limit {
-            break;
-        }
-    }
-
-    let mut sessions: Vec<Session> = Vec::new();
-    for hit in &hits {
-        let key = (
-            hit.source,
-            hit.app.clone(),
-            hit.title.clone(),
-            hit.url.clone(),
-        );
-        let joined = sessions.iter_mut().find(|s| {
-            s.key == key && hit.ts >= s.start - SESSION_GAP_S && hit.ts <= s.end + SESSION_GAP_S
-        });
-        match joined {
-            Some(session) => {
-                session.start = session.start.min(hit.ts);
-                session.end = session.end.max(hit.ts);
-                session.lines.push((hit.ts, hit.text.clone()));
-            }
-            None => sessions.push(Session {
-                key,
-                start: hit.ts,
-                end: hit.ts,
-                lines: vec![(hit.ts, hit.text.clone())],
-            }),
-        }
-    }
-    let sessions: Vec<Value> = sessions
+    let page = ctx
+        .store
+        .search_sessions(ctx.settings, query, (from, to), app, limit, offset)?;
+    let sessions: Vec<Value> = page
+        .sessions
         .iter()
         .map(|s| {
-            let (source, app, title, url) = &s.key;
-            let source = match source {
+            let source = match s.source {
                 HitSource::Screen => "screen",
                 HitSource::Mic => "me",
                 HitSource::System => "them",
@@ -302,17 +250,17 @@ fn search(ctx: &Ctx, args: &Value) -> Result<Value> {
                 "start": at(ctx, s.start),
                 "end": at(ctx, s.end),
                 "source": source,
-                "app": app,
-                "window": title,
-                "url": url,
+                "app": s.app,
+                "window": s.title,
+                "url": s.url,
                 "lines": s.lines.iter().map(|(ts, text)| json!({"time": at(ctx, *ts), "text": text})).collect::<Vec<_>>(),
             })
         })
         .collect();
     Ok(json!({
-        "lines": hits.len(),
+        "lines": page.lines,
         "sessions": sessions,
-        "next_offset": next_offset(hits.len() == limit, raw, 0),
+        "next_offset": page.next_offset,
     }))
 }
 
@@ -551,29 +499,12 @@ fn get_workflow(ctx: &Ctx, args: &Value) -> Result<Value> {
         .map(|s| json!({"name": s.name, "category": s.category.as_str(), "minutes": r2(s.minutes), "potential": r2(s.potential)}))
         .collect();
 
-    let mut step_id = ctx
+    row["follows"] = ctx
         .store
-        .conn
-        .prepare_cached("SELECT id FROM steps WHERE key = ?1")?;
-    let mut follows = ctx.store.conn.prepare_cached(
-        "SELECT count, median_gap_s, copies, days FROM follows WHERE from_step = ?1 AND to_step = ?2",
-    )?;
-    let mut links = Vec::new();
-    for pair in detail.workflow.steps.windows(2) {
-        let ids: Vec<i64> = pair
-            .iter()
-            .filter_map(|s| step_id.query_row(params![s.key], |r| r.get(0)).ok())
-            .collect();
-        let [from, to] = ids[..] else { continue };
-        let found = follows.query_row(params![from, to], |r| {
-            Ok(json!({"from": pair[0].name, "to": pair[1].name, "count": r.get::<_, i64>(0)?,
-                      "median_gap_s": r.get::<_, i64>(1)?, "copies": r.get::<_, i64>(2)?, "days": r.get::<_, i64>(3)?}))
-        });
-        if let Ok(link) = found {
-            links.push(link);
-        }
-    }
-    row["follows"] = links.into();
+        .step_links(&detail.workflow)?
+        .iter()
+        .map(|l| json!({"from": l.from, "to": l.to, "count": l.count, "median_gap_s": l.median_gap_s, "copies": l.copies, "days": l.days}))
+        .collect();
     row["copy_points"] = detail
         .copy_points
         .iter()

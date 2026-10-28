@@ -19,6 +19,19 @@ pub fn load_or_create() -> Result<Key> {
     }
 }
 
+/// Where the key lives, so "Delete everything" can run against a fake in tests.
+pub trait KeyVault {
+    fn delete(&self) -> Result<()>;
+}
+
+pub struct Keychain;
+
+impl KeyVault for Keychain {
+    fn delete(&self) -> Result<()> {
+        keychain::delete()
+    }
+}
+
 fn dev_key() -> Result<Option<Key>> {
     if !cfg!(debug_assertions) {
         return Ok(None);
@@ -75,6 +88,14 @@ mod keychain {
             .context("saving the key to the Keychain")?;
         Ok(key)
     }
+
+    /// Removes the key. Already gone is fine.
+    pub fn delete() -> Result<()> {
+        match entry()?.delete_credential() {
+            Ok(()) | Err(Error::NoEntry) => Ok(()),
+            Err(err) => Err(err).context("deleting the key from the Keychain"),
+        }
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -87,6 +108,10 @@ mod keychain {
     }
 
     pub fn create() -> Result<Key> {
+        bail!("the key store needs macOS")
+    }
+
+    pub fn delete() -> Result<()> {
         bail!("the key store needs macOS")
     }
 }

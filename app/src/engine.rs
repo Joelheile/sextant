@@ -21,12 +21,20 @@ use crate::{audio, clock, home, models, platform, prefs};
 
 const FLUSH_EVERY: Duration = Duration::from_secs(1);
 const REFRESH_EVERY: Duration = Duration::from_secs(300);
+const RETENTION_EVERY: Duration = Duration::from_secs(3600);
 const PAUSE_STEP_S: i64 = 3600;
+const STOP_DOWNLOAD_WAIT: Duration = Duration::from_secs(5);
 
 type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 
+type Job = Box<dyn FnOnce(&mut Store) + Send>;
+
 enum Msg {
     Backfill,
+    /// Runs on the write connection, then the sender of the job gets its answer.
+    Job(Job),
+    /// Closes the database and ends the thread; the sender waits for the acknowledgement.
+    Close(Sender<()>),
     /// A finished live record and when its screen was captured.
     Capture(Item, Instant),
 }
@@ -56,7 +64,8 @@ pub struct Engine {
     dir: PathBuf,
     emit: Emit,
     inbox: Sender<Msg>,
-    reader: Mutex<Store>,
+    /// `None` once [`Engine::shutdown`] has closed the database.
+    reader: Mutex<Option<Store>>,
     control: Arc<Control>,
     capture: Mutex<Option<Pipeline>>,
     audio: Mutex<Option<audio::Pipeline>>,
@@ -88,7 +97,7 @@ impl Engine {
             dir,
             emit,
             inbox,
-            reader: Mutex::new(reader),
+            reader: Mutex::new(Some(reader)),
             control: Arc::new(Control::new(Settings::default())),
             capture: Mutex::new(None),
             audio: Mutex::new(None),
@@ -101,6 +110,79 @@ impl Engine {
         self.inbox
             .send(Msg::Backfill)
             .map_err(|_| anyhow::anyhow!("the database thread has stopped"))
+    }
+
+    /// Runs `job` on the database thread, which owns the only write connection, and waits for it.
+    pub fn write<T: Send + 'static>(
+        &self,
+        job: impl FnOnce(&mut Store) -> sextant_core::Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let (answer, wait) = mpsc::channel();
+        let job: Job = Box::new(move |store| {
+            let _ = answer.send(job(store));
+        });
+        self.inbox
+            .send(Msg::Job(job))
+            .map_err(|_| anyhow::anyhow!("the database thread has stopped"))?;
+        let result = wait
+            .recv()
+            .map_err(|_| anyhow::anyhow!("the database thread has stopped"))?;
+        Ok(result?)
+    }
+
+    /// Like [`Engine::write`], then refreshes, so the next read shows the change.
+    pub fn change<T: Send + 'static>(
+        &self,
+        job: impl FnOnce(&mut Store) -> sextant_core::Result<T> + Send + 'static,
+    ) -> Result<T> {
+        self.write(move |store| {
+            let out = job(store)?;
+            let now = clock::now();
+            store.set_utc_offset(clock::utc_offset(now));
+            store.refresh(now)?;
+            Ok(out)
+        })
+    }
+
+    /// Saves a settings change and hands it to the running capture.
+    pub fn change_settings(&self, change: impl Fn(&mut Settings)) -> Result<Settings> {
+        self.control.update(&change);
+        prefs::update(&self.dir, change)
+    }
+
+    /// Stops capture, audio and downloads and closes the database, so the data folder can go.
+    /// Reads fail after this. Start the app again to use it.
+    pub fn shutdown(&self) -> Result<()> {
+        self.cancel_download();
+        let deadline = Instant::now() + STOP_DOWNLOAD_WAIT;
+        while self.downloading() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(50));
+        }
+        let audio = self
+            .audio
+            .lock()
+            .map_err(|_| anyhow::anyhow!("the audio state is poisoned"))?
+            .take();
+        if let Some(pipeline) = audio {
+            pipeline.stop();
+        }
+        let capture = self
+            .capture
+            .lock()
+            .map_err(|_| anyhow::anyhow!("the capture state is poisoned"))?
+            .take();
+        if let Some(pipeline) = capture {
+            pipeline.stop();
+        }
+        let (closed, wait) = mpsc::channel();
+        if self.inbox.send(Msg::Close(closed)).is_ok() {
+            let _ = wait.recv();
+        }
+        self.reader
+            .lock()
+            .map_err(|_| anyhow::anyhow!("the read connection is poisoned"))?
+            .take();
+        Ok(())
     }
 
     /// Starts live capture with `settings`. Does nothing when it already runs.
@@ -139,8 +221,7 @@ impl Engine {
     /// Switches call audio on or off. Off closes the streams at once: the audio thread sees the
     /// setting within a quarter of a second, and the threads are joined off this one.
     pub fn set_audio(&self, on: bool) -> Result<()> {
-        self.control.update(|settings| settings.live.audio = on);
-        prefs::update(&self.dir, |settings| settings.live.audio = on)?;
+        self.change_settings(|settings| settings.live.audio = on)?;
         self.sync_audio()
     }
 
@@ -246,11 +327,14 @@ impl Engine {
 
     /// Runs `read` on the read-only connection.
     pub fn read<T>(&self, read: impl FnOnce(&Store) -> sextant_core::Result<T>) -> Result<T> {
-        let store = self
+        let reader = self
             .reader
             .lock()
             .map_err(|_| anyhow::anyhow!("the read connection is poisoned"))?;
-        Ok(read(&store)?)
+        let store = reader
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Sextant is closed"))?;
+        Ok(read(store)?)
     }
 }
 
@@ -273,6 +357,7 @@ fn create_private_dir(dir: &Path) -> Result<()> {
 fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
     let mut ingest = Ingest::new();
     let mut last_refresh = Instant::now();
+    let mut next_retention = Instant::now();
     loop {
         match messages.recv_timeout(FLUSH_EVERY) {
             Ok(Msg::Backfill) => {
@@ -281,6 +366,12 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
                     Err(err) => emit("backfill-failed", json!({"message": err.to_string()})),
                 }
                 last_refresh = Instant::now();
+            }
+            Ok(Msg::Job(job)) => job(&mut store),
+            Ok(Msg::Close(closed)) => {
+                drop(store);
+                let _ = closed.send(());
+                return;
             }
             Ok(Msg::Capture(item, taken)) => ingest.push(item, taken),
             Err(RecvTimeoutError::Timeout) => {}
@@ -294,6 +385,26 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
         if last_refresh.elapsed() >= REFRESH_EVERY {
             refresh(&mut store, &mut last_refresh);
         }
+        if Instant::now() >= next_retention {
+            enforce_retention(&mut store, dir);
+            next_retention = Instant::now() + RETENTION_EVERY;
+        }
+    }
+}
+
+/// Deletes raw data older than the retention the user chose. Forever deletes nothing.
+fn enforce_retention(store: &mut Store, dir: &Path) {
+    let days = match prefs::load(dir) {
+        Ok(settings) => settings.retention_days,
+        Err(err) => {
+            eprintln!("retention skipped: {err:#}");
+            return;
+        }
+    };
+    if let Some(days) = days
+        && let Err(err) = store.retention(clock::now(), days)
+    {
+        eprintln!("retention failed: {err}");
     }
 }
 

@@ -12,7 +12,10 @@ pub mod mcp;
 mod model;
 pub mod profile_fixture;
 mod redact;
+mod report;
+mod results;
 mod search;
+mod sessions;
 pub mod settings;
 pub mod skill;
 mod store;
@@ -24,11 +27,14 @@ pub use corrections::{Rule, Target, parse as parse_correction};
 pub use error::{Error, Result};
 pub use finder::{
     Action, CaseExample, Category, CopyPoint, Enjoyment, Kind, OpenCommitment, RefreshStats,
-    StepInfo, Workflow, WorkflowDetail,
+    StepInfo, StepLink, Workflow, WorkflowDetail,
 };
 pub use model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
 pub use redact::{Secret, redact, redact_json};
+pub use report::{ReportRow, WeeklyReport};
+pub use results::{MIN_DAYS, Measurement};
 pub use search::{Hit, HitSource};
+pub use sessions::{Session, SessionPage};
 pub use settings::{Live, Settings, Sources};
 pub use store::{Counts, Key, Retained, Store};
 pub use writer::{Flushed, Writer};

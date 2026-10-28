@@ -83,6 +83,8 @@ pub struct Settings {
     pub git_folders: Vec<String>,
     /// Bundle ids of apps the user marked as call apps, on top of the known ones.
     pub call_apps: Vec<String>,
+    /// How long raw data stays (plan.md §3): 30, 90 or 365 days, `None` for forever.
+    pub retention_days: Option<u32>,
 }
 
 impl Default for Settings {
@@ -110,6 +112,7 @@ impl Default for Settings {
             live: Live::default(),
             git_folders: Vec::new(),
             call_apps: Vec::new(),
+            retention_days: Some(90),
         }
     }
 }
