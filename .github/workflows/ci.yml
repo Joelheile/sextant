@@ -33,5 +33,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run build
+      - run: scripts/fetch-onnxruntime.sh
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
