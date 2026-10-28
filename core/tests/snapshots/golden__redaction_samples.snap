@@ -1,0 +1,28 @@
+---
+source: core/tests/golden.rs
+assertion_line: 80
+expression: "out.join(\"\\n\\n\")"
+---
+Write to anna.keller@acme-gmbh.de or Anna.Keller@acme-gmbh.de
+=> Write to <email:fbf53c89> or <email:fbf53c89>
+
+Zahlung an IBAN DE89 3704 0044 0532 0130 00 bitte
+=> Zahlung an IBAN <iban> bitte
+
+IBAN DE89 3704 0044 0532 0130 01 has a bad check digit
+=> IBAN DE89 <card> has a bad check digit
+
+Card 4111 1111 1111 1111 and 4111 1111 1111 1112
+=> Card <card> and 4111 1111 1111 1112
+
+export OPENAI_API_KEY=sk-proj-abcdef0123456789abcdef0123456789
+=> export OPENAI_API_KEY=<apikey>
+
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk
+=> Authorization: Bearer <token>
+
+Invoice INV-2026-0412 total €1,250.00 due 15 March 2026
+=> Invoice INV-2026-0412 total €1,250.00 due 15 March 2026
+
+Rechnung RE-2026-0415 über 980,00 € an Müller AG
+=> Rechnung RE-2026-0415 über 980,00 € an Müller AG

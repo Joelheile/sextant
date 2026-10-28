@@ -1,0 +1,31 @@
+---
+source: core/tests/golden.rs
+assertion_line: 64
+expression: out
+---
+## pricing
+291785 Screen Slack | Slack | #standup |  | Anna Keller: pricing sheet updated, please check
+219605 Screen Mail | Invoice INV-2026-0423 attached |  | Can you confirm the pricing before Friday?
+124260 System  |  |  | Anna: I'll check the pricing and get back to you.
+118985 Screen Slack | Slack | #standup |  | Anna Keller: Can we revisit the pricing for the annual plan before Friday?
+50400 Mic  |  |  | Let me look at the pricing sheet for Anna.
+## Rechnung
+381605 Screen Google Chrome | Rechnung bearbeiten - lexoffice | app.lexoffice.de/vouchers/RE-2026-0420/edit | Rechnung bearbeiten
+230700 Mic  |  |  | Ich werde die Rechnung für Müller morgen schicken.
+205385 Screen Slack | Slack | #standup |  | Jonas: Rechnung für Müller AG ist raus, danke!
+145805 Screen Mail | Rechnung RE-2026-0420 angehängt |  | Betreff: Rechnung RE-2026-0420 angehängt
+39905 Screen Mail | Rechnung RE-2026-0415 angehängt |  | Betreff: Rechnung RE-2026-0415 angehängt
+## Preisliste
+396214 Screen Google Chrome | Q1 review - Google Slides | docs.google.com/presentation/d/2996/edit | Die Preisliste wird am Freitag aktualisiert
+378185 Screen Slack | Slack | #standup |  | Jonas: Preisliste für Q2 bitte bis Montag prüfen
+298800 System  |  |  | Jonas: Die Preisliste ist noch nicht fertig.
+## INV-2026-0418
+293405 Screen Google Chrome | Rechnung bearbeiten - lexoffice | app.lexoffice.de/vouchers/INV-2026-0418/edit | Rechnungsnummer INV-2026-0418
+143465 Screen Microsoft Excel | Invoices 2026.xlsx - Excel |  | INV-2026-0418 | Beta Ltd | €2,400.00 | open
+143105 Screen Mail | Invoice INV-2026-0418 attached |  | Subject: Invoice INV-2026-0418 attached
+## Müller
+230700 Mic  |  |  | Ich werde die Rechnung für Müller morgen schicken.
+205385 Screen Slack | Slack | #standup |  | Jonas: Rechnung für Müller AG ist raus, danke!
+145805 Screen Mail | Rechnung RE-2026-0420 angehängt |  | Von: Jonas Müller <<email:b07c9b65>>
+128285 Screen Google Chrome | Rechnung bearbeiten - lexoffice | app.lexoffice.de/vouchers/RE-2026-0415/edit | Kunde Müller AG
+127805 Screen Microsoft Excel | Invoices 2026.xlsx - Excel |  | RE-2026-0415 | Müller AG | 980,00 € | open

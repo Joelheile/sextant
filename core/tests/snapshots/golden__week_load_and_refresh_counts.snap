@@ -1,0 +1,21 @@
+---
+source: core/tests/golden.rs
+assertion_line: 51
+expression: "format!(\"{flushed:#?}\\n{stats:#?}\")"
+---
+Flushed {
+    events: 284,
+    frames: 122,
+    duplicate_frames: 11,
+    utterances: 6,
+    new_lines: 62,
+}
+RefreshStats {
+    episodes: 135,
+    steps: 32,
+    entities: 15,
+    follows: 49,
+    cases: 8,
+    workflows: 2,
+    commitments: 5,
+}

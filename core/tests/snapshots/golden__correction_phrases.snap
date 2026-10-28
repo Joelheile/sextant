@@ -1,0 +1,24 @@
+---
+source: core/tests/golden.rs
+assertion_line: 107
+expression: "out.join(\"\\n\")"
+---
+"I hate this" => Some(Enjoyment(Hate))
+"Ich hasse das" => Some(Enjoyment(Hate))
+"I don't like it" => Some(Enjoyment(Dislike))
+"ich mag das nicht" => Some(Enjoyment(Dislike))
+"I like this" => Some(Enjoyment(Like))
+"Ich liebe das" => Some(Enjoyment(Love))
+"It's for a client" => Some(Client)
+"Das ist Kundenarbeit" => Some(Client)
+"This can't be automated" => Some(NotAutomatable)
+"Das lässt sich nicht automatisieren" => Some(NotAutomatable)
+"Rename to Invoice run" => Some(Rename("Invoice run"))
+"Benenne das um in Rechnungslauf" => Some(Rename("Rechnungslauf"))
+"hide this" => Some(Hide)
+"Bitte ausblenden" => Some(Hide)
+"These belong together" => Some(Merge)
+"Das gehört zusammen" => Some(Merge)
+"This is not one workflow" => Some(Split)
+"Das sind zwei Workflows" => Some(Split)
+"Nice weather today" => None
