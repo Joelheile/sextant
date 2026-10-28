@@ -132,7 +132,7 @@ pub fn asr(args: &[String]) -> Result<()> {
             let text = speech.transcribe(&clip.samples)?;
             totals.asr_s += began.elapsed().as_secs_f64();
             let began = Instant::now();
-            for frame in clip.samples.chunks_exact(VAD_FRAME) {
+            for frame in clip.samples.as_chunks::<VAD_FRAME>().0 {
                 vad.probability(frame);
             }
             totals.vad_s += began.elapsed().as_secs_f64();
@@ -257,8 +257,10 @@ fn read_wav(path: &Path) -> Result<Vec<f32>> {
                     bail!("expected 16 kHz mono 16 bit PCM");
                 }
                 return Ok(body
-                    .chunks_exact(2)
-                    .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / 32768.0)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|&pair| f32::from(i16::from_le_bytes(pair)) / 32768.0)
                     .collect());
             }
             _ => {}
