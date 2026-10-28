@@ -40,6 +40,8 @@ pub struct Live {
     pub ocr: bool,
     /// Which app copied, never what.
     pub copy: bool,
+    /// Mic and system audio transcripts during calls.
+    pub audio: bool,
     /// Safari, Firefox and other browsers that cannot report a private window. Off: their
     /// windows are never read, because a private one could not be told apart.
     pub opaque_browsers: bool,
@@ -51,12 +53,14 @@ impl Default for Live {
             metadata: true,
             ocr: true,
             copy: true,
+            audio: false,
             opaque_browsers: false,
         }
     }
 }
 
 impl Live {
+    /// The screen sources. Audio has its own switch and its own pipeline.
     pub fn any(&self) -> bool {
         self.metadata || self.ocr || self.copy
     }
@@ -77,6 +81,8 @@ pub struct Settings {
     pub live: Live,
     /// Folders the user picked for git backfill.
     pub git_folders: Vec<String>,
+    /// Bundle ids of apps the user marked as call apps, on top of the known ones.
+    pub call_apps: Vec<String>,
 }
 
 impl Default for Settings {
@@ -103,6 +109,7 @@ impl Default for Settings {
             sources: Sources::default(),
             live: Live::default(),
             git_folders: Vec::new(),
+            call_apps: Vec::new(),
         }
     }
 }

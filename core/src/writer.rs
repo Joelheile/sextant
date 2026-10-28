@@ -258,6 +258,7 @@ pub(crate) fn unpack(bytes: &[u8]) -> Vec<(i64, [u8; 4])> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixtures::TempDb;
 
     #[test]
     fn packed_frames_round_trip() {
@@ -267,5 +268,33 @@ mod tests {
             (5_000_000_000, [4, 4, 4, 4]),
         ];
         assert_eq!(unpack(&pack(&entries)), entries);
+    }
+
+    #[test]
+    fn an_utterance_is_seconds_and_text_never_audio() {
+        let db = TempDb::new("utterance-schema");
+        let store = db.open().expect("store");
+        let columns: Vec<(String, String)> = store
+            .conn
+            .prepare("SELECT name, type FROM pragma_table_info('utterances') ORDER BY cid")
+            .expect("prepare")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query")
+            .collect::<std::result::Result<_, _>>()
+            .expect("rows");
+        let columns: Vec<(&str, &str)> = columns
+            .iter()
+            .map(|(n, t)| (n.as_str(), t.as_str()))
+            .collect();
+        assert_eq!(
+            columns,
+            [
+                ("id", "INTEGER"),
+                ("ts_start", "INTEGER"),
+                ("ts_end", "INTEGER"),
+                ("source", "TEXT"),
+                ("text", "TEXT"),
+            ]
+        );
     }
 }

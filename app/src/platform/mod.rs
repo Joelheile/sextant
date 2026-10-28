@@ -3,6 +3,8 @@
 //! crate still builds.
 
 #[cfg(target_os = "macos")]
+mod audio;
+#[cfg(target_os = "macos")]
 mod automation;
 #[cfg(target_os = "macos")]
 mod eventkit;
@@ -14,6 +16,8 @@ mod macos;
 mod render;
 #[cfg(target_os = "macos")]
 mod screen;
+#[cfg(target_os = "macos")]
+mod speech;
 #[cfg(not(target_os = "macos"))]
 mod unsupported;
 #[cfg(target_os = "macos")]
@@ -23,11 +27,15 @@ mod vision;
 pub use macos::{
     System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,
     open_settings_pane, pick_folder, pump, reminders_status, request_permission, safari_status,
-    screen_recording_status, start_live,
+    screen_recording_status, start_audio, start_live,
 };
+#[cfg(target_os = "macos")]
+pub use speech::{Parakeet, silero};
+#[cfg(not(target_os = "macos"))]
+pub use unsupported::{Parakeet, silero};
 #[cfg(not(target_os = "macos"))]
 pub use unsupported::{
     System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,
     open_settings_pane, pick_folder, pump, reminders_status, request_permission, safari_status,
-    screen_recording_status, start_live,
+    screen_recording_status, start_audio, start_live,
 };

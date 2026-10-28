@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, onReady, type Settings } from "./api";
+import CallAudio from "./CallAudio";
 import { t } from "./i18n";
 import MapList from "./MapList";
 import Onboarding from "./Onboarding";
@@ -49,6 +50,10 @@ export default function App() {
     <main className="shell">
       <h1>{t("workflowsTitle")}</h1>
       <MapList headline />
+      <h2>{t("audioTitle")}</h2>
+      <CallAudio />
+      <h2>{t("aboutTitle")}</h2>
+      <p className="muted">{t("aboutBody")}</p>
     </main>
   );
 }

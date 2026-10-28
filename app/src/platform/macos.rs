@@ -17,10 +17,13 @@ use sextant_core::backfill::{
 use sextant_core::capture::{Browser, classify};
 use sextant_core::{Error, Result as CoreResult};
 
+use super::audio::Mac as MacAudio;
 use super::automation;
 use super::eventkit::{self, Kind};
 use super::live::Mac;
+use super::speech::{self, Parakeet};
 use super::vision::{CHOSEN, Recognizer, Timing, fixture_timings};
+use crate::audio;
 use crate::capture::{Control, Pipeline, Sink};
 use crate::clock;
 
@@ -283,6 +286,12 @@ pub fn ocr_fixture_timings() -> Result<Vec<Timing>> {
 /// Starts live capture on its own threads.
 pub fn start_live(control: Arc<Control>, sink: Sink) -> Result<Pipeline> {
     Pipeline::start(Mac::new(), Recognizer::new(CHOSEN), control, sink)
+}
+
+/// Starts call audio on its own threads, with the models from `models`.
+pub fn start_audio(control: Arc<Control>, sink: Sink, models: &Path) -> Result<audio::Pipeline> {
+    let speech = Parakeet::new(models, audio::Runs::Cpu);
+    audio::Pipeline::start(MacAudio, speech::silero(models), speech, control, sink)
 }
 
 const PANES: [(&str, &str); 6] = [

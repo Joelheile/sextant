@@ -7,7 +7,7 @@ Read `plan.md` first. It is the spec: principles, privacy rules (§10), budgets 
 - `core/`: crate `sextant-core`, all logic without OS APIs. Tested on Linux.
 - `app/`: crate `sextant-app`, binary `sextant`. Tauri 2, tray, platform code.
 - `ui/`: React 19 + TypeScript window, built by Vite into `dist/`.
-- `scripts/`: `check-network.sh` (privacy check), `stop-hook.sh` (runs every check).
+- `scripts/`: `check-network.sh` (privacy check), `stop-hook.sh` (runs every check), `fetch-speech.sh` (speech fixtures into the git-ignored `fixtures/speech`).
 
 ## Commands
 
@@ -23,6 +23,9 @@ Read `plan.md` first. It is the spec: principles, privacy rules (§10), budgets 
 | Budget tests (first map, MCP p95, search, refresh) | `cargo test -p sextant-core --release -- --nocapture` |
 | OCR budget on synthetic fixtures (macOS) | `cargo test -p sextant-app --release ocr -- --nocapture` or `cargo run -p sextant-app --release -- bench` |
 | Live capture bench (user step: needs Screen Recording; agents never run it) | `cargo run -p sextant-app --release -- bench --live 60` |
+| Fetch speech fixtures (dev network; LibriSpeech and MLS German) | `scripts/fetch-speech.sh` |
+| Fetch the audio models into `.dev-data/models` (about 710 MB, dev network) | `cargo run -p sextant-app --release -- bench --fetch-models` |
+| ASR budget: RTF, WER, memory on the fixtures (add `--coreml` to compare) | `cargo run -p sextant-app --release -- bench --asr` |
 | MCP server over stdio | `SEXTANT_HOME=.dev-data cargo run -q -- mcp` (or `sextant mcp` from a build) |
 | Network check | `scripts/check-network.sh` |
 | All checks (Stop hook) | `scripts/stop-hook.sh` |

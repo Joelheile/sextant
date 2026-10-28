@@ -4,7 +4,8 @@
 //! threads and sends finished records here; no database call happens on those threads.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -16,13 +17,13 @@ use sextant_core::backfill;
 use sextant_core::{Item, Key, Secret, Settings, Store};
 
 use crate::capture::{Control, Ingest, Pipeline, Sink};
-use crate::{clock, home, platform, prefs};
+use crate::{audio, clock, home, models, platform, prefs};
 
 const FLUSH_EVERY: Duration = Duration::from_secs(1);
 const REFRESH_EVERY: Duration = Duration::from_secs(300);
 const PAUSE_STEP_S: i64 = 3600;
 
-type Emit = Box<dyn Fn(&str, Value) + Send>;
+type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 
 enum Msg {
     Backfill,
@@ -39,18 +40,35 @@ pub enum CaptureState {
     Paused(i64),
 }
 
+/// What the tray shows about call audio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioState {
+    /// Switched off, or the models are not downloaded.
+    Off,
+    /// On, waiting for a call app to use the mic.
+    Waiting,
+    /// A call is open and its audio is being transcribed.
+    Transcribing,
+}
+
 pub struct Engine {
+    dir: PathBuf,
+    emit: Emit,
     inbox: Sender<Msg>,
     reader: Mutex<Store>,
     control: Arc<Control>,
     capture: Mutex<Option<Pipeline>>,
+    audio: Mutex<Option<audio::Pipeline>>,
+    /// The cancel flag of the model download that runs, if one does.
+    download: Arc<Mutex<Option<Arc<AtomicBool>>>>,
 }
 
 impl Engine {
     pub fn start(
         dir: &Path,
         key: &Key,
-        emit: impl Fn(&str, Value) + Send + 'static,
+        emit: impl Fn(&str, Value) + Send + Sync + 'static,
     ) -> Result<Self> {
         create_private_dir(dir)?;
         let mut store =
@@ -58,16 +76,23 @@ impl Engine {
         store.set_utc_offset(clock::utc_offset(clock::now()));
         let reader = store.reader().context("opening the read connection")?;
         let (inbox, messages) = mpsc::channel();
-        let (dir, emit) = (dir.to_path_buf(), Box::new(emit) as Emit);
+        let (dir, emit) = (dir.to_path_buf(), Arc::new(emit) as Emit);
         thread::Builder::new()
             .name("sextant-db".into())
-            .spawn(move || work(store, &dir, messages, &emit))
+            .spawn({
+                let (dir, emit) = (dir.clone(), emit.clone());
+                move || work(store, &dir, messages, &emit)
+            })
             .context("starting the database thread")?;
         Ok(Self {
+            dir,
+            emit,
             inbox,
             reader: Mutex::new(reader),
             control: Arc::new(Control::new(Settings::default())),
             capture: Mutex::new(None),
+            audio: Mutex::new(None),
+            download: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -88,12 +113,118 @@ impl Engine {
             return Ok(());
         }
         self.control.set_settings(settings);
-        let inbox = self.inbox.clone();
-        let sink: Sink = Arc::new(move |item, taken| {
-            let _ = inbox.send(Msg::Capture(item, taken));
-        });
-        *capture = Some(platform::start_live(self.control.clone(), sink)?);
+        *capture = Some(platform::start_live(self.control.clone(), self.sink())?);
+        drop(capture);
+        if let Err(err) = self.sync_audio() {
+            eprintln!("audio did not start: {err:#}");
+        }
         Ok(())
+    }
+
+    fn sink(&self) -> Sink {
+        let inbox = self.inbox.clone();
+        Arc::new(move |item, taken| {
+            let _ = inbox.send(Msg::Capture(item, taken));
+        })
+    }
+
+    fn models_dir(&self) -> PathBuf {
+        models::dir(&self.dir)
+    }
+
+    pub fn models_installed(&self) -> bool {
+        models::installed(&self.models_dir(), models::ASSETS)
+    }
+
+    /// Switches call audio on or off. Off closes the streams at once: the audio thread sees the
+    /// setting within a quarter of a second, and the threads are joined off this one.
+    pub fn set_audio(&self, on: bool) -> Result<()> {
+        self.control.update(|settings| settings.live.audio = on);
+        prefs::update(&self.dir, |settings| settings.live.audio = on)?;
+        self.sync_audio()
+    }
+
+    /// Starts or stops the audio pipeline to match the settings, once capture has started.
+    fn sync_audio(&self) -> Result<()> {
+        let started = self.capture.lock().is_ok_and(|capture| capture.is_some());
+        let wanted = started && self.control.settings().live.audio && self.models_installed();
+        let mut audio = self
+            .audio
+            .lock()
+            .map_err(|_| anyhow::anyhow!("the audio state is poisoned"))?;
+        match (wanted, audio.is_some()) {
+            (true, false) => {
+                *audio = Some(platform::start_audio(
+                    self.control.clone(),
+                    self.sink(),
+                    &self.models_dir(),
+                )?);
+            }
+            (false, true) => {
+                if let Some(pipeline) = audio.take() {
+                    thread::spawn(move || pipeline.stop());
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn audio_state(&self) -> AudioState {
+        match self.audio.lock() {
+            Ok(audio) => match audio.as_ref() {
+                None => AudioState::Off,
+                Some(pipeline) if pipeline.stats.listening() => AudioState::Transcribing,
+                Some(_) => AudioState::Waiting,
+            },
+            Err(_) => AudioState::Off,
+        }
+    }
+
+    /// Downloads the models after the user agreed. Progress arrives as `models-progress` events,
+    /// then `models-done` or `models-failed`. Does nothing while a download runs.
+    pub fn download_models(&self) -> Result<()> {
+        let mut running = self
+            .download
+            .lock()
+            .map_err(|_| anyhow::anyhow!("the download state is poisoned"))?;
+        if running.is_some() {
+            return Ok(());
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        *running = Some(cancel.clone());
+        let (dir, emit, slot) = (self.models_dir(), self.emit.clone(), self.download.clone());
+        thread::Builder::new()
+            .name("sextant-models".into())
+            .spawn(move || {
+                let progress = |progress: models::Progress| {
+                    emit("models-progress", json!({"done": progress.done, "total": progress.total}));
+                };
+                match models::download(&dir, models::ASSETS, &models::UrlSession, &cancel, &progress) {
+                    Ok(()) => emit("models-done", json!({})),
+                    Err(err) => emit(
+                        "models-failed",
+                        json!({"message": format!("{err:#}"), "cancelled": cancel.load(Ordering::Relaxed)}),
+                    ),
+                }
+                if let Ok(mut running) = slot.lock() {
+                    *running = None;
+                }
+            })
+            .context("starting the download thread")?;
+        Ok(())
+    }
+
+    pub fn cancel_download(&self) {
+        if let Ok(running) = self.download.lock()
+            && let Some(cancel) = running.as_ref()
+        {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    pub fn downloading(&self) -> bool {
+        self.download.lock().is_ok_and(|running| running.is_some())
     }
 
     pub fn pause_capture(&self) {

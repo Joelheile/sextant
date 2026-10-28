@@ -74,6 +74,24 @@ const en = {
   switchRewind: "Agents can search what I saw and said",
   switchWorkflows: "Agents can read my workflows",
 
+  audioTitle: "Transcribe calls",
+  audioBody:
+    "When a call app such as Zoom, Teams or Meet uses your microphone, Sextant can write down what you and the other side say. The sound is never saved: only the text stays, on this Mac.",
+  audioDownload:
+    "This needs a one-time download of about {size} MB from github.com and huggingface.co. Nothing downloads until you press the button. Sextant makes no other network connection.",
+  audioCredit:
+    "Speech recognition: Parakeet TDT 0.6B v3 by NVIDIA (CC BY 4.0, ONNX version by istupakov). Voice detection: Silero VAD (MIT). Runtime: ONNX Runtime (MIT).",
+  audioLaw:
+    "In Germany, recording a call without the other side knowing can be a crime (section 201 StGB). Tell everyone on a call that you transcribe it.",
+  audioDownloadButton: "Download and turn on",
+  audioSwitch: "Transcribe calls while a call app uses the microphone",
+  downloading: "{done} of {total} MB",
+  downloadFailed: "The download failed: {message}",
+  cancel: "Cancel",
+  aboutTitle: "About and licenses",
+  aboutBody:
+    "Speech recognition uses Parakeet TDT 0.6B v3 by NVIDIA, licensed CC BY 4.0, in an ONNX version by istupakov. Voice detection uses Silero VAD and speech runs on ONNX Runtime, both MIT licensed.",
+
   workflowsTitle: "Your workflows",
   loading: "Loading",
   errorTitle: "Something went wrong",
@@ -156,6 +174,24 @@ const de: Record<Key, string> = {
     "Was der Agent liest, läuft dort, wo sein Modell läuft. Bei einem Cloud-Modell kann das die Cloud sein.",
   switchRewind: "Agenten dürfen durchsuchen, was ich gesehen und gesagt habe",
   switchWorkflows: "Agenten dürfen meine Abläufe lesen",
+
+  audioTitle: "Gespräche mitschreiben",
+  audioBody:
+    "Wenn eine Anruf-App wie Zoom, Teams oder Meet dein Mikrofon nutzt, kann Sextant mitschreiben, was du und die Gegenseite sagen. Der Ton wird nie gespeichert: Nur der Text bleibt, auf diesem Mac.",
+  audioDownload:
+    "Dafür ist einmalig ein Download von etwa {size} MB von github.com und huggingface.co nötig. Es lädt nichts, bevor du die Taste drückst. Sextant baut keine andere Netzwerkverbindung auf.",
+  audioCredit:
+    "Spracherkennung: Parakeet TDT 0.6B v3 von NVIDIA (CC BY 4.0, ONNX-Version von istupakov). Erkennung von Sprechpausen: Silero VAD (MIT). Laufzeit: ONNX Runtime (MIT).",
+  audioLaw:
+    "In Deutschland kann es strafbar sein, ein Gespräch ohne Wissen der Gegenseite aufzuzeichnen (§ 201 StGB). Sag allen im Gespräch, dass du es mitschreibst.",
+  audioDownloadButton: "Herunterladen und einschalten",
+  audioSwitch: "Gespräche mitschreiben, solange eine Anruf-App das Mikrofon nutzt",
+  downloading: "{done} von {total} MB",
+  downloadFailed: "Der Download ist fehlgeschlagen: {message}",
+  cancel: "Abbrechen",
+  aboutTitle: "Über Sextant und Lizenzen",
+  aboutBody:
+    "Die Spracherkennung nutzt Parakeet TDT 0.6B v3 von NVIDIA unter CC BY 4.0, in einer ONNX-Version von istupakov. Die Sprachpausen erkennt Silero VAD, die Modelle laufen auf ONNX Runtime, beide unter MIT-Lizenz.",
 
   workflowsTitle: "Deine Abläufe",
   loading: "Lädt",

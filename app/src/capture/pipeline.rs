@@ -55,6 +55,13 @@ impl Control {
         }
     }
 
+    /// Changes the settings in place, for example one switch at a time.
+    pub fn update(&self, change: impl FnOnce(&mut Settings)) {
+        if let Ok(mut current) = self.settings.lock() {
+            change(&mut current);
+        }
+    }
+
     pub fn pause_until(&self, ts: i64) {
         self.paused_until.store(ts, Ordering::Relaxed);
     }

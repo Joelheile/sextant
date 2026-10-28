@@ -1,9 +1,12 @@
-//! `sextant bench` and `sextant bench --live <seconds>` (plan.md §13 M3). Both print counts and
-//! timings only: no text, title or address ever reaches the output.
+//! `sextant bench` and `sextant bench --live <seconds>` (plan.md §13 M3); `--asr` and
+//! `--fetch-models` are in [`asr`] (M4). All print counts and timings only: no text, title or
+//! address ever reaches the output.
 //!
 //! The fixture mode times OCR on synthetic windows. The live mode runs real capture for the given
 //! time into a throwaway database with a random key in the temp folder. It never reads the app's
 //! data folder or the Keychain, and it needs Screen Recording for the terminal that runs it.
+
+mod asr;
 
 use std::fs;
 use std::os::unix::fs::DirBuilderExt;
@@ -29,7 +32,11 @@ pub fn run(args: &[String]) -> Result<()> {
                 .parse()
                 .context("the number of seconds is not a number")?,
         ),
-        _ => bail!("usage: sextant bench [--live <seconds>]"),
+        [flag, rest @ ..] if flag == "--asr" => asr::asr(rest),
+        [flag, dir @ ..] if flag == "--fetch-models" => asr::fetch_models(dir.first()),
+        _ => bail!(
+            "usage: sextant bench [--live <seconds> | --asr [--coreml] [models] [speech] | --fetch-models [folder]]"
+        ),
     }
 }
 

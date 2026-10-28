@@ -1,3 +1,4 @@
+mod audio;
 mod bench;
 mod capture;
 mod clock;
@@ -7,6 +8,7 @@ mod engine;
 mod home;
 mod keys;
 mod mcp;
+mod models;
 mod platform;
 mod prefs;
 mod tray;
@@ -73,6 +75,10 @@ fn main() -> anyhow::Result<()> {
             commands::connect_info,
             commands::connect_claude_desktop,
             commands::set_mcp_switches,
+            commands::models_status,
+            commands::download_models,
+            commands::cancel_download,
+            commands::set_audio,
             commands::finish_onboarding,
         ])
         .setup(move |app| {

@@ -12,9 +12,10 @@ import {
   type Written,
 } from "./api";
 import { t, type Key } from "./i18n";
+import CallAudio from "./CallAudio";
 import MapList from "./MapList";
 
-const STEPS = 4;
+const STEPS = 5;
 
 function Frame({ step, title, children }: { step: number; title: string; children: ReactNode }) {
   return (
@@ -285,6 +286,22 @@ function FirstMap({ onNext }: { onNext: () => void }) {
   );
 }
 
+function Audio({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+  return (
+    <Frame step={4} title={t("audioTitle")}>
+      <CallAudio />
+      <div className="actions">
+        <button type="button" className="secondary" onClick={onBack}>
+          {t("back")}
+        </button>
+        <button type="button" onClick={onNext}>
+          {t("next")}
+        </button>
+      </div>
+    </Frame>
+  );
+}
+
 function ConnectToClaude({ onFinish }: { onFinish: () => void }) {
   const [info, setInfo] = useState<ConnectInfo | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -338,7 +355,7 @@ function ConnectToClaude({ onFinish }: { onFinish: () => void }) {
   };
 
   return (
-    <Frame step={4} title={t("connectTitle")}>
+    <Frame step={5} title={t("connectTitle")}>
       <p>{t("connectBody")}</p>
 
       <section>
@@ -405,5 +422,6 @@ export default function Onboarding({ settings, onDone }: { settings: Settings; o
   if (step === 1) return <PickSources settings={settings} onNext={() => setStep(2)} />;
   if (step === 2) return <GrantAccess onBack={() => setStep(1)} onNext={() => setStep(3)} />;
   if (step === 3) return <FirstMap onNext={() => setStep(4)} />;
+  if (step === 4) return <Audio onBack={() => setStep(3)} onNext={() => setStep(5)} />;
   return <ConnectToClaude onFinish={onDone} />;
 }

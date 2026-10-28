@@ -1,5 +1,6 @@
 //! The menu bar icon (plan.md §9): filled while capturing, outline while paused, and a menu with
-//! the status line, "Pause 1 h", Open and Quit. The status refreshes every few seconds.
+//! the status line, "Pause 1 h", "Stop audio", Open and Quit. A dot shows in the icon while a call
+//! is transcribed. The status refreshes every few seconds.
 
 use std::thread;
 use std::time::Duration;
@@ -10,7 +11,7 @@ use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 
 use crate::commands::AppState;
-use crate::engine::CaptureState;
+use crate::engine::{AudioState, CaptureState};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
 
@@ -19,14 +20,16 @@ pub struct Tray {
     icon: TrayIcon,
     status: MenuItem<Wry>,
     pause: MenuItem<Wry>,
+    stop_audio: MenuItem<Wry>,
 }
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let status = MenuItem::with_id(app, "status", "Starting", false, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", "Pause 1 h", false, None::<&str>)?;
+    let stop_audio = MenuItem::with_id(app, "stop-audio", "Stop audio", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Open Sextant", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Sextant", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&status, &pause, &open, &quit])?;
+    let menu = Menu::with_items(app, &[&status, &pause, &stop_audio, &open, &quit])?;
     let icon = TrayIconBuilder::new()
         .icon(tauri::include_image!("icons/tray-paused.png"))
         .icon_as_template(true)
@@ -42,6 +45,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 toggle_pause(app);
                 refresh(app);
             }
+            "stop-audio" => {
+                turn_audio_off(app);
+                refresh(app);
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -50,6 +57,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         icon,
         status,
         pause,
+        stop_audio,
     });
     let handle = app.clone();
     thread::Builder::new()
@@ -69,6 +77,25 @@ fn state(app: &AppHandle) -> CaptureState {
     match app.state::<AppState>().engine.get() {
         Some(Ok(engine)) => engine.capture_state(),
         _ => CaptureState::Off,
+    }
+}
+
+fn audio_state(app: &AppHandle) -> AudioState {
+    match app.state::<AppState>().engine.get() {
+        Some(Ok(engine)) => engine.audio_state(),
+        _ => AudioState::Off,
+    }
+}
+
+/// One click: all streams and taps close within a second. The setting stays off until the user
+/// switches audio on again.
+fn turn_audio_off(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let Some(Ok(engine)) = state.engine.get() else {
+        return;
+    };
+    if let Err(err) = engine.set_audio(false) {
+        eprintln!("stopping audio failed: {err:#}");
     }
 }
 
@@ -111,7 +138,17 @@ fn refresh(app: &AppHandle) {
             tauri::include_image!("icons/tray-paused.png"),
         ),
     };
+    let audio = audio_state(app);
+    let (text, icon) = match audio {
+        AudioState::Transcribing => (
+            format!("{text}, transcribing a call"),
+            tauri::include_image!("icons/tray-listening.png"),
+        ),
+        AudioState::Waiting => (format!("{text}, audio on"), icon),
+        AudioState::Off => (text, icon),
+    };
     let _ = tray.status.set_text(text);
+    let _ = tray.stop_audio.set_enabled(audio != AudioState::Off);
     let _ = tray.pause.set_text(pause);
     let _ = tray.pause.set_enabled(state != CaptureState::Off);
     let _ = tray.icon.set_icon(Some(icon));

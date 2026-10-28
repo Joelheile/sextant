@@ -1,9 +1,11 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use sextant_core::backfill::{CalendarRecord, FileRecord, HistoryFile, Platform, ReminderRecord};
 use sextant_core::{Error, Result as CoreResult};
 
+use crate::audio::{self, Runs, Speech, Vad};
 use crate::capture::{Control, Pipeline, Sink};
 
 /// Never produced here: OCR fixtures need macOS.
@@ -80,6 +82,40 @@ pub fn ocr_fixture_timings() -> Result<Vec<Timing>> {
 
 pub fn start_live(_control: Arc<Control>, _sink: Sink) -> Result<Pipeline> {
     bail!("needs macOS")
+}
+
+pub fn start_audio(_control: Arc<Control>, _sink: Sink, _models: &Path) -> Result<audio::Pipeline> {
+    bail!("needs macOS")
+}
+
+pub struct Parakeet;
+
+impl Parakeet {
+    pub fn new(_models: &Path, _runs: Runs) -> Self {
+        Self
+    }
+}
+
+impl Speech for Parakeet {
+    fn load(&mut self) -> Result<()> {
+        bail!("needs macOS")
+    }
+    fn unload(&mut self) {}
+    fn transcribe(&mut self, _audio: &[f32]) -> Result<String> {
+        bail!("needs macOS")
+    }
+}
+
+pub struct Silero;
+
+impl Vad for Silero {
+    fn probability(&mut self, _frame: &[f32]) -> f32 {
+        0.0
+    }
+}
+
+pub fn silero(_models: &Path) -> impl FnMut() -> Result<Silero> + Send + 'static + use<> {
+    || bail!("needs macOS")
 }
 
 pub fn request_permission(_name: &str) -> Result<bool> {

@@ -11,7 +11,7 @@ use sextant_core::{Settings, Sources};
 use tauri::State;
 
 use crate::engine::Engine;
-use crate::{clock, connect, platform, prefs};
+use crate::{clock, connect, models, platform, prefs};
 
 pub struct AppState {
     pub dir: PathBuf,
@@ -238,6 +238,46 @@ pub async fn set_mcp_switches(
         s.mcp_workflows = workflows;
     })
     .map_err(msg)
+}
+
+#[derive(Serialize)]
+pub struct Models {
+    installed: bool,
+    downloading: bool,
+    audio: bool,
+    bytes: u64,
+}
+
+/// What the audio consent step and the settings show.
+#[tauri::command]
+pub async fn models_status(state: State<'_, AppState>) -> Reply<Models> {
+    let engine = state.engine()?;
+    Ok(Models {
+        installed: engine.models_installed(),
+        downloading: engine.downloading(),
+        audio: prefs::load(&state.dir).map_err(msg)?.live.audio,
+        bytes: models::total_bytes(models::ASSETS),
+    })
+}
+
+/// Starts the one-time model download. The UI calls it only after the user agreed. Progress
+/// arrives as `models-progress` events, then `models-done` or `models-failed`.
+#[tauri::command]
+pub async fn download_models(state: State<'_, AppState>) -> Reply<()> {
+    state.engine()?.download_models().map_err(msg)
+}
+
+#[tauri::command]
+pub async fn cancel_download(state: State<'_, AppState>) -> Reply<()> {
+    state.engine()?.cancel_download();
+    Ok(())
+}
+
+/// Switches call audio on or off. Off closes every stream within a second.
+#[tauri::command]
+pub async fn set_audio(state: State<'_, AppState>, on: bool) -> Reply<Settings> {
+    state.engine()?.set_audio(on).map_err(msg)?;
+    prefs::load(&state.dir).map_err(msg)
 }
 
 #[tauri::command]

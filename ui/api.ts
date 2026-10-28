@@ -9,13 +9,17 @@ export type Sources = {
   files: boolean;
 };
 
+export type Live = { metadata: boolean; ocr: boolean; copy: boolean; audio: boolean };
+
 export type Settings = {
   excluded_apps: string[];
+  live: Live;
   mcp_rewind: boolean;
   mcp_workflows: boolean;
   onboarded: boolean;
   sources: Sources;
   git_folders: string[];
+  call_apps: string[];
 };
 
 export type PermissionName =
@@ -73,6 +77,13 @@ export type BackfillDone = {
   sources: { stage: Stage; events: number; errors: string[] }[];
 };
 
+export type Models = {
+  installed: boolean;
+  downloading: boolean;
+  audio: boolean;
+  bytes: number;
+};
+
 export const api = {
   engineStatus: () => invoke<boolean>("engine_status"),
   getState: () => invoke<Settings>("get_state"),
@@ -91,6 +102,10 @@ export const api = {
   connectClaudeDesktop: () => invoke<Written>("connect_claude_desktop"),
   setMcpSwitches: (rewind: boolean, workflows: boolean) =>
     invoke<Settings>("set_mcp_switches", { rewind, workflows }),
+  modelsStatus: () => invoke<Models>("models_status"),
+  downloadModels: () => invoke<void>("download_models"),
+  cancelDownload: () => invoke<void>("cancel_download"),
+  setAudio: (on: boolean) => invoke<Settings>("set_audio", { on }),
   finishOnboarding: () => invoke<Settings>("finish_onboarding"),
 };
 
@@ -115,6 +130,28 @@ export async function listenBackfill(
     listen<BackfillDone>("backfill-done", (e) => handlers.done(e.payload)),
     listen<{ message: string }>("backfill-failed", (e) =>
       handlers.failed(e.payload.message),
+    ),
+  ]);
+  return () => stops.forEach((stop) => stop());
+}
+
+export type DownloadHandlers = {
+  progress: (done: number, total: number) => void;
+  done: () => void;
+  failed: (message: string, cancelled: boolean) => void;
+};
+
+/** Listens to the model download events. Resolves once all three listeners are attached. */
+export async function listenDownload(
+  handlers: DownloadHandlers,
+): Promise<UnlistenFn> {
+  const stops = await Promise.all([
+    listen<{ done: number; total: number }>("models-progress", (e) =>
+      handlers.progress(e.payload.done, e.payload.total),
+    ),
+    listen("models-done", handlers.done),
+    listen<{ message: string; cancelled: boolean }>("models-failed", (e) =>
+      handlers.failed(e.payload.message, e.payload.cancelled),
     ),
   ]);
   return () => stops.forEach((stop) => stop());
