@@ -3,6 +3,7 @@
 
 use std::fmt::Display;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use serde::Serialize;
 use sextant_core::connect::claude_code_command;
@@ -14,16 +15,36 @@ use crate::{clock, connect, platform, prefs};
 
 pub struct AppState {
     pub dir: PathBuf,
-    pub engine: Engine,
+    /// Set once by the start-up thread: the engine, or why it did not start.
+    pub engine: OnceLock<Result<Engine, String>>,
 }
 
 type Reply<T> = Result<T, String>;
+
+impl AppState {
+    fn engine(&self) -> Reply<&Engine> {
+        match self.engine.get() {
+            Some(started) => started.as_ref().map_err(Clone::clone),
+            None => Err("Sextant is still starting".into()),
+        }
+    }
+}
 
 fn msg(err: impl Display) -> String {
     err.to_string()
 }
 
 const MAX_ROWS: usize = 200;
+
+/// `false` while the engine starts, `true` once it runs, an error if it could not start. The UI
+/// asks again whenever the `ready` event arrives.
+#[tauri::command]
+pub async fn engine_status(state: State<'_, AppState>) -> Reply<bool> {
+    match state.engine.get() {
+        None => Ok(false),
+        Some(started) => started.as_ref().map(|_| true).map_err(Clone::clone),
+    }
+}
 
 #[tauri::command]
 pub async fn get_state(state: State<'_, AppState>) -> Reply<Settings> {
@@ -101,7 +122,7 @@ pub async fn save_choices(
 /// then `backfill-done` or `backfill-failed`.
 #[tauri::command]
 pub async fn start_backfill(state: State<'_, AppState>) -> Reply<()> {
-    state.engine.start_backfill().map_err(msg)
+    state.engine()?.start_backfill().map_err(msg)
 }
 
 #[derive(Serialize)]
@@ -126,7 +147,7 @@ pub struct FirstMap {
 #[tauri::command]
 pub async fn first_map(state: State<'_, AppState>, offset: usize, limit: usize) -> Reply<FirstMap> {
     state
-        .engine
+        .engine()?
         .read(|store| {
             let all = store.workflows()?;
             let rows = all
@@ -203,4 +224,23 @@ pub async fn set_mcp_switches(
 #[tauri::command]
 pub async fn finish_onboarding(state: State<'_, AppState>) -> Reply<Settings> {
     prefs::update(&state.dir, |s| s.onboarded = true).map_err(msg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_engine_is_unavailable_until_the_start_up_thread_reports() {
+        let state = AppState {
+            dir: PathBuf::new(),
+            engine: OnceLock::new(),
+        };
+        assert_eq!(
+            state.engine().err().as_deref(),
+            Some("Sextant is still starting")
+        );
+        assert!(state.engine.set(Err("no key".into())).is_ok());
+        assert_eq!(state.engine().err().as_deref(), Some("no key"));
+    }
 }

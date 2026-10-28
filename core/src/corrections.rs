@@ -8,6 +8,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::{Error, Result};
 use crate::finder::Enjoyment;
+use crate::redact::redact;
 use crate::store::Store;
 use crate::text::pattern;
 
@@ -192,6 +193,7 @@ impl Store {
                 _ => return Err(Error::BadTarget("exactly two steps")),
             },
         };
+        let (phrase, value) = (redact(phrase, &self.secret), redact(&value, &self.secret));
         let tx = self.conn.transaction()?;
         tx.execute(
             "INSERT INTO corrections(ts, phrase, rule, key, arg) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -239,5 +241,32 @@ mod tests {
             assert_eq!(parse(phrase), Some(rule), "{phrase}");
         }
         assert_eq!(parse("what time is it"), None);
+    }
+
+    #[test]
+    fn stored_phrase_and_value_are_redacted() {
+        let db = crate::fixtures::TempDb::new("correction-redact");
+        let mut store = db.open().expect("test setup");
+        store
+            .correct(
+                1,
+                "Rename to Invoices for anna@example.com",
+                &[Target::Step("mail".into())],
+            )
+            .expect("test setup");
+        let (phrase, arg): (String, String) = store
+            .conn
+            .query_row("SELECT phrase, arg FROM corrections", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .expect("test setup");
+        let value: String = store
+            .conn
+            .query_row("SELECT value FROM overrides", [], |row| row.get(0))
+            .expect("test setup");
+        for stored in [phrase, arg, value] {
+            assert!(!stored.contains("anna@example.com"), "{stored}");
+            assert!(stored.contains("<email:"), "{stored}");
+        }
     }
 }

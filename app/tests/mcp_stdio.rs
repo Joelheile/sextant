@@ -8,7 +8,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use serde_json::{Value, json};
 use sextant_core::Store;
-use sextant_core::fixtures::{UTC_OFFSET_S, WEEK_NOW, load, week};
+use sextant_core::fixtures::{TEST_SECRET, UTC_OFFSET_S, WEEK_NOW, load, week};
 
 const KEY_HEX: &str = "0707070707070707070707070707070707070707070707070707070707070707";
 const KEY: [u8; 32] = [7; 32];
@@ -54,7 +54,7 @@ impl Session {
 #[test]
 fn serves_every_tool_group_over_stdio() {
     let dir = temp("serve");
-    let mut store = Store::open(&dir.join("sextant.db"), &KEY).expect("test setup");
+    let mut store = Store::open(&dir.join("sextant.db"), &KEY, &TEST_SECRET).expect("test setup");
     store.set_utc_offset(UTC_OFFSET_S);
     load(&mut store, &week(), WEEK_NOW).expect("test setup");
     store.refresh(WEEK_NOW).expect("test setup");

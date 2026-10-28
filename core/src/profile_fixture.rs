@@ -366,18 +366,26 @@ impl Platform for FakePlatform {
         })
     }
 
-    fn calendar(&self, _from: i64, _to: i64) -> Result<Vec<CalendarRecord>> {
+    fn calendar(&self, from: i64, to: i64) -> Result<Vec<CalendarRecord>> {
         if self.calendar_denied {
             return Err(Error::Platform("calendar access denied".into()));
         }
-        Ok(self.profile.calendar.clone())
+        let mut records = self.profile.calendar.clone();
+        records.retain(|r| (from..=to).contains(&r.start));
+        Ok(records)
     }
 
-    fn reminders(&self, _from: i64, _to: i64) -> Result<Vec<ReminderRecord>> {
+    fn reminders(&self, from: i64, to: i64) -> Result<Vec<ReminderRecord>> {
         if self.calendar_denied {
             return Err(Error::Platform("reminders access denied".into()));
         }
-        Ok(self.profile.reminders.clone())
+        let mut records = self.profile.reminders.clone();
+        records.retain(|r| {
+            r.created
+                .or(r.due)
+                .is_some_and(|ts| (from..=to).contains(&ts))
+        });
+        Ok(records)
     }
 
     fn git_repos(&self, folder: &str) -> Vec<String> {

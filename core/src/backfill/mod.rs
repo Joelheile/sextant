@@ -12,11 +12,13 @@ pub use records::{
 };
 
 use crate::error::Result;
-use crate::model::Event;
+use crate::model::{Event, EventKind};
 use crate::settings::Sources;
 use crate::time::DAY;
 
 pub const HISTORY_DAYS: i64 = 90;
+/// Calendar and reminders also look this far ahead.
+pub const UPCOMING_DAYS: i64 = 14;
 
 /// A browser's History file on this machine. `location` is the platform's own handle.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,8 +78,8 @@ pub struct Collected {
     pub reports: Vec<SourceReport>,
 }
 
-/// Reads every ticked source over the last 90 days. A failing source is reported and skipped.
-/// Events after `now` are dropped: the writer would clamp them and refresh only reads up to now.
+/// Reads every ticked source over the last 90 days, and calendar and reminders over the next 14
+/// too. A failing source is reported and skipped. Other events after `now` are dropped.
 /// `on_stage` is called before each source starts.
 pub fn collect(
     platform: &dyn Platform,
@@ -87,6 +89,7 @@ pub fn collect(
     mut on_stage: impl FnMut(Stage),
 ) -> Collected {
     let from = now - HISTORY_DAYS * DAY;
+    let until = now + UPCOMING_DAYS * DAY;
     let mut events = Vec::new();
     let mut reports = Vec::new();
     let mut run = |stage: Stage, read: &mut dyn FnMut(&mut Vec<String>) -> Vec<Event>| {
@@ -123,11 +126,11 @@ pub fn collect(
     if sources.calendar {
         run(Stage::Calendar, &mut |errors| {
             let mut found = Vec::new();
-            match platform.calendar(from, now) {
+            match platform.calendar(from, until) {
                 Ok(records) => found.extend(calendar_events(&records)),
                 Err(err) => errors.push(format!("calendar: {err}")),
             }
-            match platform.reminders(from, now) {
+            match platform.reminders(from, until) {
                 Ok(records) => found.extend(reminder_events(&records)),
                 Err(err) => errors.push(format!("reminders: {err}")),
             }
@@ -159,7 +162,10 @@ pub fn collect(
         );
     }
 
-    events.retain(|e| e.ts >= from && e.ts <= now);
+    events.retain(|e| {
+        let upcoming = matches!(e.kind, EventKind::Calendar | EventKind::Reminder);
+        e.ts >= from && e.ts <= if upcoming { until } else { now }
+    });
     events.sort_by_key(|e| e.ts);
     Collected { events, reports }
 }

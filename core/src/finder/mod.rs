@@ -15,6 +15,7 @@ use rusqlite::{Connection, params};
 use self::episodes::EventRow;
 pub use self::score::{Action, Enjoyment, Kind};
 pub use self::steps::Category;
+use crate::backfill::UPCOMING_DAYS;
 use crate::corrections::Overrides;
 use crate::error::Result;
 use crate::model::Payload;
@@ -124,7 +125,8 @@ fn analyze(
     now: i64,
     utc_offset_s: i32,
 ) -> Analysis {
-    let mut episodes = episodes::build(events, now);
+    let past = &events[..events.partition_point(|e| e.ts <= now)];
+    let mut episodes = episodes::build(past, now);
     let steps = steps::build(
         &mut episodes,
         &overrides.field("merge_into"),
@@ -132,7 +134,7 @@ fn analyze(
     );
     let step_scores = score::score_steps(&steps, &episodes, utc_offset_s);
     let (entities, mut cases) = entities::build(&episodes);
-    let copies: Vec<(i64, &str)> = events
+    let copies: Vec<(i64, &str)> = past
         .iter()
         .filter(|e| e.kind == "copy")
         .map(|e| (e.ts, e.payload.app.as_str()))
@@ -360,10 +362,12 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
 
 impl Store {
     /// Rebuilds episodes, steps, entities, follows, cases, workflows, commitments and scores
-    /// from the last 90 days. Corrections apply here.
+    /// from the last 90 days, or the retention window if that is shorter. Only events up to `now`
+    /// make episodes; upcoming reminders (next 14 days) still become commitments. Corrections
+    /// apply here.
     pub fn refresh(&mut self, now: i64) -> Result<RefreshStats> {
-        let from = now - WINDOW_DAYS * DAY;
-        let events = load_events(&self.conn, from, now)?;
+        let from = now - WINDOW_DAYS.min(i64::from(self.retention_days)) * DAY;
+        let events = load_events(&self.conn, from, now + UPCOMING_DAYS * DAY)?;
         let spoken = load_spoken(&self.conn, from, now)?;
         let overrides = Overrides::load(&self.conn)?;
         let analysis = analyze(&events, &spoken, &overrides, now, self.utc_offset_s);

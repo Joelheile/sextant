@@ -161,7 +161,7 @@ pub fn call(ctx: &Ctx, name: &str, args: &Value) -> std::result::Result<String, 
         _ => return Err(format!("unknown tool {name}")),
     };
     run.map(|mut value| {
-        redact_json(&mut value);
+        redact_json(&mut value, &ctx.store.secret);
         value.to_string()
     })
     .map_err(|e| e.to_string())
@@ -598,7 +598,7 @@ fn get_workflow(ctx: &Ctx, args: &Value) -> Result<Value> {
 fn get_skill(ctx: &Ctx, args: &Value) -> Result<String> {
     let id = workflow_id(args)?;
     visible(ctx, id)?;
-    Ok(redact(&ctx.store.skill_md(id)?))
+    Ok(redact(&ctx.store.skill_md(id)?, &ctx.store.secret))
 }
 
 fn report_handoff(ctx: &Ctx, args: &Value) -> Result<Value> {

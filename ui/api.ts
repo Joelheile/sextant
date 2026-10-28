@@ -62,6 +62,7 @@ export type BackfillDone = {
 };
 
 export const api = {
+  engineStatus: () => invoke<boolean>("engine_status"),
   getState: () => invoke<Settings>("get_state"),
   permissionStatus: () => invoke<Permission[]>("permission_status"),
   requestPermission: (name: PermissionName) =>
@@ -80,6 +81,10 @@ export const api = {
     invoke<Settings>("set_mcp_switches", { rewind, workflows }),
   finishOnboarding: () => invoke<Settings>("finish_onboarding"),
 };
+
+/** Calls `handler` when the engine has started or failed to. Resolves once attached. */
+export const onReady = (handler: () => void): Promise<UnlistenFn> =>
+  listen("ready", handler);
 
 export type BackfillHandlers = {
   progress: (stage: Stage) => void;

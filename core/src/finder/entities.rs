@@ -36,7 +36,7 @@ impl EntityKind {
 
 static INVOICE: LazyLock<Regex> = LazyLock::new(|| pattern(r"(?i)\b(?:INV|RE|RG)-\d{4}-\d{3,6}\b"));
 static TICKET: LazyLock<Regex> = LazyLock::new(|| pattern(r"\b[A-Z][A-Z0-9]{1,5}-\d{1,6}\b"));
-static EMAIL: LazyLock<Regex> = LazyLock::new(|| pattern(r"<email:([0-9a-f]{8})>"));
+static EMAIL: LazyLock<Regex> = LazyLock::new(|| pattern(r"<email:([0-9a-f]{16})>"));
 static COMPANY: LazyLock<Regex> =
     LazyLock::new(|| pattern(r"\b\p{Lu}[\p{L}&-]+ (?:GmbH|AG|UG|KG|SE|Ltd|Inc|LLC|Corp)\b"));
 static PERSON: LazyLock<Regex> =
@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn finds_ids_companies_and_amounts() {
         let found = find(
-            "Rechnung INV-2026-0412 Acme GmbH ACME-77 €1,250.00 und 1.250,00 € <email:0a1b2c3d>",
+            "Rechnung INV-2026-0412 Acme GmbH ACME-77 €1,250.00 und 1.250,00 € <email:0a1b2c3d4e5f6071>",
         );
         let kinds: Vec<_> = found
             .iter()
@@ -199,7 +199,7 @@ mod tests {
             [
                 "invoice:INV-2026-0412",
                 "ticket:ACME-77",
-                "email:0a1b2c3d",
+                "email:0a1b2c3d4e5f6071",
                 "company:Acme GmbH",
                 "amount:125000 EUR",
             ]

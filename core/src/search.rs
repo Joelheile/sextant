@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use rusqlite::{OptionalExtension, params};
 
 use crate::error::Result;
-use crate::redact::redact;
+use crate::redact::{Secret, redact};
 use crate::store::Store;
 use crate::text::words;
 use crate::writer::unpack;
@@ -28,8 +28,8 @@ pub struct Hit {
 }
 
 /// The query is redacted first, so searching for an email finds its `<email:hash>`.
-fn query_terms(query: &str) -> Vec<String> {
-    words(&redact(query))
+fn query_terms(query: &str, secret: &Secret) -> Vec<String> {
+    words(&redact(query, secret))
 }
 
 /// Quotes every word so user input can never be FTS syntax.
@@ -94,7 +94,7 @@ impl Store {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<Hit>> {
-        let terms = query_terms(query);
+        let terms = query_terms(query, &self.secret);
         if terms.is_empty() {
             return Ok(Vec::new());
         }
@@ -268,13 +268,13 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::{TEST_KEY, TempDb, common_words, fill_frames};
+    use crate::fixtures::{TEST_KEY, TEST_SECRET, TempDb, common_words, fill_frames};
 
     /// The walk back from the newest frame and the lookup of every match return the same hits.
     #[test]
     fn walk_and_lookup_return_the_same_hits() {
         let db = TempDb::new("search-plans");
-        let mut store = Store::open(&db.path, &TEST_KEY).expect("test setup");
+        let mut store = Store::open(&db.path, &TEST_KEY, &TEST_SECRET).expect("test setup");
         let now = 1_800_000_000;
         fill_frames(&mut store, now, 6, 80, 7).expect("test setup");
 

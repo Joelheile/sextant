@@ -4,23 +4,31 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rusqlite::{Connection, ErrorCode, OpenFlags, params};
+use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 
 use crate::error::{Error, Result};
-use crate::redact::redact;
+use crate::redact::{Secret, redact};
 use crate::time::DAY;
 use crate::writer::unpack;
 
-const MIGRATIONS: &[&str] = &[include_str!("schema_v1.sql")];
+const MIGRATIONS: &[&str] = &[include_str!("schema_v1.sql"), include_str!("schema_v2.sql")];
+
+const EMAIL_SECRET: &str = "email_secret";
 
 pub type Key = [u8; 32];
+
+pub const DEFAULT_RETENTION_DAYS: u32 = 90;
 
 pub struct Store {
     pub(crate) conn: Connection,
     path: PathBuf,
     key: Key,
+    /// Keys the email hashes. Lives in the `meta` table, so it never leaves the encrypted file.
+    pub(crate) secret: Secret,
     /// Fixed UTC offset used to cut local days. The app sets it from the OS at start.
     pub(crate) utc_offset_s: i32,
+    /// Raw-data retention in days. Refresh never reads further back than this.
+    pub(crate) retention_days: u32,
 }
 
 /// Rows removed by [`Store::retention`].
@@ -31,11 +39,15 @@ pub struct Retained {
     pub events: usize,
     pub lines: usize,
     pub windows: usize,
+    pub episodes: usize,
+    pub entities: usize,
+    pub commitments: usize,
 }
 
 impl Store {
-    /// Opens or creates the encrypted database and migrates it to the current schema.
-    pub fn open(path: &Path, key: &Key) -> Result<Self> {
+    /// Opens or creates the encrypted database and migrates it to the current schema. `secret` is
+    /// stored on first open (the app passes random bytes); a database that has one keeps it.
+    pub fn open(path: &Path, key: &Key, secret: &Secret) -> Result<Self> {
         let mut conn = Connection::open(path)?;
         unlock(&conn, key)?;
         conn.query_row("PRAGMA journal_mode = WAL", [], |row| {
@@ -44,11 +56,18 @@ impl Store {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.busy_timeout(Duration::from_secs(5))?;
         migrate(&mut conn, MIGRATIONS)?;
+        conn.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES (?1, ?2)",
+            params![EMAIL_SECRET, secret],
+        )?;
+        let secret = load_secret(&conn)?;
         Ok(Self {
             conn,
             path: path.to_path_buf(),
             key: *key,
+            secret,
             utc_offset_s: 0,
+            retention_days: DEFAULT_RETENTION_DAYS,
         })
     }
 
@@ -56,6 +75,7 @@ impl Store {
     pub fn reader(&self) -> Result<Self> {
         let mut reader = Self::open_read_only(&self.path, &self.key)?;
         reader.utc_offset_s = self.utc_offset_s;
+        reader.retention_days = self.retention_days;
         Ok(reader)
     }
 
@@ -73,16 +93,28 @@ impl Store {
                 expected: MIGRATIONS.len() as i32,
             });
         }
+        let secret = load_secret(&conn)?;
         Ok(Self {
             conn,
             path: path.to_path_buf(),
             key: *key,
+            secret,
             utc_offset_s: 0,
+            retention_days: DEFAULT_RETENTION_DAYS,
         })
+    }
+
+    /// The key for email hashes, as stored in the database.
+    pub fn secret(&self) -> Secret {
+        self.secret
     }
 
     pub fn set_utc_offset(&mut self, seconds: i32) {
         self.utc_offset_s = seconds;
+    }
+
+    pub fn set_retention_days(&mut self, days: u32) {
+        self.retention_days = days;
     }
 
     pub fn utc_offset(&self) -> i32 {
@@ -112,7 +144,12 @@ impl Store {
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.execute(
             "INSERT INTO handoffs(workflow_id, ts, status, note) VALUES (?1, ?2, ?3, ?4)",
-            params![workflow_id, ts, redact(status), redact(note)],
+            params![
+                workflow_id,
+                ts,
+                redact(status, &self.secret),
+                redact(note, &self.secret)
+            ],
         )?;
         Ok(conn.last_insert_rowid())
     }
@@ -121,7 +158,9 @@ impl Store {
         user_version(&self.conn)
     }
 
-    /// Deletes raw rows older than `days`, then lines and windows nothing references (plan.md §5).
+    /// Deletes raw rows and the engine rows built from them (episodes, mentions, cases, commitments,
+    /// entities nobody mentions) older than `days`, then lines and windows nothing references
+    /// (plan.md §5). Steps, follows and workflows keep only aggregate, templated data.
     pub fn retention(&mut self, now: i64, days: u32) -> Result<Retained> {
         let cutoff = now - i64::from(days) * DAY;
         let tx = self.conn.transaction()?;
@@ -146,6 +185,21 @@ impl Store {
         gone.utterances =
             tx.execute("DELETE FROM utterances WHERE ts_end < ?1", params![cutoff])?;
         gone.events = tx.execute("DELETE FROM events WHERE ts < ?1", params![cutoff])?;
+        tx.execute(
+            "DELETE FROM mentions WHERE episode_id IN (SELECT id FROM episodes WHERE end_ts < ?1)",
+            params![cutoff],
+        )?;
+        gone.episodes = tx.execute("DELETE FROM episodes WHERE end_ts < ?1", params![cutoff])?;
+        gone.commitments = tx.execute("DELETE FROM commitments WHERE ts < ?1", params![cutoff])?;
+        tx.execute("DELETE FROM cases WHERE last_ts < ?1", params![cutoff])?;
+        gone.entities = tx.execute(
+            "DELETE FROM entities WHERE id NOT IN (SELECT entity_id FROM mentions)",
+            [],
+        )?;
+        tx.execute(
+            "DELETE FROM cases WHERE entity_id NOT IN (SELECT id FROM entities)",
+            [],
+        )?;
         {
             let mut line = tx.prepare(
                 "DELETE FROM lines WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM frame_lines WHERE line_id = ?1)",
@@ -179,6 +233,19 @@ fn unlock(conn: &Connection, key: &Key) -> Result<()> {
         }
         Err(other) => Err(other.into()),
     }
+}
+
+fn load_secret(conn: &Connection) -> Result<Secret> {
+    let found: Option<Vec<u8>> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![EMAIL_SECRET],
+            |row| row.get(0),
+        )
+        .optional()?;
+    found
+        .and_then(|bytes| bytes.try_into().ok())
+        .ok_or(Error::NoSecret)
 }
 
 fn user_version(conn: &Connection) -> Result<i32> {
@@ -226,5 +293,67 @@ mod tests {
                 supported: 1
             }
         ));
+    }
+
+    fn count(store: &Store, sql: &str) -> i64 {
+        store
+            .conn
+            .query_row(sql, [], |row| row.get(0))
+            .expect("count query")
+    }
+
+    #[test]
+    fn retention_expires_engine_rows_with_the_raw_rows() {
+        use crate::fixtures::{TempDb, WEEK_NOW, WEEK_START, load, week};
+
+        let db = TempDb::new("retention-engine");
+        let mut store = db.open().expect("test setup");
+        load(&mut store, &week(), WEEK_NOW).expect("test setup");
+        store.refresh(WEEK_NOW).expect("test setup");
+        for table in ["episodes", "entities", "mentions", "cases", "commitments"] {
+            assert!(count(&store, &format!("SELECT count(*) FROM {table}")) > 0);
+        }
+
+        let cutoff = WEEK_START + 2 * DAY;
+        let gone = store.retention(cutoff + 30 * DAY, 30).expect("retention");
+        assert!(
+            gone.episodes > 0 && gone.entities > 0 && gone.commitments > 0,
+            "{gone:?}"
+        );
+        let newer = |sql: &str| count(&store, &format!("{sql} {cutoff}"));
+        assert_eq!(newer("SELECT count(*) FROM episodes WHERE end_ts <"), 0);
+        assert_eq!(newer("SELECT count(*) FROM commitments WHERE ts <"), 0);
+        assert_eq!(newer("SELECT count(*) FROM cases WHERE last_ts <"), 0);
+        assert_eq!(
+            count(
+                &store,
+                "SELECT count(*) FROM mentions WHERE episode_id NOT IN (SELECT id FROM episodes)"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &store,
+                "SELECT count(*) FROM entities WHERE id NOT IN (SELECT entity_id FROM mentions)"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &store,
+                "SELECT count(*) FROM cases WHERE entity_id NOT IN (SELECT id FROM entities)"
+            ),
+            0
+        );
+        assert!(count(&store, "SELECT count(*) FROM episodes") > 0);
+
+        store.retention(WEEK_NOW + 60 * DAY, 30).expect("retention");
+        for table in ["episodes", "entities", "mentions", "cases", "commitments"] {
+            assert_eq!(
+                count(&store, &format!("SELECT count(*) FROM {table}")),
+                0,
+                "{table}"
+            );
+        }
     }
 }

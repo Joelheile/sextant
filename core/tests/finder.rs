@@ -268,3 +268,12 @@ fn only_the_last_90_days_count() {
     assert_eq!(stats.episodes, 0);
     assert!(store.workflows().expect("test setup").is_empty());
 }
+
+#[test]
+fn refresh_never_reads_further_back_than_retention() {
+    let (_db, mut store) = refreshed("retention-window");
+    let later = WEEK_NOW + 40 * 86_400;
+    assert!(store.refresh(later).expect("test setup").episodes > 0);
+    store.set_retention_days(30);
+    assert_eq!(store.refresh(later).expect("test setup").episodes, 0);
+}

@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 
 use regex::{Captures, Regex};
 
-use crate::text::{fnv1a, pattern};
+use crate::text::{pattern, siphash24};
 
 static API_KEY: LazyLock<Regex> = LazyLock::new(|| {
     pattern(
@@ -24,13 +24,16 @@ static IBAN: LazyLock<Regex> =
     LazyLock::new(|| pattern(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b"));
 static CARD: LazyLock<Regex> = LazyLock::new(|| pattern(r"\b\d(?:[ -]?\d){12,18}\b"));
 
+/// Per-install key for email hashes. Without it `<email:hash>` cannot be matched to an address.
+pub type Secret = [u8; 16];
+
 /// Replaces emails, IBANs, card numbers, API keys and tokens. Idempotent.
-pub fn redact(text: &str) -> String {
+pub fn redact(text: &str, secret: &Secret) -> String {
     let text = API_KEY.replace_all(text, "<apikey>");
     let text = JWT.replace_all(&text, "<token>");
     let text = BEARER.replace_all(&text, "Bearer <token>");
     let text = SECRET.replace_all(&text, "$1$2<token>");
-    let text = EMAIL.replace_all(&text, |caps: &Captures| email_tag(&caps[0]));
+    let text = EMAIL.replace_all(&text, |caps: &Captures| email_tag(&caps[0], secret));
     let text = IBAN.replace_all(&text, |caps: &Captures| {
         if valid_iban(&caps[0]) {
             "<iban>".to_string()
@@ -48,9 +51,9 @@ pub fn redact(text: &str) -> String {
     text.into_owned()
 }
 
-fn email_tag(email: &str) -> String {
-    let hash = (fnv1a(&email.to_lowercase()) >> 32) as u32;
-    format!("<email:{hash:08x}>")
+fn email_tag(email: &str, secret: &Secret) -> String {
+    let hash = siphash24(secret, email.to_lowercase().as_bytes());
+    format!("<email:{hash:016x}>")
 }
 
 fn luhn(text: &str) -> bool {
@@ -93,17 +96,19 @@ fn valid_iban(text: &str) -> bool {
 }
 
 /// Redacts every string inside a JSON value. `url` strings also lose their query and fragment.
-pub fn redact_json(value: &mut serde_json::Value) {
+pub fn redact_json(value: &mut serde_json::Value, secret: &Secret) {
     match value {
-        serde_json::Value::String(text) => *text = redact(text),
-        serde_json::Value::Array(items) => items.iter_mut().for_each(redact_json),
+        serde_json::Value::String(text) => *text = redact(text, secret),
+        serde_json::Value::Array(items) => {
+            items.iter_mut().for_each(|item| redact_json(item, secret))
+        }
         serde_json::Value::Object(map) => {
             for (key, item) in map.iter_mut() {
                 match item {
                     serde_json::Value::String(url) if key == "url" => {
-                        *url = redact(&crate::text::host_path(url));
+                        *url = redact(&crate::text::host_path(url), secret);
                     }
-                    _ => redact_json(item),
+                    _ => redact_json(item, secret),
                 }
             }
         }
@@ -115,28 +120,38 @@ pub fn redact_json(value: &mut serde_json::Value) {
 mod tests {
     use super::*;
 
+    const SECRET: Secret = [3; 16];
+
     #[test]
     fn emails_keep_a_stable_hash() {
-        let a = redact("Mail anna@Example.com now");
-        let b = redact("anna@example.com");
+        let a = redact("Mail anna@Example.com now", &SECRET);
+        let b = redact("anna@example.com", &SECRET);
         assert!(a.starts_with("Mail <email:"));
         assert_eq!(a.trim_start_matches("Mail ").trim_end_matches(" now"), b);
         assert!(!a.contains("anna"));
     }
 
     #[test]
+    fn email_hash_is_keyed_and_64_bits() {
+        let a = redact("anna@example.com", &[1; 16]);
+        let b = redact("anna@example.com", &[2; 16]);
+        assert_ne!(a, b);
+        assert_eq!(a.len(), "<email:>".len() + 16);
+    }
+
+    #[test]
     fn iban_and_card_need_valid_checksums() {
         assert_eq!(
-            redact("IBAN DE89 3704 0044 0532 0130 00 ok"),
+            redact("IBAN DE89 3704 0044 0532 0130 00 ok", &SECRET),
             "IBAN <iban> ok"
         );
-        assert_eq!(redact("Card 4111 1111 1111 1111"), "Card <card>");
+        assert_eq!(redact("Card 4111 1111 1111 1111", &SECRET), "Card <card>");
         assert_eq!(
-            redact("Order 1234 5678 9012 3456"),
+            redact("Order 1234 5678 9012 3456", &SECRET),
             "Order 1234 5678 9012 3456"
         );
         assert_eq!(
-            redact("DE00 3704 0044 0532 0130 00"),
+            redact("DE00 3704 0044 0532 0130 00", &SECRET),
             "DE00 3704 0044 0532 0130 00"
         );
     }
@@ -145,7 +160,7 @@ mod tests {
     fn keys_and_tokens_are_removed() {
         let text = "export KEY=sk-proj-abcdefghijklmnopqrstuvwx and ghp_abcdefghijklmnopqrstuvwxyz0123456789 \
                     Authorization: Bearer abcdefghijklmnop12345678 password: hunter2hunter2";
-        let out = redact(text);
+        let out = redact(text, &SECRET);
         assert!(!out.contains("abcdefghijkl"), "{out}");
         assert!(!out.contains("hunter2"), "{out}");
         assert!(
@@ -157,15 +172,18 @@ mod tests {
 
     #[test]
     fn redaction_is_idempotent() {
-        let once = redact("a@b.de DE89 3704 0044 0532 0130 00 4111111111111111");
-        assert_eq!(redact(&once), once);
+        let once = redact(
+            "a@b.de DE89 3704 0044 0532 0130 00 4111111111111111",
+            &SECRET,
+        );
+        assert_eq!(redact(&once, &SECRET), once);
     }
 
     #[test]
     fn json_strings_and_urls_are_cleaned() {
         let mut value =
             serde_json::json!({"title": "to a@b.de", "url": "https://x.com/p?token=abc#z", "n": 1});
-        redact_json(&mut value);
+        redact_json(&mut value, &SECRET);
         assert_eq!(value["url"], "x.com/p");
         assert!(
             value["title"]

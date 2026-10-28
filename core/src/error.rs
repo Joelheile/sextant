@@ -14,6 +14,8 @@ pub enum Error {
         "database schema version {found} is older than {expected}; open it with the writer first"
     )]
     SchemaTooOld { found: i32, expected: i32 },
+    #[error("the database has no valid email secret; open it with the app first")]
+    NoSecret,
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("{0}")]

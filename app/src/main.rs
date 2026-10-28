@@ -9,11 +9,30 @@ mod platform;
 mod prefs;
 mod tray;
 
+use std::sync::OnceLock;
+use std::thread;
+
 use anyhow::Context;
-use tauri::{Emitter, Manager, RunEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent};
 
 use crate::commands::AppState;
 use crate::engine::Engine;
+
+/// Looks up the key (the Keychain may prompt and wait) and opens the database off the main
+/// thread, then tells the window with a `ready` event.
+fn start_engine(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let emitter = app.clone();
+    let started = keys::load_or_create()
+        .and_then(|key| {
+            Engine::start(&state.dir, &key, move |name, payload| {
+                let _ = emitter.emit(name, payload);
+            })
+        })
+        .map_err(|err| format!("{err:#}"));
+    let _ = state.engine.set(started);
+    let _ = app.emit("ready", ());
+}
 
 fn main() -> anyhow::Result<()> {
     let dir = home::data_dir()?;
@@ -23,6 +42,7 @@ fn main() -> anyhow::Result<()> {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            commands::engine_status,
             commands::get_state,
             commands::permission_status,
             commands::request_permission,
@@ -37,14 +57,17 @@ fn main() -> anyhow::Result<()> {
             commands::finish_onboarding,
         ])
         .setup(move |app| {
-            let key = keys::load_or_create()?;
-            let handle = app.handle().clone();
-            let engine = Engine::start(&dir, &key, move |name, payload| {
-                let _ = handle.emit(name, payload);
-            })?;
-            app.manage(AppState { dir, engine });
+            app.manage(AppState {
+                dir,
+                engine: OnceLock::new(),
+            });
             tray::build(app.handle())?;
             tray::open_window(app.handle())?;
+            let handle = app.handle().clone();
+            thread::Builder::new()
+                .name("sextant-start".into())
+                .spawn(move || start_engine(&handle))
+                .context("starting the start-up thread")?;
             Ok(())
         })
         .build(tauri::generate_context!())

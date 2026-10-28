@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::error::Result;
-use crate::model::{Event, Frame, Item, Utterance, Window};
-use crate::redact::{redact, redact_json};
+use crate::model::{Event, Frame, Item, Source, Utterance, Window};
+use crate::redact::{Secret, redact, redact_json};
 use crate::store::Store;
 use crate::text::{fnv1a, host_path};
 
@@ -41,27 +41,36 @@ impl Writer {
     }
 
     /// Redacts, dedupes and writes everything pushed so far in one transaction.
-    /// Timestamps after `now` are clamped to `now`. On error the records stay queued.
+    /// Live timestamps after `now` are clamped to `now`. On error the records stay queued.
     pub fn flush(&mut self, store: &mut Store, now: i64) -> Result<Flushed> {
         let mut flushed = Flushed::default();
         if self.pending.is_empty() {
             return Ok(flushed);
         }
+        let secret = store.secret;
         let mut last_lines = self.last_lines.clone();
         let tx = store.conn.transaction()?;
         let mut windows = HashMap::new();
         for item in &self.pending {
             match item {
                 Item::Event(event) => {
-                    write_event(&tx, event, now)?;
+                    write_event(&tx, event, now, &secret)?;
                     flushed.events += 1;
                 }
                 Item::Utterance(utterance) => {
-                    write_utterance(&tx, utterance, now)?;
+                    write_utterance(&tx, utterance, now, &secret)?;
                     flushed.utterances += 1;
                 }
                 Item::Frame(frame) => {
-                    write_frame(&tx, frame, now, &mut windows, &mut last_lines, &mut flushed)?;
+                    write_frame(
+                        &tx,
+                        frame,
+                        now,
+                        &secret,
+                        &mut windows,
+                        &mut last_lines,
+                        &mut flushed,
+                    )?;
                 }
             }
         }
@@ -75,12 +84,21 @@ impl Writer {
     }
 }
 
-fn write_event(tx: &Transaction, event: &Event, now: i64) -> Result<()> {
+/// Live events cannot be from the future. Backfill bounds its own range, and its calendar and
+/// reminders reach 14 days ahead.
+fn stamp(event: &Event, now: i64) -> i64 {
+    match event.source {
+        Source::Live => event.ts.min(now),
+        Source::Backfill => event.ts,
+    }
+}
+
+fn write_event(tx: &Transaction, event: &Event, now: i64, secret: &Secret) -> Result<()> {
     let mut json = event.json.clone();
-    redact_json(&mut json);
+    redact_json(&mut json, secret);
     tx.prepare_cached("INSERT INTO events(ts, kind, source, json) VALUES (?1, ?2, ?3, ?4)")?
         .execute(params![
-            event.ts.min(now),
+            stamp(event, now),
             event.kind.as_str(),
             event.source.as_str(),
             json.to_string()
@@ -88,7 +106,12 @@ fn write_event(tx: &Transaction, event: &Event, now: i64) -> Result<()> {
     Ok(())
 }
 
-fn write_utterance(tx: &Transaction, utterance: &Utterance, now: i64) -> Result<()> {
+fn write_utterance(
+    tx: &Transaction,
+    utterance: &Utterance,
+    now: i64,
+    secret: &Secret,
+) -> Result<()> {
     tx.prepare_cached(
         "INSERT INTO utterances(ts_start, ts_end, source, text) VALUES (?1, ?2, ?3, ?4)",
     )?
@@ -96,7 +119,7 @@ fn write_utterance(tx: &Transaction, utterance: &Utterance, now: i64) -> Result<
         utterance.ts_start.min(now),
         utterance.ts_end.min(now),
         utterance.source.as_str(),
-        redact(utterance.text.trim())
+        redact(utterance.text.trim(), secret)
     ])?;
     Ok(())
 }
@@ -105,14 +128,15 @@ fn write_frame(
     tx: &Transaction,
     frame: &Frame,
     now: i64,
+    secret: &Secret,
     windows: &mut HashMap<Window, i64>,
     last_lines: &mut HashMap<Window, Vec<i64>>,
     flushed: &mut Flushed,
 ) -> Result<()> {
-    let window = clean_window(&frame.window);
+    let window = clean_window(&frame.window, secret);
     let mut entries = Vec::with_capacity(frame.lines.len());
     for line in &frame.lines {
-        let text = redact(line.text.trim());
+        let text = redact(line.text.trim(), secret);
         if !text.is_empty() {
             entries.push((line_id(tx, &text, flushed)?, line.bbox));
         }
@@ -146,13 +170,13 @@ fn write_frame(
     Ok(())
 }
 
-fn clean_window(window: &Window) -> Window {
+fn clean_window(window: &Window, secret: &Secret) -> Window {
     Window {
-        app: redact(&window.app),
+        app: redact(&window.app, secret),
         bundle_id: window.bundle_id.clone(),
-        title: redact(&window.title),
-        doc: redact(&window.doc),
-        url: redact(&host_path(&window.url)),
+        title: redact(&window.title, secret),
+        doc: redact(&window.doc, secret),
+        url: redact(&host_path(&window.url), secret),
     }
 }
 

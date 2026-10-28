@@ -25,7 +25,7 @@ pub use finder::{
     StepInfo, Workflow, WorkflowDetail,
 };
 pub use model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
-pub use redact::{redact, redact_json};
+pub use redact::{Secret, redact, redact_json};
 pub use search::{Hit, HitSource};
 pub use settings::{Settings, Sources};
 pub use store::{Key, Retained, Store};

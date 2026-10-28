@@ -120,7 +120,7 @@ fn redaction_samples() {
     ];
     let out: Vec<String> = samples
         .iter()
-        .map(|s| format!("{s}\n=> {}", redact(s)))
+        .map(|s| format!("{s}\n=> {}", redact(s, &TEST_SECRET)))
         .collect();
     assert_snapshot!(out.join("\n\n"));
 }

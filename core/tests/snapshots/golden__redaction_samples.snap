@@ -1,10 +1,9 @@
 ---
 source: core/tests/golden.rs
-assertion_line: 80
 expression: "out.join(\"\\n\\n\")"
 ---
 Write to anna.keller@acme-gmbh.de or Anna.Keller@acme-gmbh.de
-=> Write to <email:fbf53c89> or <email:fbf53c89>
+=> Write to <email:9cc92b12fbd15492> or <email:9cc92b12fbd15492>
 
 Zahlung an IBAN DE89 3704 0044 0532 0130 00 bitte
 => Zahlung an IBAN <iban> bitte

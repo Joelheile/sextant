@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-use sextant_core::backfill::{self, Stage};
+use sextant_core::backfill::{self, CalendarRecord, ReminderRecord, Stage};
 use sextant_core::fixtures::*;
 use sextant_core::profile_fixture::{FakePlatform, ProfileSpec, profile};
 use sextant_core::{Item, Sources, Store, Workflow, Writer};
@@ -165,5 +165,101 @@ fn first_map_of_a_90_day_profile_takes_under_60_s() {
         map.took < FIRST_MAP,
         "first map {:?} is over the {FIRST_MAP:?} budget",
         map.took
+    );
+}
+
+/// A 2-week profile whose calendar and reminders also hold things after `now`.
+fn upcoming_profile(now: i64) -> sextant_core::profile_fixture::Profile {
+    let mut profile = profile(&ProfileSpec {
+        first_monday: WEEK_START,
+        weeks: 2,
+        noise_visits_per_day: 20,
+    })
+    .expect("test setup");
+    let meeting = |title: &str, start: i64| CalendarRecord {
+        title: title.into(),
+        start,
+        end: start + 3600,
+        all_day: false,
+    };
+    profile
+        .calendar
+        .push(meeting("Planning soon", now + 3 * DAY));
+    profile
+        .calendar
+        .push(meeting("Offsite later", now + 13 * DAY));
+    profile
+        .calendar
+        .push(meeting("Beyond the horizon", now + 20 * DAY));
+    profile.reminders.push(ReminderRecord {
+        title: "Call Anna about the offer".into(),
+        created: None,
+        due: Some(now + 5 * DAY),
+        done: false,
+    });
+    profile
+}
+
+#[test]
+fn the_next_14_days_of_calendar_and_reminders_are_kept() {
+    let now = WEEK_START + 13 * DAY;
+    let platform = FakePlatform {
+        profile: upcoming_profile(now),
+        calendar_denied: false,
+    };
+    let collected = backfill::collect(&platform, &Sources::default(), &[], now, |_| {});
+    let mut upcoming: Vec<(i64, &str)> = collected
+        .events
+        .iter()
+        .filter(|e| e.ts > now)
+        .map(|e| (e.ts, e.kind.as_str()))
+        .collect();
+    upcoming.sort();
+    assert_eq!(
+        upcoming,
+        [
+            (now + 3 * DAY, "calendar"),
+            (now + 5 * DAY, "reminder"),
+            (now + 13 * DAY, "calendar"),
+        ]
+    );
+}
+
+#[test]
+fn upcoming_events_are_not_worked_time() {
+    let now = WEEK_START + 13 * DAY;
+    let run = |with_upcoming: bool| {
+        let db = TempDb::new("upcoming");
+        let mut store = db.open().expect("test setup");
+        let mut profile = upcoming_profile(now);
+        if !with_upcoming {
+            profile.calendar.retain(|r| r.start <= now);
+            profile.reminders.retain(|r| r.due.is_none_or(|d| d <= now));
+        }
+        let platform = FakePlatform {
+            profile,
+            calendar_denied: false,
+        };
+        let collected = backfill::collect(&platform, &Sources::default(), &[], now, |_| {});
+        let mut writer = Writer::new();
+        for event in collected.events {
+            writer.push(Item::Event(event));
+        }
+        writer.flush(&mut store, now).expect("test setup");
+        let stats = store.refresh(now).expect("test setup");
+        (stats, store.hours_back().expect("test setup"))
+    };
+    let (with, hours) = run(true);
+    let (without, hours_without) = run(false);
+
+    assert_eq!(
+        with.episodes, without.episodes,
+        "no episode from the future"
+    );
+    assert_eq!(hours, hours_without);
+    assert_eq!(
+        with.commitments,
+        without.commitments + 1,
+        "the upcoming reminder"
     );
 }

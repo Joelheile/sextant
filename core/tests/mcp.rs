@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use sextant_core::fixtures::*;
 use sextant_core::mcp::Server;
-use sextant_core::{Settings, Store};
+use sextant_core::{Event, EventKind, Item, Settings, Source, Store, Writer};
 
 const MCP_P95: Duration = Duration::from_millis(200);
 const DAY: i64 = 86_400;
@@ -120,6 +120,40 @@ fn the_handshake_lists_seven_tools() {
                 .is_empty()
         );
     }
+}
+
+#[test]
+fn the_timeline_lists_upcoming_meetings_at_their_real_time() {
+    let db = TempDb::new("mcp-upcoming");
+    let mut store = db.open().expect("test setup");
+    load(&mut store, &week(), WEEK_NOW).expect("test setup");
+    let start = WEEK_NOW + 2 * DAY;
+    let mut writer = Writer::new();
+    writer.push(Item::Event(Event {
+        ts: start,
+        kind: EventKind::Calendar,
+        source: Source::Backfill,
+        json: json!({"title": "Planning soon", "end_ts": start + 3600}),
+    }));
+    writer.flush(&mut store, WEEK_NOW).expect("test setup");
+    store.refresh(WEEK_NOW).expect("test setup");
+    let mut client = Client::new(store.reader().expect("test setup"));
+
+    let ahead = client
+        .tool(
+            "timeline",
+            json!({"from": "2026-03-08", "to": "2026-03-10"}),
+        )
+        .expect("timeline");
+    let items = ahead["items"].as_array().expect("items");
+    assert_eq!(items.len(), 1, "{ahead}");
+    assert_eq!(items[0]["what"], "Planning soon");
+    assert!(
+        items[0]["start"]
+            .as_str()
+            .expect("start")
+            .starts_with("2026-03-09T08:00")
+    );
 }
 
 #[test]

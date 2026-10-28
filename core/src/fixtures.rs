@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 use crate::error::Result;
 use crate::model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
+use crate::redact::Secret;
 use crate::store::{Key, Store};
 use crate::time::DAY;
 use crate::writer::{Flushed, Writer};
@@ -22,6 +23,7 @@ pub const WEEK_START: i64 = 1_772_406_000;
 /// Saturday 2026-03-07 08:00:00 +01:00, the `now` for the week fixture.
 pub const WEEK_NOW: i64 = WEEK_START + 5 * DAY + 8 * 3600;
 pub const TEST_KEY: Key = [7; 32];
+pub const TEST_SECRET: Secret = [5; 16];
 
 pub const INVOICE_IDS: [&str; 5] = [
     "INV-2026-0412",
@@ -122,7 +124,7 @@ impl TempDb {
     }
 
     pub fn open(&self) -> Result<Store> {
-        let mut store = Store::open(&self.path, &TEST_KEY)?;
+        let mut store = Store::open(&self.path, &TEST_KEY, &TEST_SECRET)?;
         store.set_utc_offset(UTC_OFFSET_S);
         Ok(store)
     }

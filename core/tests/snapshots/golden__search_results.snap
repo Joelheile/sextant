@@ -1,6 +1,5 @@
 ---
 source: core/tests/golden.rs
-assertion_line: 64
 expression: out
 ---
 ## pricing
@@ -26,6 +25,6 @@ expression: out
 ## Müller
 230700 Mic  |  |  | Ich werde die Rechnung für Müller morgen schicken.
 205385 Screen Slack | Slack | #standup |  | Jonas: Rechnung für Müller AG ist raus, danke!
-145805 Screen Mail | Rechnung RE-2026-0420 angehängt |  | Von: Jonas Müller <<email:b07c9b65>>
+145805 Screen Mail | Rechnung RE-2026-0420 angehängt |  | Von: Jonas Müller <<email:3c5d2b5d0f9df305>>
 128285 Screen Google Chrome | Rechnung bearbeiten - lexoffice | app.lexoffice.de/vouchers/RE-2026-0415/edit | Kunde Müller AG
 127805 Screen Microsoft Excel | Invoices 2026.xlsx - Excel |  | RE-2026-0415 | Müller AG | 980,00 € | open

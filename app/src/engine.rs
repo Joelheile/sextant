@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 use sextant_core::backfill;
-use sextant_core::{Item, Key, Store, Writer};
+use sextant_core::{Item, Key, Secret, Store, Writer};
 
 use crate::{clock, home, platform, prefs};
 
@@ -33,7 +33,8 @@ impl Engine {
         emit: impl Fn(&str, Value) + Send + 'static,
     ) -> Result<Self> {
         create_private_dir(dir)?;
-        let mut store = Store::open(&home::db_path(dir), key).context("opening the database")?;
+        let mut store =
+            Store::open(&home::db_path(dir), key, &secret()?).context("opening the database")?;
         store.set_utc_offset(clock::utc_offset(clock::now()));
         let reader = store.reader().context("opening the read connection")?;
         let (backfill, inbox) = mpsc::channel();
@@ -63,6 +64,13 @@ impl Engine {
             .map_err(|_| anyhow::anyhow!("the read connection is poisoned"))?;
         Ok(read(&store)?)
     }
+}
+
+/// Random bytes for the email hashes. The database keeps the first ones it gets.
+fn secret() -> Result<Secret> {
+    let mut secret = [0u8; 16];
+    getrandom::fill(&mut secret).map_err(|err| anyhow::anyhow!("no random numbers: {err}"))?;
+    Ok(secret)
 }
 
 fn create_private_dir(dir: &Path) -> Result<()> {

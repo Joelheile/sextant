@@ -90,7 +90,7 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Episode> {
             "calendar" => {
                 segments.push(Segment {
                     start: event.ts,
-                    end: payload.end_ts,
+                    end: payload.end_ts.min(now),
                     app: "Calendar",
                     meeting: true,
                     payload,

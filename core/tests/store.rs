@@ -13,7 +13,7 @@ fn loaded(label: &str) -> (TempDb, Store) {
 #[test]
 fn database_is_encrypted_and_versioned() {
     let (db, store) = loaded("encrypted");
-    assert_eq!(store.schema_version().expect("test setup"), 1);
+    assert_eq!(store.schema_version().expect("test setup"), 2);
     drop(store);
     let mut header = [0u8; 16];
     std::fs::File::open(&db.path)
@@ -22,16 +22,28 @@ fn database_is_encrypted_and_versioned() {
         .expect("test setup");
     assert_ne!(&header, b"SQLite format 3\0");
     assert!(matches!(
-        Store::open(&db.path, &[9; 32]),
+        Store::open(&db.path, &[9; 32], &TEST_SECRET),
         Err(Error::BadKey)
     ));
     assert_eq!(
-        Store::open(&db.path, &TEST_KEY)
+        Store::open(&db.path, &TEST_KEY, &TEST_SECRET)
             .expect("test setup")
             .schema_version()
             .expect("test setup"),
-        1
+        2
     );
+}
+
+#[test]
+fn the_email_secret_is_stored_once_and_shared_with_readers() {
+    let db = TempDb::new("secret");
+    let tag = |store: &Store| sextant_core::redact("anna@example.com", &store.secret());
+    let first = db.open().expect("test setup");
+    let first_tag = tag(&first);
+    let second = Store::open(&db.path, &TEST_KEY, &[0xaa; 16]).expect("test setup");
+    assert_eq!(tag(&second), first_tag);
+    assert_eq!(tag(&second.reader().expect("test setup")), first_tag);
+    assert_eq!(first_tag.len(), "<email:>".len() + 16);
 }
 
 #[test]
