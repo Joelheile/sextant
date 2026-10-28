@@ -50,15 +50,15 @@ pub(crate) fn siphash24(key: &[u8; 16], data: &[u8]) -> u64 {
         k0 ^ 0x6c79_6765_6e65_7261,
         k1 ^ 0x7465_6462_7974_6573,
     ];
-    let mut blocks = data.chunks_exact(8);
-    for block in &mut blocks {
+    let (blocks, rest) = data.as_chunks::<8>();
+    for block in blocks {
         let m = le(block);
         v[3] ^= m;
         round(&mut v);
         round(&mut v);
         v[0] ^= m;
     }
-    let last = (data.len() as u64) << 56 | le(blocks.remainder());
+    let last = (data.len() as u64) << 56 | le(rest);
     v[3] ^= last;
     round(&mut v);
     round(&mut v);

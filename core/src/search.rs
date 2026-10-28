@@ -105,7 +105,7 @@ impl Store {
         if app.is_none() {
             hits.extend(self.search_speech(&expression, from, to, cap)?);
         }
-        hits.sort_by(|a, b| b.ts.cmp(&a.ts));
+        hits.sort_by_key(|hit| std::cmp::Reverse(hit.ts));
         Ok(hits.into_iter().skip(offset).take(limit).collect())
     }
 
