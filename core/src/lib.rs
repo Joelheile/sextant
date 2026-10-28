@@ -14,6 +14,7 @@ pub mod profile_fixture;
 mod redact;
 mod report;
 mod results;
+mod rewind;
 mod search;
 mod sessions;
 pub mod settings;
@@ -33,6 +34,7 @@ pub use model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utteran
 pub use redact::{Secret, redact, redact_json};
 pub use report::{ReportRow, WeeklyReport};
 pub use results::{MIN_DAYS, Measurement};
+pub use rewind::Turn;
 pub use search::{Hit, HitSource};
 pub use sessions::{Session, SessionPage};
 pub use settings::{Live, Settings, Sources};

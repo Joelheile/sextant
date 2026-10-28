@@ -16,6 +16,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("schema_v1.sql"),
     include_str!("schema_v2.sql"),
     include_str!("schema_v3.sql"),
+    include_str!("schema_v4.sql"),
 ];
 
 const EMAIL_SECRET: &str = "email_secret";
@@ -47,6 +48,8 @@ pub struct Retained {
     pub episodes: usize,
     pub entities: usize,
     pub commitments: usize,
+    /// Rewind search questions and answers.
+    pub turns: usize,
 }
 
 /// Row counts of the raw tables. Numbers only, safe for logs and tests.
@@ -236,6 +239,7 @@ impl Store {
         )?;
         gone.episodes = tx.execute("DELETE FROM episodes WHERE end_ts < ?1", params![cutoff])?;
         gone.commitments = tx.execute("DELETE FROM commitments WHERE ts < ?1", params![cutoff])?;
+        gone.turns = tx.execute("DELETE FROM turns WHERE ts < ?1", params![cutoff])?;
         tx.execute("DELETE FROM cases WHERE last_ts < ?1", params![cutoff])?;
         gone.entities = tx.execute(
             "DELETE FROM entities WHERE id NOT IN (SELECT entity_id FROM mentions)",

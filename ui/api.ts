@@ -162,6 +162,10 @@ export type SearchPage = {
   next_offset: number | null;
 };
 
+export type Turn = { id: number; ts: number; question: string; answer: string };
+
+export type Asked = { turn: Turn; page: SearchPage };
+
 export type WeeklyReport = {
   from_ts: number;
   to_ts: number;
@@ -242,6 +246,11 @@ export const api = {
   results: () => invoke<Results>("results"),
   search: (query: string, offset: number, limit: number) =>
     invoke<SearchPage>("search", { query, offset, limit }),
+  rewindAsk: (question: string) => invoke<Asked>("rewind_ask", { question }),
+  rewindHistory: (before: number | null) =>
+    invoke<Turn[]>("rewind_history", { before }),
+  rewindFit: (height: number) => invoke<void>("rewind_fit", { height }),
+  rewindHide: () => invoke<void>("rewind_hide"),
   weeklyReport: () => invoke<WeeklyReport>("weekly_report"),
   saveReportImage: (day: string, png: number[]) =>
     invoke<string>("save_report_image", { day, png }),
@@ -255,6 +264,10 @@ export const api = {
 /** Calls `handler` when the engine has started or failed to. Resolves once attached. */
 export const onReady = (handler: () => void): Promise<UnlistenFn> =>
   listen("ready", handler);
+
+/** Calls `handler` each time the shortcut or the menu bar shows the search panel. */
+export const onRewindOpen = (handler: () => void): Promise<UnlistenFn> =>
+  listen("rewind-open", handler);
 
 export type BackfillHandlers = {
   progress: (stage: Stage) => void;

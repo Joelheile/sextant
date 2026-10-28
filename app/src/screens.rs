@@ -1,4 +1,4 @@
-//! The typed commands behind Workflows, Search, Results, Privacy and the weekly report
+//! The typed commands behind Workflows, rewind search, Results, Privacy and the weekly report
 //! (plan.md §9). Reads go through the read-only connection, changes through the worker thread.
 //! Text from the database is redacted again on the way out, as in the MCP server.
 
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use sextant_core::{
     Action, Category, Enjoyment, Kind, Live, MIN_DAYS, Measurement, Session, Settings, Store,
-    Target, Workflow, WorkflowDetail, parse_correction, redact, skill,
+    Target, Turn, Workflow, WorkflowDetail, parse_correction, redact, skill,
 };
 use tauri::{AppHandle, Manager, State};
 
@@ -486,6 +486,10 @@ pub async fn search(
     offset: usize,
     limit: usize,
 ) -> Reply<SearchPage> {
+    search_page(&state, &query, offset, limit)
+}
+
+fn search_page(state: &AppState, query: &str, offset: usize, limit: usize) -> Reply<SearchPage> {
     let settings = crate::prefs::load(&state.dir).map_err(msg)?;
     if query.trim().is_empty() {
         return Ok(SearchPage {
@@ -498,7 +502,7 @@ pub async fn search(
         .read(|store| {
             let page = store.search_sessions(
                 &settings,
-                &query,
+                query,
                 (None, None),
                 None,
                 limit.clamp(1, MAX_ROWS),
@@ -655,4 +659,75 @@ pub async fn delete_everything(app: AppHandle) -> Reply<()> {
     .map_err(msg)?
     .map_err(|err| format!("{err:#}"))?;
     app.restart()
+}
+
+const REWIND_RESULTS: usize = 5;
+const REWIND_PAGE: usize = 20;
+
+#[derive(Serialize)]
+pub struct TurnView {
+    id: i64,
+    ts: i64,
+    question: String,
+    answer: String,
+}
+
+impl From<Turn> for TurnView {
+    fn from(turn: Turn) -> Self {
+        Self {
+            id: turn.id,
+            ts: turn.ts,
+            question: turn.question,
+            answer: turn.answer,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct Asked {
+    turn: TurnView,
+    page: SearchPage,
+}
+
+/// Answers a question in the rewind search panel and adds it to the history.
+#[tauri::command]
+pub async fn rewind_ask(state: State<'_, AppState>, question: String) -> Reply<Asked> {
+    let question = question.trim().to_string();
+    if question.is_empty() {
+        return Err("Type a question first.".into());
+    }
+    let page = search_page(&state, &question, 0, REWIND_RESULTS)?;
+    let now = clock::now();
+    let turn = state
+        .engine()?
+        .write(move |store| store.add_turn(now, &question, ""))
+        .map_err(msg)?;
+    Ok(Asked {
+        turn: turn.into(),
+        page,
+    })
+}
+
+/// Up to 20 past questions older than turn `before` (or the newest), newest first.
+#[tauri::command]
+pub async fn rewind_history(
+    state: State<'_, AppState>,
+    before: Option<i64>,
+) -> Reply<Vec<TurnView>> {
+    state
+        .engine()?
+        .read(|store| store.turns(before, REWIND_PAGE))
+        .map(|turns| turns.into_iter().map(TurnView::from).collect())
+        .map_err(msg)
+}
+
+/// Fits the panel to its content, `height` logical pixels.
+#[tauri::command]
+pub async fn rewind_fit(app: AppHandle, height: f64) -> Reply<()> {
+    crate::rewind::fit_panel(&app, height).map_err(msg)
+}
+
+#[tauri::command]
+pub async fn rewind_hide(app: AppHandle) -> Reply<()> {
+    crate::rewind::hide(&app).map_err(msg)
 }

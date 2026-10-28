@@ -13,7 +13,7 @@ fn loaded(label: &str) -> (TempDb, Store) {
 #[test]
 fn database_is_encrypted_and_versioned() {
     let (db, store) = loaded("encrypted");
-    assert_eq!(store.schema_version().expect("test setup"), 3);
+    assert_eq!(store.schema_version().expect("test setup"), 4);
     drop(store);
     let mut header = [0u8; 16];
     std::fs::File::open(&db.path)
@@ -30,7 +30,7 @@ fn database_is_encrypted_and_versioned() {
             .expect("test setup")
             .schema_version()
             .expect("test setup"),
-        3
+        4
     );
 }
 

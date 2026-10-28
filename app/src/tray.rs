@@ -1,5 +1,5 @@
 //! The menu bar icon (plan.md §9): filled while capturing, outline while paused, and a menu with
-//! the status line, "Pause 1 h", "Stop audio", Open and Quit. A dot shows in the icon while a call
+//! the status line, "Pause 1 h", "Stop audio", Search, Open and Quit. A dot shows in the icon while a call
 //! is transcribed. The status refreshes every few seconds.
 
 use std::thread;
@@ -27,9 +27,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let status = MenuItem::with_id(app, "status", "Starting", false, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", "Pause 1 h", false, None::<&str>)?;
     let stop_audio = MenuItem::with_id(app, "stop-audio", "Stop audio", false, None::<&str>)?;
+    let search = MenuItem::with_id(app, "search", "Search", true, Some(crate::rewind::SHORTCUT))?;
     let open = MenuItem::with_id(app, "open", "Open Sextant", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Sextant", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&status, &pause, &stop_audio, &open, &quit])?;
+    let menu = Menu::with_items(app, &[&status, &pause, &stop_audio, &search, &open, &quit])?;
     let icon = TrayIconBuilder::new()
         .icon(tauri::include_image!("icons/tray-paused.png"))
         .icon_as_template(true)
@@ -39,6 +40,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             "open" => {
                 if let Err(err) = open_window(app) {
                     eprintln!("opening the window failed: {err}");
+                }
+            }
+            "search" => {
+                if let Err(err) = crate::rewind::show(app) {
+                    eprintln!("opening search failed: {err}");
                 }
             }
             "pause" => {

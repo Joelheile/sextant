@@ -4,12 +4,10 @@ import { t, type Key } from "./i18n";
 import Onboarding from "./Onboarding";
 import Privacy from "./Privacy";
 import Results from "./Results";
-import Search from "./Search";
 import Workflows from "./Workflows";
 
 const TABS = [
   { id: "workflows", label: "tabWorkflows", screen: Workflows },
-  { id: "search", label: "tabSearch", screen: Search },
   { id: "results", label: "tabResults", screen: Results },
   { id: "privacy", label: "tabPrivacy", screen: Privacy },
 ] as const satisfies readonly { id: string; label: Key; screen: () => React.ReactNode }[];

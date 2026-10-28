@@ -98,7 +98,6 @@ const en = {
 
   pickCodeFolder: "Pick the folder that holds your code",
   tabWorkflows: "Workflows",
-  tabSearch: "Search",
   tabResults: "Results",
   tabPrivacy: "Privacy",
 
@@ -165,9 +164,8 @@ const en = {
   handoffDone: "Sextant now measures the hours. See Results.",
 
   searchPlaceholder: "Search what you saw and heard",
-  searchButton: "Search",
-  searchHint: "Searches text from your screen and call transcripts. Excluded apps never show up.",
   searchEmpty: "Nothing found.",
+  showResults: "Show results",
   source_screen: "Screen",
   source_mic: "You",
   source_system: "Other side",
@@ -339,7 +337,6 @@ const de: Record<Key, string> = {
 
   pickCodeFolder: "Wähle den Ordner mit deinem Code",
   tabWorkflows: "Abläufe",
-  tabSearch: "Suche",
   tabResults: "Ergebnisse",
   tabPrivacy: "Datenschutz",
 
@@ -406,9 +403,8 @@ const de: Record<Key, string> = {
   handoffDone: "Sextant misst jetzt die Stunden. Siehe Ergebnisse.",
 
   searchPlaceholder: "Suche, was du gesehen und gehört hast",
-  searchButton: "Suchen",
-  searchHint: "Durchsucht Text von deinem Bildschirm und Gesprächsmitschriften. Ausgeschlossene Apps erscheinen nie.",
   searchEmpty: "Nichts gefunden.",
+  showResults: "Ergebnisse zeigen",
   source_screen: "Bildschirm",
   source_mic: "Du",
   source_system: "Gegenseite",
