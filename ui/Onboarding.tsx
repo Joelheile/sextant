@@ -116,7 +116,16 @@ const PERMISSION_LABEL: Record<PermissionName, Key> = {
   calendar: "permCalendar",
   reminders: "permReminders",
   safari: "permSafari",
+  "screen-recording": "permScreen",
+  accessibility: "permAccessibility",
+  automation: "permAutomation",
 };
+
+const LIVE_PANE = {
+  "screen-recording": "screen-recording",
+  accessibility: "accessibility",
+  automation: "automation",
+} as const;
 
 function GrantAccess({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
   const [permissions, setPermissions] = useState<Permission[] | null>(null);
@@ -138,6 +147,13 @@ function GrantAccess({ onBack, onNext }: { onBack: () => void; onNext: () => voi
     try {
       if (permission.name === "safari") {
         await api.openSettingsPane("full-disk-access");
+      } else if (permission.name in LIVE_PANE) {
+        const pane = LIVE_PANE[permission.name as keyof typeof LIVE_PANE];
+        // macOS shows its prompt once. After that the user has to switch it on in Settings.
+        if (permission.status === "denied" || !(await api.requestPermission(permission.name))) {
+          await api.openSettingsPane(pane);
+        }
+        await refresh();
       } else if (permission.status === "undetermined") {
         await api.requestPermission(permission.name);
         await refresh();
@@ -177,6 +193,12 @@ function GrantAccess({ onBack, onNext }: { onBack: () => void; onNext: () => voi
       </ul>
       {permissions?.some((p) => p.name === "safari" && p.status !== "granted") && (
         <p className="muted">{t("safariRestart")}</p>
+      )}
+      {permissions?.some((p) => p.name === "screen-recording" && p.status !== "granted") && (
+        <p className="muted">{t("screenRestart")}</p>
+      )}
+      {permissions?.some((p) => p.name === "automation" && p.status !== "granted") && (
+        <p className="muted">{t("automationHint")}</p>
       )}
       {error && <p role="alert">{error}</p>}
       <div className="actions">

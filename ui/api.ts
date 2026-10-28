@@ -18,13 +18,25 @@ export type Settings = {
   git_folders: string[];
 };
 
-export type PermissionName = "calendar" | "reminders" | "safari";
+export type PermissionName =
+  | "calendar"
+  | "reminders"
+  | "safari"
+  | "screen-recording"
+  | "accessibility"
+  | "automation";
 export type Permission = {
   name: PermissionName;
   status: "granted" | "undetermined" | "denied";
 };
 
-export type SettingsPane = "full-disk-access" | "calendars" | "reminders";
+export type SettingsPane =
+  | "full-disk-access"
+  | "calendars"
+  | "reminders"
+  | "screen-recording"
+  | "accessibility"
+  | "automation";
 
 export type MapRow = {
   id: number;

@@ -60,7 +60,8 @@ pub struct Permission {
 /// Status of the permissions the ticked sources need.
 #[tauri::command]
 pub async fn permission_status(state: State<'_, AppState>) -> Reply<Vec<Permission>> {
-    let sources = prefs::load(&state.dir).map_err(msg)?.sources;
+    let settings = prefs::load(&state.dir).map_err(msg)?;
+    let sources = &settings.sources;
     let mut needed = Vec::new();
     if sources.calendar {
         needed.push(Permission {
@@ -78,10 +79,27 @@ pub async fn permission_status(state: State<'_, AppState>) -> Reply<Vec<Permissi
             status: platform::safari_status(),
         });
     }
+    if settings.live.ocr {
+        needed.push(Permission {
+            name: "screen-recording",
+            status: platform::screen_recording_status(),
+        });
+    }
+    if settings.live.metadata {
+        needed.push(Permission {
+            name: "accessibility",
+            status: platform::accessibility_status(),
+        });
+        needed.push(Permission {
+            name: "automation",
+            status: platform::automation_status(),
+        });
+    }
     Ok(needed)
 }
 
-/// Shows the system prompt for `calendar` or `reminders`. Returns whether access was granted.
+/// Shows the system prompt for `calendar`, `reminders`, `screen-recording`, `accessibility` or
+/// `automation`. Returns whether access is granted.
 #[tauri::command]
 pub async fn request_permission(name: String) -> Reply<bool> {
     tauri::async_runtime::spawn_blocking(move || platform::request_permission(&name))
@@ -90,7 +108,8 @@ pub async fn request_permission(name: String) -> Reply<bool> {
         .map_err(msg)
 }
 
-/// Opens `full-disk-access`, `calendars` or `reminders` in System Settings.
+/// Opens `full-disk-access`, `calendars`, `reminders`, `screen-recording`, `accessibility` or
+/// `automation` in System Settings.
 #[tauri::command]
 pub async fn open_settings_pane(pane: String) -> Reply<()> {
     platform::open_settings_pane(&pane).map_err(msg)
@@ -223,7 +242,12 @@ pub async fn set_mcp_switches(
 
 #[tauri::command]
 pub async fn finish_onboarding(state: State<'_, AppState>) -> Reply<Settings> {
-    prefs::update(&state.dir, |s| s.onboarded = true).map_err(msg)
+    let settings = prefs::update(&state.dir, |s| s.onboarded = true).map_err(msg)?;
+    state
+        .engine()?
+        .start_capture(settings.clone())
+        .map_err(msg)?;
+    Ok(settings)
 }
 
 #[cfg(test)]

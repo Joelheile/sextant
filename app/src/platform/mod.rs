@@ -1,20 +1,33 @@
-//! OS access for backfill (plan.md §6, §12). `cfg` appears only here: macOS gets the real
-//! implementation, other systems get one that reports "needs macOS" so the crate still builds.
+//! OS access for backfill and live capture (plan.md §4, §6, §12). `cfg` appears only here:
+//! macOS gets the real implementation, other systems get one that reports "needs macOS" so the
+//! crate still builds.
 
+#[cfg(target_os = "macos")]
+mod automation;
 #[cfg(target_os = "macos")]
 mod eventkit;
 #[cfg(target_os = "macos")]
+mod live;
+#[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
+mod render;
+#[cfg(target_os = "macos")]
+mod screen;
 #[cfg(not(target_os = "macos"))]
 mod unsupported;
+#[cfg(target_os = "macos")]
+mod vision;
 
 #[cfg(target_os = "macos")]
 pub use macos::{
-    System, calendar_status, open_settings_pane, pick_folder, reminders_status, request_permission,
-    safari_status,
+    System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,
+    open_settings_pane, pick_folder, pump, reminders_status, request_permission, safari_status,
+    screen_recording_status, start_live,
 };
 #[cfg(not(target_os = "macos"))]
 pub use unsupported::{
-    System, calendar_status, open_settings_pane, pick_folder, reminders_status, request_permission,
-    safari_status,
+    System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,
+    open_settings_pane, pick_folder, pump, reminders_status, request_permission, safari_status,
+    screen_recording_status, start_live,
 };

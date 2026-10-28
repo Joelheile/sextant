@@ -1,6 +1,20 @@
+use std::sync::Arc;
+
 use anyhow::{Result, bail};
 use sextant_core::backfill::{CalendarRecord, FileRecord, HistoryFile, Platform, ReminderRecord};
 use sextant_core::{Error, Result as CoreResult};
+
+use crate::capture::{Control, Pipeline, Sink};
+
+/// Never produced here: OCR fixtures need macOS.
+pub struct Timing {
+    pub width: usize,
+    pub height: usize,
+    pub level: &'static str,
+    pub p50_ms: f64,
+    pub p95_ms: f64,
+    pub missing: Vec<String>,
+}
 
 fn unsupported<T>() -> CoreResult<T> {
     Err(Error::Platform("needs macOS".into()))
@@ -42,6 +56,30 @@ pub fn reminders_status() -> &'static str {
 
 pub fn safari_status() -> &'static str {
     "denied"
+}
+
+pub fn screen_recording_status() -> &'static str {
+    "denied"
+}
+
+pub fn accessibility_status() -> &'static str {
+    "denied"
+}
+
+pub fn automation_status() -> &'static str {
+    "denied"
+}
+
+pub fn pump(seconds: f64) {
+    std::thread::sleep(std::time::Duration::from_secs_f64(seconds));
+}
+
+pub fn ocr_fixture_timings() -> Result<Vec<Timing>> {
+    bail!("needs macOS")
+}
+
+pub fn start_live(_control: Arc<Control>, _sink: Sink) -> Result<Pipeline> {
+    bail!("needs macOS")
 }
 
 pub fn request_permission(_name: &str) -> Result<bool> {

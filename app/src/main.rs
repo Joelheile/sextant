@@ -1,3 +1,5 @@
+mod bench;
+mod capture;
 mod clock;
 mod commands;
 mod connect;
@@ -31,12 +33,29 @@ fn start_engine(app: &AppHandle) {
         })
         .map_err(|err| format!("{err:#}"));
     let _ = state.engine.set(started);
+    if let Some(Ok(engine)) = state.engine.get() {
+        // Capture starts only after onboarding: the permissions are asked there.
+        match prefs::load(&state.dir) {
+            Ok(settings) if settings.onboarded => {
+                if let Err(err) = engine.start_capture(settings) {
+                    eprintln!("capture did not start: {err:#}");
+                }
+            }
+            Ok(_) => {}
+            Err(err) => eprintln!("capture did not start: {err:#}"),
+        }
+    }
     let _ = app.emit("ready", ());
 }
 
 fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // The bench never resolves the data folder, so it cannot touch real data.
+    if args.first().map(String::as_str) == Some("bench") {
+        return bench::run(&args[1..]);
+    }
     let dir = home::data_dir()?;
-    if std::env::args().nth(1).as_deref() == Some("mcp") {
+    if args.first().map(String::as_str) == Some("mcp") {
         return mcp::run(&dir);
     }
 

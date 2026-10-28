@@ -1,0 +1,391 @@
+//! The live pipeline (plan.md §4): a capture thread that runs triggers, gates and the diff gate,
+//! a queue that drops the oldest frame under load, and an OCR thread. Frames live in memory only
+//! and are dropped right after OCR. Neither thread is the Tauri main thread, and no database
+//! transaction is open while they work: finished records go to the writer through a sink.
+
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle, Thread};
+use std::time::{Duration, Instant};
+
+use anyhow::{Context, Result};
+use crossbeam_queue::ArrayQueue;
+use sextant_core::capture::{
+    self, Blocked, DiffGate, Sample, Signal, Triggers, classify, copy_event, focus_event,
+    idle_event, pause_event,
+};
+use sextant_core::{Frame, Item, Settings, Window};
+
+use super::sensors::{App, Ocr, Sensors};
+use super::stats::Stats;
+
+const ACTIVE_POLL: Duration = Duration::from_millis(250);
+const AWAY_POLL: Duration = Duration::from_secs(1);
+/// Frames waiting for OCR. OCR is much faster than the trigger rate, so more would only be stale.
+const QUEUE: usize = 2;
+
+/// Where finished records go, with the moment the screen was captured.
+pub type Sink = Arc<dyn Fn(Item, Instant) + Send + Sync>;
+
+/// What the UI and tray change while capture runs.
+pub struct Control {
+    settings: Mutex<Settings>,
+    paused_until: AtomicI64,
+}
+
+impl Control {
+    pub fn new(settings: Settings) -> Self {
+        Self {
+            settings: Mutex::new(settings),
+            paused_until: AtomicI64::new(0),
+        }
+    }
+
+    pub fn settings(&self) -> Settings {
+        self.settings
+            .lock()
+            .map(|settings| settings.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn set_settings(&self, settings: Settings) {
+        if let Ok(mut current) = self.settings.lock() {
+            *current = settings;
+        }
+    }
+
+    pub fn pause_until(&self, ts: i64) {
+        self.paused_until.store(ts, Ordering::Relaxed);
+    }
+
+    pub fn resume(&self) {
+        self.pause_until(0);
+    }
+
+    /// When the pause ends, or `None` when capture is running.
+    pub fn paused_until(&self, now_s: i64) -> Option<i64> {
+        let until = self.paused_until.load(Ordering::Relaxed);
+        (now_s < until).then_some(until)
+    }
+}
+
+/// A frame waiting for OCR.
+pub struct Job<I> {
+    image: I,
+    window: Window,
+    ts: i64,
+    taken: Instant,
+}
+
+pub type Queue<I> = ArrayQueue<Job<I>>;
+
+fn window_key(window: &Window) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    window.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub struct Capturer<S: Sensors> {
+    sensors: S,
+    control: Arc<Control>,
+    stats: Arc<Stats>,
+    sink: Sink,
+    queue: Arc<Queue<S::Image>>,
+    /// Wakes the OCR thread when a frame is queued.
+    waker: Option<Thread>,
+    triggers: Triggers,
+    diff: DiffGate,
+    last_window: Option<Window>,
+    /// A `focus` event is open: the next gate or absence has to close it.
+    open: bool,
+    clipboard: Option<i64>,
+}
+
+impl<S: Sensors> Capturer<S> {
+    pub fn new(
+        sensors: S,
+        control: Arc<Control>,
+        stats: Arc<Stats>,
+        queue: Arc<Queue<S::Image>>,
+        sink: Sink,
+    ) -> Self {
+        Self {
+            sensors,
+            control,
+            stats,
+            sink,
+            queue,
+            waker: None,
+            triggers: Triggers::new(),
+            diff: DiffGate::new(),
+            last_window: None,
+            open: false,
+            clipboard: None,
+        }
+    }
+
+    /// One poll. Returns how long to wait before the next. `now_ms` is a steady clock for the
+    /// trigger timing, `now_s` is Unix time for the records.
+    pub fn step(&mut self, now_ms: i64, now_s: i64) -> Duration {
+        let settings = self.control.settings();
+        let paused = self.control.paused_until(now_s).is_some();
+        if let Err(blocked) = capture::session(&settings, paused) {
+            // No OS call at all while paused or with every source off.
+            self.close(now_s, blocked == Blocked::Paused);
+            self.clipboard = None;
+            return AWAY_POLL;
+        }
+
+        let presence = self.sensors.presence();
+        let app = self.sensors.focused_app();
+        let signal = self.triggers.step(Sample {
+            now_ms,
+            focus: app.as_ref().map_or(0, |app| app.pid as u64),
+            idle_s: presence.idle_s,
+            locked: presence.locked,
+            asleep: presence.asleep,
+        });
+        match (signal, &app) {
+            (Some(Signal::Left(_)), _) => self.close(now_s, false),
+            (Some(Signal::Look(_)), Some(app)) => self.look(app, now_s, &settings),
+            _ => {}
+        }
+        self.watch_clipboard(app.as_ref(), now_s, &settings);
+
+        if self.triggers.away().is_some() {
+            AWAY_POLL
+        } else {
+            ACTIVE_POLL
+        }
+    }
+
+    /// Ends the open episode without saying anything about what came next.
+    fn close(&mut self, now_s: i64, paused: bool) {
+        if std::mem::take(&mut self.open) {
+            let event = if paused {
+                pause_event(now_s)
+            } else {
+                idle_event(now_s)
+            };
+            (self.sink)(Item::Event(event), Instant::now());
+        }
+        self.last_window = None;
+    }
+
+    fn look(&mut self, app: &App, now_s: i64, settings: &Settings) {
+        Stats::add(&self.stats.looks);
+        let window = match self.gates(app, settings, true) {
+            Ok(window) => window,
+            Err(blocked) => {
+                self.stats.block(blocked);
+                self.close(now_s, false);
+                return;
+            }
+        };
+        if settings.live.metadata && self.last_window.as_ref() != Some(&window) {
+            (self.sink)(Item::Event(focus_event(now_s, &window)), Instant::now());
+            self.last_window = Some(window.clone());
+            self.open = true;
+        }
+        if settings.live.ocr {
+            self.capture(app, window, now_s);
+        }
+    }
+
+    /// The gates in order, each before the OS call that would read more. `Ok` carries the window
+    /// metadata the settings allow.
+    fn gates(
+        &mut self,
+        app: &App,
+        settings: &Settings,
+        read_title: bool,
+    ) -> Result<Window, Blocked> {
+        let browser = classify(&app.bundle_id);
+        capture::app(settings, &app.name, browser)?;
+        capture::secure_input(self.sensors.secure_input())?;
+        let mut url = String::new();
+        if let Some(browser) = browser {
+            let tab = self.sensors.browser_tab(app, browser).ok();
+            capture::tab(tab.as_ref().map(|tab| tab.private))?;
+            url = tab.map(|tab| tab.url).unwrap_or_default();
+        }
+        let mut window = Window {
+            app: app.name.clone(),
+            bundle_id: app.bundle_id.clone(),
+            ..Window::default()
+        };
+        if settings.live.metadata {
+            window.url = url;
+            if read_title {
+                let text = self.sensors.window_text(app);
+                window.title = text.title;
+                window.doc = text.doc;
+            }
+        }
+        Ok(window)
+    }
+
+    fn capture(&mut self, app: &App, window: Window, now_s: i64) {
+        let taken = Instant::now();
+        let shot = match self.sensors.capture(app) {
+            Ok(shot) => shot,
+            Err(_) => {
+                Stats::add(&self.stats.capture_errors);
+                return;
+            }
+        };
+        Stats::add(&self.stats.captured);
+        if !self.diff.changed(window_key(&window), shot.thumb) {
+            Stats::add(&self.stats.skipped);
+            return;
+        }
+        let job = Job {
+            image: shot.image,
+            window,
+            ts: now_s,
+            taken,
+        };
+        if self.queue.force_push(job).is_some() {
+            Stats::add(&self.stats.dropped);
+        }
+        if let Some(ocr) = &self.waker {
+            ocr.unpark();
+        }
+    }
+
+    fn watch_clipboard(&mut self, app: Option<&App>, now_s: i64, settings: &Settings) {
+        if !settings.live.copy || self.triggers.away().is_some() {
+            self.clipboard = None;
+            return;
+        }
+        let count = self.sensors.clipboard_count();
+        let previous = self.clipboard.replace(count);
+        let Some(app) = app.filter(|_| previous.is_some_and(|p| p != count)) else {
+            return;
+        };
+        match self.gates(app, settings, false) {
+            Ok(_) => {
+                Stats::add(&self.stats.copies);
+                (self.sink)(Item::Event(copy_event(now_s, &app.name)), Instant::now());
+            }
+            Err(blocked) => self.stats.block(blocked),
+        }
+    }
+}
+
+/// Takes the oldest queued frame through OCR and hands the lines to the sink. Returns whether
+/// there was a frame. A frame that waited through a pause is dropped unread.
+pub fn recognize_next<I, O: Ocr<I>>(
+    queue: &Queue<I>,
+    ocr: &mut O,
+    control: &Control,
+    stats: &Stats,
+    sink: &Sink,
+    now_s: i64,
+) -> bool {
+    let Some(job) = queue.pop() else {
+        return false;
+    };
+    let settings = control.settings();
+    if control.paused_until(now_s).is_some() || !settings.live.ocr {
+        return true;
+    }
+    let started = Instant::now();
+    let raw = ocr.recognize(&job.image);
+    stats.record_ocr(started.elapsed());
+    drop(job.image);
+    match raw {
+        Ok(raw) => {
+            Stats::add(&stats.ocr);
+            let lines = capture::lines(raw);
+            if !lines.is_empty() {
+                let frame = Frame {
+                    ts: job.ts,
+                    window: job.window,
+                    lines,
+                };
+                sink(Item::Frame(frame), job.taken);
+            }
+        }
+        Err(_) => Stats::add(&stats.ocr_errors),
+    }
+    true
+}
+
+pub struct Pipeline {
+    stop: Arc<AtomicBool>,
+    threads: Vec<JoinHandle<()>>,
+    pub stats: Arc<Stats>,
+}
+
+impl Pipeline {
+    pub fn start<S, O>(sensors: S, ocr: O, control: Arc<Control>, sink: Sink) -> Result<Self>
+    where
+        S: Sensors,
+        O: Ocr<S::Image>,
+    {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stats = Arc::new(Stats::default());
+        let queue = Arc::new(ArrayQueue::new(QUEUE));
+
+        let ocr_thread = thread::Builder::new()
+            .name("sextant-ocr".into())
+            .spawn({
+                let (queue, control, stats, stop) =
+                    (queue.clone(), control.clone(), stats.clone(), stop.clone());
+                let sink = sink.clone();
+                let mut ocr = ocr;
+                move || {
+                    while !stop.load(Ordering::Relaxed) {
+                        let busy = recognize_next(
+                            &queue,
+                            &mut ocr,
+                            &control,
+                            &stats,
+                            &sink,
+                            crate::clock::now(),
+                        );
+                        if !busy {
+                            thread::park_timeout(Duration::from_millis(200));
+                        }
+                    }
+                }
+            })
+            .context("starting the OCR thread")?;
+
+        let mut capturer = Capturer::new(sensors, control, stats.clone(), queue, sink);
+        capturer.waker = Some(ocr_thread.thread().clone());
+        let capture_thread = thread::Builder::new()
+            .name("sextant-capture".into())
+            .spawn({
+                let stop = stop.clone();
+                move || {
+                    let start = Instant::now();
+                    while !stop.load(Ordering::Relaxed) {
+                        let now_ms = start.elapsed().as_millis() as i64;
+                        let wait = capturer.step(now_ms, crate::clock::now());
+                        thread::sleep(wait);
+                    }
+                }
+            })
+            .context("starting the capture thread")?;
+
+        Ok(Self {
+            stop,
+            threads: vec![capture_thread, ocr_thread],
+            stats,
+        })
+    }
+
+    /// Stops both threads and waits for them. Queued frames are dropped.
+    pub fn stop(self) {
+        self.stop.store(true, Ordering::Relaxed);
+        for thread in &self.threads {
+            thread.thread().unpark();
+        }
+        for thread in self.threads {
+            let _ = thread.join();
+        }
+    }
+}

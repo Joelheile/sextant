@@ -30,6 +30,38 @@ impl Default for Sources {
     }
 }
 
+/// Live capture sources (plan.md §3). Each one can be switched off on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Live {
+    /// Focused app, window title, document and browser address.
+    pub metadata: bool,
+    /// OCR text of the focused window.
+    pub ocr: bool,
+    /// Which app copied, never what.
+    pub copy: bool,
+    /// Safari, Firefox and other browsers that cannot report a private window. Off: their
+    /// windows are never read, because a private one could not be told apart.
+    pub opaque_browsers: bool,
+}
+
+impl Default for Live {
+    fn default() -> Self {
+        Self {
+            metadata: true,
+            ocr: true,
+            copy: true,
+            opaque_browsers: false,
+        }
+    }
+}
+
+impl Live {
+    pub fn any(&self) -> bool {
+        self.metadata || self.ocr || self.copy
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -42,6 +74,7 @@ pub struct Settings {
     pub mcp_workflows: bool,
     pub onboarded: bool,
     pub sources: Sources,
+    pub live: Live,
     /// Folders the user picked for git backfill.
     pub git_folders: Vec<String>,
 }
@@ -68,6 +101,7 @@ impl Default for Settings {
             mcp_workflows: true,
             onboarded: false,
             sources: Sources::default(),
+            live: Live::default(),
             git_folders: Vec::new(),
         }
     }

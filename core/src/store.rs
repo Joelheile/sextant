@@ -7,6 +7,7 @@ use std::time::Duration;
 use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 
 use crate::error::{Error, Result};
+use crate::model::EventKind;
 use crate::redact::{Secret, redact};
 use crate::time::DAY;
 use crate::writer::unpack;
@@ -42,6 +43,16 @@ pub struct Retained {
     pub episodes: usize,
     pub entities: usize,
     pub commitments: usize,
+}
+
+/// Row counts of the raw tables. Numbers only, safe for logs and tests.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Counts {
+    pub events: usize,
+    pub frames: usize,
+    pub lines: usize,
+    pub windows: usize,
+    pub utterances: usize,
 }
 
 impl Store {
@@ -119,6 +130,32 @@ impl Store {
 
     pub fn utc_offset(&self) -> i32 {
         self.utc_offset_s
+    }
+
+    pub fn counts(&self) -> Result<Counts> {
+        let count = |table: &str| -> Result<usize> {
+            Ok(self
+                .conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get::<_, i64>(0)
+                })? as usize)
+        };
+        Ok(Counts {
+            events: count("events")?,
+            frames: count("frames")?,
+            lines: count("lines")?,
+            windows: count("windows")?,
+            utterances: count("utterances")?,
+        })
+    }
+
+    /// Live events of one kind, for example how many `focus` events were written.
+    pub fn event_count(&self, kind: EventKind) -> Result<usize> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM events WHERE kind = ?1",
+            params![kind.as_str()],
+            |row| row.get::<_, i64>(0),
+        )? as usize)
     }
 
     /// Removes every backfill event so a new backfill replaces the old one instead of doubling it.

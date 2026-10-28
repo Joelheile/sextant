@@ -1,6 +1,7 @@
 //! Sextant logic without OS APIs: storage, work graph, finder. See plan.md §7.
 
 pub mod backfill;
+pub mod capture;
 pub mod connect;
 mod corrections;
 mod error;
@@ -27,6 +28,6 @@ pub use finder::{
 pub use model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
 pub use redact::{Secret, redact, redact_json};
 pub use search::{Hit, HitSource};
-pub use settings::{Settings, Sources};
-pub use store::{Key, Retained, Store};
+pub use settings::{Live, Settings, Sources};
+pub use store::{Counts, Key, Retained, Store};
 pub use writer::{Flushed, Writer};

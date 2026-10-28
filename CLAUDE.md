@@ -21,6 +21,8 @@ Read `plan.md` first. It is the spec: principles, privacy rules (§10), budgets 
 | Test | `cargo test --workspace -q` |
 | Test core only | `cargo test -p sextant-core -q` |
 | Budget tests (first map, MCP p95, search, refresh) | `cargo test -p sextant-core --release -- --nocapture` |
+| OCR budget on synthetic fixtures (macOS) | `cargo test -p sextant-app --release ocr -- --nocapture` or `cargo run -p sextant-app --release -- bench` |
+| Live capture bench (user step: needs Screen Recording; agents never run it) | `cargo run -p sextant-app --release -- bench --live 60` |
 | MCP server over stdio | `SEXTANT_HOME=.dev-data cargo run -q -- mcp` (or `sextant mcp` from a build) |
 | Network check | `scripts/check-network.sh` |
 | All checks (Stop hook) | `scripts/stop-hook.sh` |

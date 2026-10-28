@@ -2,14 +2,26 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
+use objc2::rc::Retained;
+use objc2_app_kit::NSWorkspace;
+use objc2_application_services::{AXIsProcessTrusted, AXIsProcessTrustedWithOptions};
+use objc2_core_foundation::{CFDictionary, CFRunLoop, kCFRunLoopDefaultMode};
+use objc2_core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
+use objc2_foundation::{NSDictionary, NSNumber, NSString};
 use sextant_core::backfill::{
     CalendarRecord, FileRecord, HistoryFile, HistoryKind, Platform, ReminderRecord, parse_spotlight,
 };
+use sextant_core::capture::{Browser, classify};
 use sextant_core::{Error, Result as CoreResult};
 
+use super::automation;
 use super::eventkit::{self, Kind};
+use super::live::Mac;
+use super::vision::{CHOSEN, Recognizer, Timing, fixture_timings};
+use crate::capture::{Control, Pipeline, Sink};
 use crate::clock;
 
 /// Chromium browsers: name and the folder under Application Support that holds their profiles.
@@ -178,20 +190,108 @@ pub fn safari_status() -> &'static str {
     }
 }
 
-/// Shows the system prompt for `calendar` or `reminders`. Blocks until the user answers.
+pub fn screen_recording_status() -> &'static str {
+    if CGPreflightScreenCaptureAccess() {
+        "granted"
+    } else {
+        "undetermined"
+    }
+}
+
+pub fn accessibility_status() -> &'static str {
+    // SAFETY: a plain C call without arguments.
+    if unsafe { AXIsProcessTrusted() } {
+        "granted"
+    } else {
+        "undetermined"
+    }
+}
+
+/// The bundle ids of the running browsers whose address Sextant reads.
+fn running_browsers() -> Vec<String> {
+    NSWorkspace::sharedWorkspace()
+        .runningApplications()
+        .iter()
+        .filter_map(|app| app.bundleIdentifier())
+        .map(|id| id.to_string())
+        .filter(|id| matches!(classify(id), Some(Browser::Chromium | Browser::Arc)))
+        .collect()
+}
+
+/// Automation is asked per target app, and only for a running one. With no browser open the
+/// answer is not known yet.
+pub fn automation_status() -> &'static str {
+    let answers: Vec<Option<bool>> = running_browsers()
+        .iter()
+        .map(|id| automation::permission(id, false))
+        .collect();
+    if answers.is_empty() || answers.contains(&None) {
+        "undetermined"
+    } else if answers.contains(&Some(false)) {
+        "denied"
+    } else {
+        "granted"
+    }
+}
+
+fn request_accessibility() -> bool {
+    let key = NSString::from_str("AXTrustedCheckOptionPrompt");
+    let options: Retained<NSDictionary<NSString, NSNumber>> =
+        NSDictionary::from_retained_objects(&[&*key], &[NSNumber::new_bool(true)]);
+    // SAFETY: NSDictionary and CFDictionary are toll-free bridged and `options` outlives the call.
+    unsafe {
+        let bridged = &*Retained::as_ptr(&options).cast::<CFDictionary>();
+        AXIsProcessTrustedWithOptions(Some(bridged))
+    }
+}
+
+fn request_automation() -> bool {
+    let answers: Vec<Option<bool>> = running_browsers()
+        .iter()
+        .map(|id| automation::permission(id, true))
+        .collect();
+    !answers.is_empty() && answers.iter().all(|answer| *answer == Some(true))
+}
+
+/// Shows the system prompt for `calendar`, `reminders`, `screen-recording`, `accessibility` or
+/// `automation`. Calendar and reminders block until the user answers; the others return whether
+/// access is granted right now, and the user finishes in System Settings.
 pub fn request_permission(name: &str) -> Result<bool> {
     let kind = match name {
         "calendar" => Kind::Events,
         "reminders" => Kind::Reminders,
+        "screen-recording" => return Ok(CGRequestScreenCaptureAccess()),
+        "accessibility" => return Ok(request_accessibility()),
+        "automation" => return Ok(request_automation()),
         _ => bail!("{name} has no system prompt"),
     };
     eventkit::request(kind).context("asking for permission")
 }
 
-const PANES: [(&str, &str); 3] = [
+/// Runs the main run loop for `seconds`. The command line bench has no app loop of its own, and
+/// the workspace only reports the frontmost app while the main loop runs.
+pub fn pump(seconds: f64) {
+    // SAFETY: reads a constant exported by Core Foundation.
+    CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, seconds, false);
+}
+
+/// OCR time on the synthetic fixtures for both levels at both window sizes.
+pub fn ocr_fixture_timings() -> Result<Vec<Timing>> {
+    fixture_timings()
+}
+
+/// Starts live capture on its own threads.
+pub fn start_live(control: Arc<Control>, sink: Sink) -> Result<Pipeline> {
+    Pipeline::start(Mac::new(), Recognizer::new(CHOSEN), control, sink)
+}
+
+const PANES: [(&str, &str); 6] = [
     ("full-disk-access", "Privacy_AllFiles"),
     ("calendars", "Privacy_Calendars"),
     ("reminders", "Privacy_Reminders"),
+    ("screen-recording", "Privacy_ScreenCapture"),
+    ("accessibility", "Privacy_Accessibility"),
+    ("automation", "Privacy_Automation"),
 ];
 
 pub fn open_settings_pane(pane: &str) -> Result<()> {
