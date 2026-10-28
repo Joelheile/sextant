@@ -1,2 +1,3 @@
 [env]
 SEXTANT_HOME = { value = ".dev-data", relative = true }
+ORT_DYLIB_PATH = { value = "app/frameworks/libonnxruntime.dylib", relative = true }

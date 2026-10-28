@@ -1,6 +1,6 @@
-//! The models on macOS (plan.md §4, §12): ONNX Runtime loaded from the downloaded library, Silero
-//! VAD driven directly, and Parakeet TDT 0.6B v3 through parakeet-rs. All of it reads from the
-//! models folder; nothing is fetched here.
+//! The models on macOS (plan.md §4, §12): ONNX Runtime loaded from the library inside the app,
+//! Silero VAD driven directly, and Parakeet TDT 0.6B v3 through parakeet-rs. The models are read
+//! from the models folder; nothing is fetched here.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -13,7 +13,7 @@ use parakeet_rs::{ExecutionConfig, ExecutionProvider, ParakeetTDT, Transcriber};
 
 use crate::audio::{Runs, Speech, Vad};
 
-const RUNTIME: &str = "runtime/libonnxruntime.dylib";
+const RUNTIME: &str = "Frameworks/libonnxruntime.dylib";
 const SILERO: &str = "vad/silero_vad.onnx";
 const PARAKEET: &str = "parakeet";
 const COREML_CACHE: &str = "coreml-cache";
@@ -23,8 +23,22 @@ const CONTEXT: usize = 64;
 const FRAME: usize = 512;
 const STATE: usize = 2 * 128;
 
+/// The library signed into the app bundle (`Sextant.app/Contents/Frameworks`), so the hardened
+/// runtime accepts it. `ORT_DYLIB_PATH` points dev builds, which have no bundle, at the copy
+/// `scripts/fetch-onnxruntime.sh` leaves in `app/frameworks`.
+fn runtime() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("ORT_DYLIB_PATH") {
+        return Ok(path.into());
+    }
+    let exe = std::env::current_exe().context("find the app")?;
+    let contents = exe.parent().and_then(Path::parent);
+    contents
+        .map(|contents| contents.join(RUNTIME))
+        .ok_or_else(|| anyhow!("the app is not inside a bundle"))
+}
+
 /// ONNX Runtime allows one environment per process, so it is made on first use and shared.
-fn environment(models: &Path) -> Result<Environment> {
+fn environment() -> Result<Environment> {
     static ENVIRONMENT: OnceLock<Mutex<Option<Environment>>> = OnceLock::new();
     let mut slot = ENVIRONMENT
         .get_or_init(|| Mutex::new(None))
@@ -33,7 +47,7 @@ fn environment(models: &Path) -> Result<Environment> {
     if let Some(environment) = slot.as_ref() {
         return Ok(environment.clone());
     }
-    let environment = parakeet_rs::ort::init_from(models.join(RUNTIME))
+    let environment = parakeet_rs::ort::init_from(runtime()?)
         .context("load ONNX Runtime")?
         .build()
         .context("start ONNX Runtime")?;
@@ -69,7 +83,7 @@ impl Speech for Parakeet {
             .with_intra_threads(threads)
             .with_coreml_cache_dir(self.models.join(COREML_CACHE))
             .with_custom_configure(|builder| Ok(builder.with_prepacking(false)?))
-            .with_environment(environment(&self.models)?);
+            .with_environment(environment()?);
         let model = ParakeetTDT::from_pretrained(self.models.join(PARAKEET), Some(config))
             .map_err(|err| anyhow!("load Parakeet: {err}"))?;
         self.loaded = Some(model);
@@ -100,7 +114,7 @@ pub struct Silero {
 pub fn silero(models: &Path) -> impl FnMut() -> Result<Silero> + Send + 'static + use<> {
     let models = models.to_path_buf();
     move || {
-        let session = Session::builder(&environment(&models)?)
+        let session = Session::builder(&environment()?)
             .map_err(|err| anyhow!("{err}"))?
             .with_intra_threads(1)
             .map_err(|err| anyhow!("{err}"))?

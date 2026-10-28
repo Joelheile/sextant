@@ -5,7 +5,6 @@
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result, bail};
@@ -18,65 +17,34 @@ pub struct Asset {
     pub url: &'static str,
     pub sha256: &'static str,
     pub bytes: u64,
-    /// Set when the download is an archive and only one file of it is wanted.
-    pub member: Option<Member>,
 }
 
-pub struct Member {
-    pub name: &'static str,
-    pub sha256: &'static str,
-    pub bytes: u64,
-}
-
-impl Asset {
-    fn installed_bytes(&self) -> u64 {
-        self.member
-            .as_ref()
-            .map_or(self.bytes, |member| member.bytes)
-    }
-}
-
-/// Everything speech to text needs: the ONNX Runtime library, the voice activity model and
-/// NVIDIA Parakeet TDT 0.6B v3 (CC-BY-4.0), int8.
+/// Everything speech to text needs: the voice activity model and NVIDIA Parakeet TDT 0.6B v3
+/// (CC-BY-4.0), int8. ONNX Runtime ships inside the app (plan.md §14).
 pub const ASSETS: &[Asset] = &[
-    Asset {
-        file: "runtime/libonnxruntime.dylib",
-        url: "https://github.com/microsoft/onnxruntime/releases/download/v1.31.1/onnxruntime-osx-arm64-1.31.1.tgz",
-        sha256: "2e1344a1926ee50eb25b38153cb6992c3567515aef0e677a1a520a1798896d6f",
-        bytes: 36_936_435,
-        member: Some(Member {
-            name: "onnxruntime-osx-arm64-1.31.1/lib/libonnxruntime.1.31.1.dylib",
-            sha256: "17500d6b1e37e70f43a2c57d94233a1bc29fbcb297be0a5f8c7c13184f3307ba",
-            bytes: 44_797_256,
-        }),
-    },
     Asset {
         file: "vad/silero_vad.onnx",
         url: "https://raw.githubusercontent.com/snakers4/silero-vad/v6.2.3/src/silero_vad/data/silero_vad.onnx",
         sha256: "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
         bytes: 2_327_524,
-        member: None,
     },
     Asset {
         file: "parakeet/vocab.txt",
         url: "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/vocab.txt",
         sha256: "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
         bytes: 93_939,
-        member: None,
     },
     Asset {
         file: "parakeet/decoder_joint-model.int8.onnx",
         url: "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/decoder_joint-model.int8.onnx",
         sha256: "eea7483ee3d1a30375daedc8ed83e3960c91b098812127a0d99d1c8977667a70",
         bytes: 18_202_004,
-        member: None,
     },
     Asset {
         file: "parakeet/encoder-model.int8.onnx",
         url: "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/encoder-model.int8.onnx",
         sha256: "6139d2fa7e1b086097b277c7149725edbab89cc7c7ae64b23c741be4055aff09",
         bytes: 652_183_999,
-        member: None,
     },
 ];
 
@@ -99,8 +67,7 @@ pub fn dir(data_dir: &Path) -> PathBuf {
 /// the install is an atomic rename, so a file of the right size is a whole one.
 pub fn installed(models: &Path, assets: &[Asset]) -> bool {
     assets.iter().all(|asset| {
-        fs::metadata(models.join(asset.file))
-            .is_ok_and(|meta| meta.len() == asset.installed_bytes())
+        fs::metadata(models.join(asset.file)).is_ok_and(|meta| meta.len() == asset.bytes)
     })
 }
 
@@ -131,7 +98,7 @@ pub fn download(
     let mut done = 0;
     for asset in assets {
         let target = models.join(asset.file);
-        if fs::metadata(&target).is_ok_and(|meta| meta.len() == asset.installed_bytes()) {
+        if fs::metadata(&target).is_ok_and(|meta| meta.len() == asset.bytes) {
             done += asset.bytes;
             on_progress(Progress { done, total });
             continue;
@@ -155,19 +122,10 @@ pub fn download(
             bail!("cancelled");
         }
         verify(&file, asset.sha256, asset.bytes).with_context(|| asset.file.to_string())?;
-        let ready = match &asset.member {
-            Some(member) => {
-                let unpacked = unpack(&file, member, &partial)?;
-                verify(&unpacked, member.sha256, member.bytes)
-                    .with_context(|| asset.file.to_string())?;
-                unpacked
-            }
-            None => file,
-        };
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).context("create the models folder")?;
         }
-        fs::rename(&ready, &target).context("install a model file")?;
+        fs::rename(&file, &target).context("install a model file")?;
         done += asset.bytes;
         on_progress(Progress { done, total });
     }
@@ -200,24 +158,6 @@ fn verify(path: &Path, sha256: &str, bytes: u64) -> Result<()> {
         bail!("download does not match its checksum");
     }
     Ok(())
-}
-
-/// Extracts one member of a `.tgz` with the system `tar` and returns where it landed.
-fn unpack(archive: &Path, member: &Member, into: &Path) -> Result<PathBuf> {
-    let out = into.join("unpacked");
-    fs::create_dir_all(&out).context("create the unpack folder")?;
-    let status = Command::new("/usr/bin/tar")
-        .arg("-xzf")
-        .arg(archive)
-        .arg("-C")
-        .arg(&out)
-        .arg(member.name)
-        .status()
-        .context("run tar")?;
-    if !status.success() {
-        bail!("tar could not unpack {}", member.name);
-    }
-    Ok(out.join(member.name))
 }
 
 #[cfg(target_os = "macos")]
@@ -377,14 +317,12 @@ mod tests {
                 url: "u://hello",
                 sha256: HELLO,
                 bytes: 5,
-                member: None,
             },
             Asset {
                 file: "b/world.txt",
                 url: "u://world",
                 sha256: WORLD,
                 bytes: 5,
-                member: None,
             },
         ]
     }
@@ -486,58 +424,10 @@ mod tests {
     }
 
     #[test]
-    fn one_member_of_an_archive_is_unpacked_and_checked() {
-        let models = temp();
-        let src = temp();
-        fs::create_dir_all(src.join("pack/lib")).expect("dirs");
-        fs::write(src.join("pack/lib/lib.dylib"), b"world").expect("lib");
-        fs::write(src.join("pack/other"), b"x").expect("other");
-        let archive = src.join("pack.tgz");
-        let status = Command::new("/usr/bin/tar")
-            .arg("-czf")
-            .arg(&archive)
-            .arg("-C")
-            .arg(&src)
-            .arg("pack")
-            .status()
-            .expect("tar");
-        assert!(status.success());
-        let bytes = fs::read(&archive).expect("archive");
-        let leak = |text: String| -> &'static str { Box::leak(text.into_boxed_str()) };
-        let hash: String = Sha256::digest(&bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
-        let asset = [Asset {
-            file: "runtime/lib.dylib",
-            url: "u://pack",
-            sha256: leak(hash),
-            bytes: bytes.len() as u64,
-            member: Some(Member {
-                name: "pack/lib/lib.dylib",
-                sha256: WORLD,
-                bytes: 5,
-            }),
-        }];
-        let fake = Fake::new(&[("u://pack", &bytes)]);
-        download(&models, &asset, &fake, &AtomicBool::new(false), &quiet).expect("download");
-        assert_eq!(
-            fs::read(models.join("runtime/lib.dylib")).expect("lib"),
-            b"world"
-        );
-        assert!(installed(&models, &asset));
-        let _ = fs::remove_dir_all(models);
-        let _ = fs::remove_dir_all(src);
-    }
-
-    #[test]
     fn the_pinned_assets_are_well_formed() {
         for asset in ASSETS {
             assert!(asset.url.starts_with("https://"), "{}", asset.url);
             assert_eq!(asset.sha256.len(), 64, "{}", asset.file);
-            if let Some(member) = &asset.member {
-                assert_eq!(member.sha256.len(), 64);
-            }
         }
         assert!(total_bytes(ASSETS) < 800 * 1024 * 1024);
     }
