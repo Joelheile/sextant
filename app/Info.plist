@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Sextant transcribes your side of calls on this Mac. Audio never leaves the device or touches the disk.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Sextant transcribes the other side of calls from the call app only. Audio never leaves the device or touches the disk.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Sextant reads the address of the browser tab you are looking at, so it can group your work.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Sextant reads your last 90 days of calendar events to draw your first workflow map.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Sextant reads your reminders to find promises you keep pushing.</string>
+</dict>
+</plist>

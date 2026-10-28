@@ -1,0 +1,2 @@
+[env]
+SEXTANT_HOME = { value = ".dev-data", relative = true }

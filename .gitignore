@@ -1,0 +1,9 @@
+/target
+/dist
+/node_modules
+/.dev-data
+/app/gen
+/fixtures/speech
+*.snap.new
+.DS_Store
+*.tsbuildinfo
