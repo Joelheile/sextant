@@ -29,7 +29,7 @@ pub use corrections::{Rule, Target, parse as parse_correction};
 pub use error::{Error, Result};
 pub use finder::{
     Action, CaseExample, Category, CopyPoint, Enjoyment, Kind, OpenCommitment, RefreshStats,
-    StepInfo, StepLink, Workflow, WorkflowDetail,
+    StepInfo, StepLink, StepSample, Workflow, WorkflowDetail,
 };
 pub use model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
 pub use recall::keywords;

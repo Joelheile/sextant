@@ -28,6 +28,19 @@ private let answerSchema = object("Answer", [
     ("note", "The number of the note that supports the answer, or 0 if none does", number),
 ])
 
+private let judgeSchema = object("Judgment", [
+    ("share", "How much of this step a software agent with access to these apps could do without the user",
+     DynamicGenerationSchema(name: "Share", anyOf: ["not at all", "a little", "half", "most", "nearly all"])),
+    ("reason", "One short sentence on what the agent could do or what still needs the user", text),
+])
+
+struct Step: Codable {
+    let name: String
+    let category: String
+    let apps: [String]
+    let objects: [String]
+}
+
 struct Note: Codable {
     let app: String
     let title: String
@@ -103,6 +116,28 @@ public func sextantLanguageAnswer(_ input: UnsafePointer<CChar>) -> UnsafeMutabl
         Answer only from the numbered notes, which are text read from their screen and calls. \
         Never guess or add facts.
         """, "Question: \(input.question)\n\nNotes:\n\(notes)", answerSchema)
+}
+
+/// Input: `{"name", "category", "apps", "objects"}` for one recurring step.
+/// Output: `{"share": "most", "reason": "..."}`.
+@_cdecl("sextant_language_judge")
+public func sextantLanguageJudge(_ input: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
+    guard let step = try? JSONDecoder().decode(Step.self, from: Data(String(cString: input).utf8)) else {
+        return nil
+    }
+    let objects = step.objects.map { "- \($0)" }.joined(separator: "\n")
+    return respond("""
+        You judge how much of a recurring computer task a software agent could take over. The agent \
+        can read and write in the user's apps but cannot make judgment calls the user would want to \
+        make, like approving money, choosing what to say to a person or creative decisions. Judge \
+        from the step alone and be sober: most steps need the user for something.
+        """, """
+        Step: \(step.name)
+        Kind: \(step.category)
+        Apps: \(step.apps.joined(separator: ", "))
+        What it works on, with numbers and names replaced:
+        \(objects)
+        """, judgeSchema)
 }
 
 @_cdecl("sextant_language_free")

@@ -6,6 +6,7 @@ use super::commitments::Commitment;
 use super::entities::Case;
 use super::episodes::Episode;
 use super::graph::{Basis, FOLLOW_WINDOW_S, Follow, Workflow};
+use super::judgments::Judgment;
 use super::steps::{Category, Step, text_enum};
 use crate::corrections::Overrides;
 use crate::time::DAY;
@@ -77,11 +78,14 @@ fn median(values: &mut [f64]) -> f64 {
     values.get(values.len() / 2).copied().unwrap_or(0.0)
 }
 
-/// Step potential = category prior x length factor x (0.6 + 0.4 x stability) x repetition.
+/// Step potential = prior x length factor x (0.6 + 0.4 x stability) x repetition.
 /// Length is the median episode, stability the share of episodes within 0.5x to 2x of it.
+/// The prior is the on-device model's judgment of the step when there is one, else the
+/// category's.
 pub(crate) fn score_steps(
     steps: &[Step],
     episodes: &[Episode],
+    judged: &HashMap<String, Judgment>,
     utc_offset_s: i32,
 ) -> Vec<StepScore> {
     steps
@@ -96,11 +100,13 @@ pub(crate) fn score_steps(
             let typical_min = typical / 60.0;
             let length = if typical_min <= 60.0 { 1.0 } else if typical_min <= 180.0 { 0.85 } else { 0.75 };
             let repetition = if days.len() >= 2 { 1.0 } else { 0.8 };
-            let prior = step.category.prior();
+            let (prior, basis) = match judged.get(&step.key) {
+                Some(judgment) => (judgment.share, format!("model ({})", judgment.reason)),
+                None => (step.category.prior(), step.category.as_str().to_string()),
+            };
             let potential = prior * length * (0.6 + 0.4 * stability) * repetition;
             let reasons = vec![format!(
-                "potential {potential:.2} = {} prior {prior:.2} x length {length:.2} ({typical_min:.0} min typical) x (0.6 + 0.4 x stability {stability:.2}: {stable} of {} episodes near typical) x repetition {repetition:.1} ({} days)",
-                step.category.as_str(),
+                "potential {potential:.2} = {basis} prior {prior:.2} x length {length:.2} ({typical_min:.0} min typical) x (0.6 + 0.4 x stability {stability:.2}: {stable} of {} episodes near typical) x repetition {repetition:.1} ({} days)",
                 seconds.len(),
                 days.len(),
             )];

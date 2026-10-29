@@ -159,4 +159,15 @@ pub mod language {
     pub fn answer(_question: &str, _notes: &[Note]) -> Option<Answer> {
         None
     }
+
+    pub struct Step<'a> {
+        pub name: &'a str,
+        pub category: &'a str,
+        pub apps: &'a [String],
+        pub objects: &'a [String],
+    }
+
+    pub fn judge(_step: &Step) -> Option<(f64, String)> {
+        None
+    }
 }

@@ -5,6 +5,7 @@ mod commitments;
 mod entities;
 mod episodes;
 mod graph;
+mod judgments;
 mod score;
 mod steps;
 
@@ -13,6 +14,8 @@ use std::collections::{BTreeSet, HashMap};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use self::episodes::EventRow;
+use self::judgments::Judgment;
+pub use self::judgments::StepSample;
 pub use self::score::{Action, Enjoyment, Kind};
 pub use self::steps::Category;
 use crate::backfill::UPCOMING_DAYS;
@@ -133,6 +136,7 @@ fn analyze(
     events: &[EventRow],
     spoken: &[(i64, String)],
     overrides: &Overrides,
+    judged: &HashMap<String, Judgment>,
     now: i64,
     utc_offset_s: i32,
 ) -> Analysis {
@@ -143,7 +147,7 @@ fn analyze(
         &overrides.field("merge_into"),
         &overrides.field("name"),
     );
-    let step_scores = score::score_steps(&steps, &episodes, utc_offset_s);
+    let step_scores = score::score_steps(&steps, &episodes, judged, utc_offset_s);
     let (entities, mut cases) = entities::build(&episodes);
     let copies: Vec<(i64, &str)> = past
         .iter()
@@ -381,7 +385,15 @@ impl Store {
         let events = load_events(&self.conn, from, now + UPCOMING_DAYS * DAY)?;
         let spoken = load_spoken(&self.conn, from, now)?;
         let overrides = Overrides::load(&self.conn)?;
-        let analysis = analyze(&events, &spoken, &overrides, now, self.utc_offset_s);
+        let judged = judgments::load(&self.conn)?;
+        let analysis = analyze(
+            &events,
+            &spoken,
+            &overrides,
+            &judged,
+            now,
+            self.utc_offset_s,
+        );
         persist(&mut self.conn, &analysis)?;
         Ok(RefreshStats {
             episodes: analysis.episodes.len(),

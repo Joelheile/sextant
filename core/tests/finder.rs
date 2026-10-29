@@ -277,3 +277,32 @@ fn refresh_never_reads_further_back_than_retention() {
     store.set_retention_days(30);
     assert_eq!(store.refresh(later).expect("test setup").episodes, 0);
 }
+
+#[test]
+fn a_model_judgment_replaces_the_category_prior_at_the_next_refresh() {
+    let (_db, mut store) = refreshed("judgments");
+    let before = invoice(&store);
+    let samples = store.unjudged_steps(50).expect("test setup");
+    let step = &before.steps[0];
+    let sample = samples
+        .iter()
+        .find(|s| s.key == step.key)
+        .expect("every step starts unjudged");
+    assert!(!sample.apps.is_empty() && !sample.objects.is_empty());
+    assert!(step.potential > 0.0);
+
+    store
+        .add_judgment(WEEK_NOW, &step.key, 0.0, "needs a person to decide")
+        .expect("test setup");
+    assert!(
+        store
+            .unjudged_steps(50)
+            .expect("test setup")
+            .iter()
+            .all(|s| s.key != step.key)
+    );
+    store.refresh(WEEK_NOW).expect("test setup");
+    let after = invoice(&store);
+    assert_eq!(after.steps[0].potential, 0.0);
+    assert!(after.potential < before.potential);
+}

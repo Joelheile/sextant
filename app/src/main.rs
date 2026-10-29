@@ -7,6 +7,7 @@ mod connect;
 mod data;
 mod engine;
 mod home;
+mod judge;
 mod keys;
 mod mcp;
 mod models;
@@ -124,6 +125,7 @@ fn main() -> anyhow::Result<()> {
                 .name("sextant-start".into())
                 .spawn(move || start_engine(&handle))
                 .context("starting the start-up thread")?;
+            judge::spawn(app.handle().clone())?;
             Ok(())
         })
         .build(tauri::generate_context!())
