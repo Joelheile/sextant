@@ -14,7 +14,7 @@ Everything stays on the device, encrypted. It should feel invisible: no fan, no 
 - **Value in 60 seconds.** On install, Sextant reads history you already have and shows a first workflow map before recording anything.
 - **The agent is the main interface.** Rewind lives in Claude through MCP. The app window is small: a workflow map, a search box, privacy settings.
 - **Lean beats complete.** Text only, event driven, one process, one database file, two Rust crates. Every feature has to earn its CPU and its lines of code.
-- **Explain everything.** Every score shows its reasons and evidence. No LLM ranks or summarizes inside Sextant. The agent does the language work.
+- **Explain everything.** Every score shows its reasons and evidence. The only model inside Sextant is Apple's on-device one: it turns a search question into terms and a time span and writes a short cited answer, and keyword search takes over without it. The agent does the rest of the language work.
 - **Private by construction.** No pixels or audio on disk, no network except one consented model download, MIT license forever.
 
 ## 2. Stack

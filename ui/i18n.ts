@@ -163,9 +163,10 @@ const en = {
   handoffButton: "I handed this off",
   handoffDone: "Sextant now measures the hours. See Results.",
 
-  searchPlaceholder: "Search what you saw and heard",
+  searchPlaceholder: "What were you writing, and to whom?",
   searchEmpty: "Nothing found.",
   showResults: "Show results",
+  searching: "Searching…",
   source_screen: "Screen",
   source_mic: "You",
   source_system: "Other side",
@@ -402,9 +403,10 @@ const de: Record<Key, string> = {
   handoffButton: "Ich habe das abgegeben",
   handoffDone: "Sextant misst jetzt die Stunden. Siehe Ergebnisse.",
 
-  searchPlaceholder: "Suche, was du gesehen und gehört hast",
+  searchPlaceholder: "Was hast du wem geschrieben?",
   searchEmpty: "Nichts gefunden.",
   showResults: "Ergebnisse zeigen",
+  searching: "Suche läuft…",
   source_screen: "Bildschirm",
   source_mic: "Du",
   source_system: "Gegenseite",

@@ -27,6 +27,7 @@ The app is about 17 MB. The speech models (about 670 MB) are optional and downlo
 - Sextant never stores pixels or audio. Screen text and transcripts are stored as text only.
 - It reads only the focused window, and only when no gate is closed: excluded apps (password managers and messengers by default), private browser windows, secure input, paused, or the source switched off.
 - Emails, IBANs, card numbers, API keys and tokens are redacted before anything is stored.
+- Search answers come from Apple's on-device model (Foundation Models) when Apple Intelligence is on, and from keyword search when it is off. Either way, the question and the text stay on your Mac.
 - The only network call is the speech model download you start yourself, from pinned URLs with a SHA-256 check. There is no telemetry, crash reporter, analytics or auto-updater.
 - You choose how long raw data stays: 30, 90 or 365 days, or forever. "Delete everything" empties the data folder.
 - If you tell your agent to read from Sextant, the text it reads goes to wherever that agent's model runs, which may be the cloud. Excluded apps and redaction apply to that output too.

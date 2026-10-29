@@ -129,3 +129,34 @@ pub fn open_settings_pane(_pane: &str, _hint: Option<&str>) -> Result<()> {
 pub fn pick_folder(_prompt: &str) -> Result<Option<String>> {
     bail!("needs macOS")
 }
+
+/// The on-device language model is Apple's, so other systems always fall back to rules.
+pub mod language {
+    use serde::Serialize;
+
+    pub struct Plan {
+        pub terms: Vec<String>,
+        pub time: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct Note {
+        pub app: String,
+        pub title: String,
+        pub ts: i64,
+        pub lines: Vec<String>,
+    }
+
+    pub struct Answer {
+        pub text: String,
+        pub note: usize,
+    }
+
+    pub fn plan(_question: &str) -> Option<Plan> {
+        None
+    }
+
+    pub fn answer(_question: &str, _notes: &[Note]) -> Option<Answer> {
+        None
+    }
+}

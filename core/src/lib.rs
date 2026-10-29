@@ -11,6 +11,7 @@ pub mod fixtures;
 pub mod mcp;
 mod model;
 pub mod profile_fixture;
+mod recall;
 mod redact;
 mod report;
 mod results;
@@ -31,6 +32,7 @@ pub use finder::{
     StepInfo, StepLink, Workflow, WorkflowDetail,
 };
 pub use model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
+pub use recall::keywords;
 pub use redact::{Secret, redact, redact_json};
 pub use report::{ReportRow, WeeklyReport};
 pub use results::{MIN_DAYS, Measurement};

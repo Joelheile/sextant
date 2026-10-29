@@ -159,7 +159,6 @@ export type SearchPage = {
     end: number;
     lines: { ts: number; text: string }[];
   }[];
-  next_offset: number | null;
 };
 
 export type Turn = { id: number; ts: number; question: string; answer: string };
@@ -244,9 +243,9 @@ export const api = {
     invoke<string>("write_skill", { id, folder }),
   reportHandoff: (id: number) => invoke<void>("report_handoff", { id }),
   results: () => invoke<Results>("results"),
-  search: (query: string, offset: number, limit: number) =>
-    invoke<SearchPage>("search", { query, offset, limit }),
   rewindAsk: (question: string) => invoke<Asked>("rewind_ask", { question }),
+  rewindResults: (question: string) =>
+    invoke<SearchPage>("rewind_results", { question }),
   rewindHistory: (before: number | null) =>
     invoke<Turn[]>("rewind_history", { before }),
   rewindFit: (height: number) => invoke<void>("rewind_fit", { height }),

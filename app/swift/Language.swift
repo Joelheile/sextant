@@ -1,0 +1,111 @@
+// Apple's on-device language model (Foundation Models), called from Rust over a C interface.
+// Every function takes and returns JSON as a C string, or returns NULL when the model is
+// unavailable or fails. The model runs on the Mac; nothing here touches the network.
+
+import Foundation
+import FoundationModels
+
+/// A JSON object schema built at run time, so the shim builds without Xcode's macro plugins.
+private func object(_ name: String, _ properties: [(String, String, DynamicGenerationSchema)]) -> GenerationSchema? {
+    let root = DynamicGenerationSchema(
+        name: name,
+        properties: properties.map { DynamicGenerationSchema.Property(name: $0.0, description: $0.1, schema: $0.2) })
+    return try? GenerationSchema(root: root, dependencies: [])
+}
+
+private let text = DynamicGenerationSchema(type: String.self)
+private let number = DynamicGenerationSchema(type: Int.self)
+
+private let planSchema = object("Plan", [
+    ("terms", "Names, topics, ids and distinctive words to search for, lowercase, without question words or dates",
+     DynamicGenerationSchema(arrayOf: text, minimumElements: 1, maximumElements: 6)),
+    ("time", "When it happened, if the question says so",
+     DynamicGenerationSchema(name: "Time", anyOf: ["any time", "today", "yesterday", "this week", "last week", "this month"])),
+])
+
+private let answerSchema = object("Answer", [
+    ("text", "One to three short sentences that answer the question from the notes only, quoting the exact words that matter. If the notes do not answer it, say that nothing was found.", text),
+    ("note", "The number of the note that supports the answer, or 0 if none does", number),
+])
+
+struct Note: Codable {
+    let app: String
+    let title: String
+    let ts: Int64
+    let lines: [String]
+}
+
+struct AnswerInput: Codable {
+    let question: String
+    let notes: [Note]
+}
+
+private func blocking<T>(_ work: @escaping () async throws -> T) -> T? {
+    let done = DispatchSemaphore(value: 0)
+    var result: T?
+    Task.detached {
+        result = try? await work()
+        done.signal()
+    }
+    done.wait()
+    return result
+}
+
+private func respond(_ instructions: String, _ prompt: String, _ schema: GenerationSchema?) -> UnsafeMutablePointer<CChar>? {
+    guard let schema else { return nil }
+    let json = blocking {
+        let session = LanguageModelSession(instructions: instructions)
+        return try await session.respond(to: prompt, schema: schema).content.jsonString
+    }
+    return json.map { strdup($0) }
+}
+
+private let day: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "EEEE yyyy-MM-dd"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    return formatter
+}()
+
+private let stamp: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "EEE yyyy-MM-dd HH:mm"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    return formatter
+}()
+
+/// Input: the question. Output: `{"terms": [...], "time": "yesterday"}`.
+@_cdecl("sextant_language_plan")
+public func sextantLanguagePlan(_ question: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
+    let question = String(cString: question)
+    let today = day.string(from: Date())
+    return respond("""
+        You turn a question about what the user saw, wrote or heard on their Mac into a search. \
+        Today is \(today).
+        """, question, planSchema)
+}
+
+/// Input: `{"question": "...", "notes": [{"app", "title", "ts", "lines"}]}`.
+/// Output: `{"text": "...", "note": n}`, where `note` counts from 1.
+@_cdecl("sextant_language_answer")
+public func sextantLanguageAnswer(_ input: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
+    guard let input = try? JSONDecoder().decode(AnswerInput.self, from: Data(String(cString: input).utf8)) else {
+        return nil
+    }
+    let notes = input.notes.enumerated().map { index, note in
+        let when = stamp.string(from: Date(timeIntervalSince1970: TimeInterval(note.ts)))
+        let lines = note.lines.map { "  \($0)" }.joined(separator: "\n")
+        return "[\(index + 1)] \(note.app), \"\(note.title)\", \(when)\n\(lines)"
+    }.joined(separator: "\n\n")
+    let today = day.string(from: Date())
+    return respond("""
+        You help the user remember what they saw, wrote or heard on their Mac. Today is \(today). \
+        Answer only from the numbered notes, which are text read from their screen and calls. \
+        Never guess or add facts.
+        """, "Question: \(input.question)\n\nNotes:\n\(notes)", answerSchema)
+}
+
+@_cdecl("sextant_language_free")
+public func sextantLanguageFree(_ pointer: UnsafeMutablePointer<CChar>?) {
+    free(pointer)
+}

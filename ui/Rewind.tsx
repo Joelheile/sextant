@@ -9,9 +9,8 @@ import { api, onRewindOpen, type SearchPage, type Turn } from "./api";
 import { dateTime } from "./format";
 import { t } from "./i18n";
 
-/** Matches `REWIND_PAGE` and `REWIND_RESULTS` in `app/src/screens.rs`. */
+/** Matches `REWIND_PAGE` in `app/src/screens.rs`. */
 const HISTORY_PAGE = 20;
-const RESULTS = 5;
 
 type Entry = { turn: Turn; page: SearchPage | null };
 
@@ -23,6 +22,7 @@ export default function Rewind() {
   /** How far back Up has gone through past questions, or null while typing. */
   const [recall, setRecall] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -101,6 +101,7 @@ export default function Rewind() {
   };
 
   const ask = async () => {
+    setAsking(true);
     try {
       const asked = await api.rewindAsk(query);
       keepBottom.current = 0;
@@ -110,30 +111,20 @@ export default function Rewind() {
       setError(null);
     } catch (err) {
       setError(String(err));
+    } finally {
+      setAsking(false);
     }
   };
 
-  /** Loads results for a past question, or the next few for one already shown. */
+  /** Finds a past question's sessions again, so retention and exclusions apply. */
   const showResults = async (id: number) => {
     const entry = entries?.find((candidate) => candidate.turn.id === id);
     if (!entry) return;
     try {
-      const offset = entry.page?.next_offset ?? 0;
-      const found = await api.search(entry.turn.question, offset, RESULTS);
+      const page = await api.rewindResults(entry.turn.question);
       setEntries((current) =>
         (current ?? []).map((candidate) =>
-          candidate.turn.id === id
-            ? {
-                ...candidate,
-                page: {
-                  sessions: [
-                    ...(candidate.page?.sessions ?? []),
-                    ...found.sessions,
-                  ],
-                  next_offset: found.next_offset,
-                },
-              }
-            : candidate,
+          candidate.turn.id === id ? { ...candidate, page } : candidate,
         ),
       );
     } catch (err) {
@@ -217,19 +208,11 @@ export default function Rewind() {
                     </li>
                   ))}
                 </ul>
-                {page.next_offset != null && (
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() => void showResults(turn.id)}
-                  >
-                    {t("showMore")}
-                  </button>
-                )}
               </>
             )}
           </section>
         ))}
+        {asking && <p className="muted">{t("searching")}</p>}
         {error && <p role="alert">{error}</p>}
       </div>
       <form
@@ -246,6 +229,7 @@ export default function Rewind() {
           placeholder={t("searchPlaceholder")}
           aria-label={t("searchPlaceholder")}
           autoFocus
+          readOnly={asking}
           onChange={(e) => {
             setQuery(e.target.value);
             setRecall(null);

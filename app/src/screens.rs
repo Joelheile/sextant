@@ -8,13 +8,14 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use sextant_core::{
     Action, Category, Enjoyment, Kind, Live, MIN_DAYS, Measurement, Session, Settings, Store,
-    Target, Turn, Workflow, WorkflowDetail, parse_correction, redact, skill,
+    Target, Turn, Workflow, WorkflowDetail, keywords, parse_correction, redact, skill,
 };
 use tauri::{AppHandle, Manager, State};
 
 use crate::commands::{AppState, MAX_ROWS, Reply, msg};
 use crate::keys::Keychain;
-use crate::{clock, data};
+use crate::platform::language::Note;
+use crate::{clock, data, platform};
 
 const SKILLS_FOLDER: &str = "skills";
 const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
@@ -450,8 +451,6 @@ pub struct SessionView {
 #[derive(Serialize)]
 pub struct SearchPage {
     sessions: Vec<SessionView>,
-    /// Pass as `offset` for the next page; `None` on the last one.
-    next_offset: Option<usize>,
 }
 
 fn session_view(session: Session, store: &Store) -> SessionView {
@@ -476,48 +475,6 @@ fn session_view(session: Session, store: &Store) -> SessionView {
             })
             .collect(),
     }
-}
-
-/// One box over screen text and transcripts, grouped by session, newest first.
-#[tauri::command]
-pub async fn search(
-    state: State<'_, AppState>,
-    query: String,
-    offset: usize,
-    limit: usize,
-) -> Reply<SearchPage> {
-    search_page(&state, &query, offset, limit)
-}
-
-fn search_page(state: &AppState, query: &str, offset: usize, limit: usize) -> Reply<SearchPage> {
-    let settings = crate::prefs::load(&state.dir).map_err(msg)?;
-    if query.trim().is_empty() {
-        return Ok(SearchPage {
-            sessions: Vec::new(),
-            next_offset: None,
-        });
-    }
-    state
-        .engine()?
-        .read(|store| {
-            let page = store.search_sessions(
-                &settings,
-                query,
-                (None, None),
-                None,
-                limit.clamp(1, MAX_ROWS),
-                offset,
-            )?;
-            Ok(SearchPage {
-                next_offset: page.next_offset,
-                sessions: page
-                    .sessions
-                    .into_iter()
-                    .map(|s| session_view(s, store))
-                    .collect(),
-            })
-        })
-        .map_err(msg)
 }
 
 #[derive(Serialize)]
@@ -689,23 +646,126 @@ pub struct Asked {
     page: SearchPage,
 }
 
+const DAY_S: i64 = 86_400;
+/// Lines per session shown to the model, and characters per line, so a prompt with five
+/// sessions stays well inside the model's 4,096-token context.
+const NOTE_LINES: usize = 6;
+const NOTE_CHARS: usize = 200;
+
+/// The span a plan's `time` names, in whole local days: today is 0, yesterday 1.
+fn days_back(time: &str) -> Option<(i64, i64)> {
+    match time {
+        "today" => Some((0, 0)),
+        "yesterday" => Some((1, 1)),
+        "this week" => Some((6, 0)),
+        "last week" => Some((13, 7)),
+        "this month" => Some((30, 0)),
+        _ => None,
+    }
+}
+
+/// From local midnight `since` days ago to the end of the day `until` days ago.
+fn plan_range(now: i64, time: &str) -> (Option<i64>, Option<i64>) {
+    let Some((since, until)) = days_back(time) else {
+        return (None, None);
+    };
+    let midnight = now - (now + i64::from(clock::utc_offset(now))).rem_euclid(DAY_S);
+    (
+        Some(midnight - since * DAY_S),
+        Some(midnight - (until - 1) * DAY_S - 1),
+    )
+}
+
+/// Sessions for a question, best first. The on-device model picks the terms and the time span
+/// when it can; otherwise the question's keywords are searched over all time. A span that finds
+/// nothing is dropped, since people often misremember when.
+fn recall_views(state: &AppState, question: &str, now: i64) -> Result<Vec<SessionView>, String> {
+    let settings = crate::prefs::load(&state.dir).map_err(msg)?;
+    let (mut terms, range) = match platform::language::plan(question) {
+        Some(plan) => (plan.terms, plan_range(now, &plan.time)),
+        None => (Vec::new(), (None, None)),
+    };
+    if terms.iter().all(|term| term.trim().is_empty()) {
+        terms = keywords(question);
+    }
+    if terms.is_empty() {
+        return Err("Add a name, topic or word you remember.".into());
+    }
+    state
+        .engine()?
+        .read(move |store| {
+            let mut found = store.recall(&settings, &terms, range, REWIND_RESULTS)?;
+            if found.is_empty() && range != (None, None) {
+                found = store.recall(&settings, &terms, (None, None), REWIND_RESULTS)?;
+            }
+            Ok(found.into_iter().map(|s| session_view(s, store)).collect())
+        })
+        .map_err(msg)
+}
+
+/// A short answer from the on-device model that cites one session, which moves to the top.
+/// Empty when the model is unavailable or nothing was found.
+fn answer(question: &str, sessions: &mut [SessionView]) -> String {
+    let notes: Vec<Note> = sessions
+        .iter()
+        .map(|session| Note {
+            app: session.app.clone(),
+            title: session.title.clone(),
+            ts: session.end,
+            lines: session
+                .lines
+                .iter()
+                .take(NOTE_LINES)
+                .map(|line| line.text.chars().take(NOTE_CHARS).collect())
+                .collect(),
+        })
+        .collect();
+    if notes.is_empty() {
+        return String::new();
+    }
+    let Some(answer) = platform::language::answer(question, &notes) else {
+        return String::new();
+    };
+    if (1..=sessions.len()).contains(&answer.note) {
+        sessions[..answer.note].rotate_right(1);
+    }
+    answer.text
+}
+
 /// Answers a question in the rewind search panel and adds it to the history.
 #[tauri::command]
-pub async fn rewind_ask(state: State<'_, AppState>, question: String) -> Reply<Asked> {
+pub async fn rewind_ask(app: AppHandle, question: String) -> Reply<Asked> {
     let question = question.trim().to_string();
     if question.is_empty() {
         return Err("Type a question first.".into());
     }
-    let page = search_page(&state, &question, 0, REWIND_RESULTS)?;
-    let now = clock::now();
-    let turn = state
-        .engine()?
-        .write(move |store| store.add_turn(now, &question, ""))
-        .map_err(msg)?;
-    Ok(Asked {
-        turn: turn.into(),
-        page,
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let now = clock::now();
+        let mut sessions = recall_views(&state, &question, now)?;
+        let text = answer(&question, &mut sessions);
+        let turn = state
+            .engine()?
+            .write(move |store| store.add_turn(now, &question, &text))
+            .map_err(msg)?;
+        Ok(Asked {
+            turn: turn.into(),
+            page: SearchPage { sessions },
+        })
     })
+    .await
+    .map_err(msg)?
+}
+
+/// The sessions for a past question, found again so retention and exclusions apply.
+#[tauri::command]
+pub async fn rewind_results(app: AppHandle, question: String) -> Reply<SearchPage> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let sessions = recall_views(&app.state::<AppState>(), &question, clock::now())?;
+        Ok(SearchPage { sessions })
+    })
+    .await
+    .map_err(msg)?
 }
 
 /// Up to 20 past questions older than turn `before` (or the newest), newest first.
@@ -730,4 +790,25 @@ pub async fn rewind_fit(app: AppHandle, height: f64) -> Reply<()> {
 #[tauri::command]
 pub async fn rewind_hide(app: AppHandle) -> Reply<()> {
     crate::rewind::hide(&app).map_err(msg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_named_time_becomes_whole_local_days_before_now() {
+        let now = 1_800_000_000;
+        let (Some(from), Some(to)) = plan_range(now, "yesterday") else {
+            panic!("yesterday has a span");
+        };
+        assert_eq!(to - from + 1, DAY_S);
+        assert!(to < now && now - to <= DAY_S);
+        let (Some(week), Some(today_end)) = plan_range(now, "this week") else {
+            panic!("this week has a span");
+        };
+        assert_eq!(today_end - week + 1, 7 * DAY_S);
+        assert!(today_end >= now);
+        assert_eq!(plan_range(now, "any time"), (None, None));
+    }
 }
