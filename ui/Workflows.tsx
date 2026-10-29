@@ -1,21 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { api, type Enjoyment, type Overview, type WorkflowRow } from "./api";
 import { duration, hours } from "./format";
 import { t } from "./i18n";
+import { Failed, List, Muted, Section } from "./layout";
 import WorkflowDetail from "./WorkflowDetail";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 const PAGE = 20;
 const ANSWERS: Enjoyment[] = ["hate", "dislike", "neutral", "like", "love"];
 
 export function Steps({ steps }: { steps: WorkflowRow["steps"] }) {
   return (
-    <ol className="steps">
-      {steps.map((step) => (
-        <li key={step.key}>
+    <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-muted-foreground">
+      {steps.map((step, index) => (
+        <li key={step.key} className="flex items-center gap-1.5">
+          {index > 0 && <ChevronRight aria-hidden className="size-3.5 opacity-50" />}
           {step.name}
           {step.gap_s !== null && (
-            <small className="muted">
-              {" "}
+            <small className="text-xs opacity-75">
               {t("gapAfter", { time: duration(step.gap_s) })}
               {step.copies > 0 && `, ${t("copiedTimes", { n: step.copies })}`}
             </small>
@@ -26,6 +30,18 @@ export function Steps({ steps }: { steps: WorkflowRow["steps"] }) {
   );
 }
 
+export function Tags({ row }: { row: WorkflowRow }) {
+  return (
+    <>
+      <Badge variant="secondary">{t(`action_${row.action}`)}</Badge>
+      {row.client && <Badge variant="outline">{t("tagClient")}</Badge>}
+      {row.handed_off && <Badge variant="outline">{t("tagHandedOff")}</Badge>}
+      {row.rough && <Badge variant="outline">{t("rough")}</Badge>}
+    </>
+  );
+}
+
+/** The whole row opens the workflow; the name is the button. */
 function Row({
   row,
   rank,
@@ -36,24 +52,24 @@ function Row({
   onOpen: (id: number) => void;
 }) {
   return (
-    <li className="workflow">
-      <span className="rank">{rank}</span>
-      <div>
-        <div className="workflow-head">
-          <strong>{row.name}</strong>
-          <span className="tag">{t(`action_${row.action}`)}</span>
-          {row.client && <span className="tag">{t("tagClient")}</span>}
-          {row.handed_off && <span className="tag">{t("tagHandedOff")}</span>}
-          {row.rough && <span className="tag">{t("rough")}</span>}
+    <li className="relative flex gap-3 px-4 py-3 transition-colors hover:bg-muted/60 has-focus-visible:bg-muted/60">
+      {rank !== null && <span className="w-5 shrink-0 text-sm tabular-nums text-muted-foreground">{rank}</span>}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            className="text-left font-medium outline-none after:absolute after:inset-0"
+            onClick={() => onOpen(row.id)}
+          >
+            {row.name}
+          </button>
+          <Tags row={row} />
         </div>
         <Steps steps={row.steps} />
       </div>
-      <div className="workflow-numbers">
-        <span>{t("hoursWeek", { hours: hours(row.hours_week) })}</span>
-        <span className="muted">{t("cases", { n: row.cases })}</span>
-        <button type="button" className="link" onClick={() => onOpen(row.id)}>
-          {t("open")}
-        </button>
+      <div className="shrink-0 text-right">
+        <div className="text-sm font-medium tabular-nums">{t("hoursWeek", { hours: hours(row.hours_week) })}</div>
+        <div className="text-xs text-muted-foreground tabular-nums">{t("cases", { n: row.cases })}</div>
       </div>
     </li>
   );
@@ -62,55 +78,48 @@ function Row({
 function Ask({ rows, onAnswer }: { rows: WorkflowRow[]; onAnswer: (id: number, answer: Enjoyment) => void }) {
   if (rows.length === 0) return null;
   return (
-    <section>
-      <h2>{t("askTitle")}</h2>
-      <p className="muted">{t("askBody")}</p>
-      <ul className="workflows">
+    <Section title={t("askTitle")} description={t("askBody")}>
+      <List>
         {rows.map((row) => (
-          <li key={row.id} className="ask">
-            <strong>{row.name}</strong>
+          <li key={row.id} className="flex flex-col gap-2 px-4 py-3">
+            <span className="font-medium">{row.name}</span>
             <Steps steps={row.steps} />
-            <div className="answers" role="group" aria-label={row.name}>
+            <div className="flex flex-wrap gap-1.5 pt-1" role="group" aria-label={row.name}>
               {ANSWERS.map((answer) => (
-                <button
-                  key={answer}
-                  type="button"
-                  className="secondary"
-                  onClick={() => onAnswer(row.id, answer)}
-                >
+                <Button key={answer} type="button" variant="outline" size="sm" onClick={() => onAnswer(row.id, answer)}>
                   {t(`enjoy_${answer}`)}
-                </button>
+                </Button>
               ))}
             </div>
           </li>
         ))}
-      </ul>
-    </section>
+      </List>
+    </Section>
   );
 }
 
-function Section({
+function Rows({
   title,
-  body,
+  description,
   rows,
+  ranked,
   onOpen,
 }: {
   title: string;
-  body: string;
+  description?: string;
   rows: WorkflowRow[];
+  ranked?: boolean;
   onOpen: (id: number) => void;
 }) {
   if (rows.length === 0) return null;
   return (
-    <section>
-      <h2>{title}</h2>
-      <p className="muted">{body}</p>
-      <ul className="workflows">
-        {rows.map((row) => (
-          <Row key={row.id} row={row} rank={null} onOpen={onOpen} />
+    <Section title={title} description={description}>
+      <List>
+        {rows.map((row, index) => (
+          <Row key={row.id} row={row} rank={ranked ? index + 1 : null} onOpen={onOpen} />
         ))}
-      </ul>
-    </section>
+      </List>
+    </Section>
   );
 }
 
@@ -144,8 +153,8 @@ export default function Workflows() {
     }
   };
 
-  if (error) return <p role="alert">{error}</p>;
-  if (!overview) return <p className="muted">{t("loading")}</p>;
+  if (error) return <Failed>{error}</Failed>;
+  if (!overview) return <Muted>{t("loading")}</Muted>;
   if (open !== null) {
     return (
       <WorkflowDetail
@@ -159,39 +168,26 @@ export default function Workflows() {
   }
   const empty =
     overview.total === 0 && overview.promises.length === 0 && overview.protect.length === 0;
-  if (empty) return <p className="muted">{t("mapEmpty")}</p>;
+  if (empty) return <Muted>{t("mapEmpty")}</Muted>;
 
   return (
     <>
-      <p className="headline">{t("mapHours", { hours: hours(overview.hours_back) })}</p>
+      <h1 className="text-2xl font-semibold tracking-tight">
+        {t("mapHours", { hours: hours(overview.hours_back) })}
+      </h1>
       <Ask rows={overview.ask} onAnswer={(id, enjoyment) => void answer(id, enjoyment)} />
       {ranked.length > 0 && (
-        <section>
-          <h2>{t("rankedTitle")}</h2>
-          <ul className="workflows">
-            {ranked.map((row, index) => (
-              <Row key={row.id} row={row} rank={index + 1} onOpen={setOpen} />
-            ))}
-          </ul>
+        <div className="flex flex-col gap-3">
+          <Rows title={t("rankedTitle")} rows={ranked} ranked onOpen={setOpen} />
           {ranked.length < overview.total && (
-            <button type="button" className="secondary" onClick={() => void load(ranked.length)}>
+            <Button type="button" variant="outline" className="self-start" onClick={() => void load(ranked.length)}>
               {t("showMore")}
-            </button>
+            </Button>
           )}
-        </section>
+        </div>
       )}
-      <Section
-        title={t("promisesTitle")}
-        body={t("promisesBody")}
-        rows={overview.promises}
-        onOpen={setOpen}
-      />
-      <Section
-        title={t("protectTitle")}
-        body={t("protectBody")}
-        rows={overview.protect}
-        onOpen={setOpen}
-      />
+      <Rows title={t("promisesTitle")} description={t("promisesBody")} rows={overview.promises} onOpen={setOpen} />
+      <Rows title={t("protectTitle")} description={t("protectBody")} rows={overview.protect} onOpen={setOpen} />
     </>
   );
 }

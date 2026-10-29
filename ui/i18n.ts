@@ -127,7 +127,6 @@ const en = {
   durMinutes: "{n} min",
   durHours: "{n} h",
   durDays: "{n} d",
-  open: "Open",
 
   reasonsTitle: "Why this score",
   stepsTitle: "Steps",
@@ -367,7 +366,6 @@ const de: Record<Key, string> = {
   durMinutes: "{n} Min.",
   durHours: "{n} Std.",
   durDays: "{n} Tg.",
-  open: "Öffnen",
 
   reasonsTitle: "Warum diese Bewertung",
   stepsTitle: "Schritte",

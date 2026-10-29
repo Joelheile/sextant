@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api, type WeeklyReport } from "./api";
 import { hours, shortDate } from "./format";
 import { t } from "./i18n";
+import { Done, Failed, Section } from "./layout";
+import { Button } from "@/components/ui/button";
 
 const WIDTH = 1200;
 const HEIGHT = 630;
@@ -117,31 +119,25 @@ export default function Report() {
   };
 
   return (
-    <section>
-      <h2>{t("reportTitle")}</h2>
-      <p className="muted">{t("reportHint")}</p>
+    <Section title={t("reportTitle")} description={t("reportHint")}>
       <canvas
         ref={canvas}
-        className="report-image"
+        className="block h-auto w-full rounded-xl ring-1 ring-foreground/10"
         width={WIDTH}
         height={HEIGHT}
         role="img"
         aria-label={t("reportAlt")}
       />
-      <div className="actions-row">
-        <button type="button" className="secondary" disabled={!image} onClick={() => void copy()}>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" disabled={!image} onClick={() => void copy()}>
           {t("reportCopy")}
-        </button>
-        <button type="button" className="secondary" disabled={!image} onClick={() => void save()}>
+        </Button>
+        <Button type="button" variant="outline" disabled={!image} onClick={() => void save()}>
           {t("reportSave")}
-        </button>
+        </Button>
       </div>
-      {message && (
-        <p className="ok" aria-live="polite">
-          {message}
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
-    </section>
+      {message && <Done>{message}</Done>}
+      {error && <Failed>{error}</Failed>}
+    </Section>
   );
 }

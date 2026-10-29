@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, type Live, type Settings } from "./api";
 import CallAudio from "./CallAudio";
+import { X } from "lucide-react";
 import { t, type Key } from "./i18n";
+import { Failed, List, Muted, Section, SwitchRow } from "./layout";
 import Permissions from "./Permissions";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const MB = 1024 * 1024;
 
@@ -29,26 +35,30 @@ function ExcludedApps({
 }) {
   const [name, setName] = useState("");
   return (
-    <section>
-      <h2>{t("excludedTitle")}</h2>
-      <p className="muted">{t("excludedBody")}</p>
-      <ul className="chips">
-        {apps.map((app) => (
-          <li key={app}>
-            {app}
-            <button
-              type="button"
-              className="link"
-              aria-label={`${t("removeFolder")} ${app}`}
-              onClick={() => onChange(apps.filter((a) => a !== app))}
-            >
-              {t("removeFolder")}
-            </button>
-          </li>
-        ))}
-      </ul>
+    <Section title={t("excludedTitle")} description={t("excludedBody")}>
+      {apps.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {apps.map((app) => (
+            <li key={app}>
+              <Badge variant="secondary" className="h-6 gap-0.5 pr-0.5 text-sm font-normal">
+                {app}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-5 rounded-full"
+                  aria-label={`${t("removeFolder")} ${app}`}
+                  onClick={() => onChange(apps.filter((a) => a !== app))}
+                >
+                  <X />
+                </Button>
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
       <form
-        className="inline"
+        className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           const added = name.trim();
@@ -56,18 +66,18 @@ function ExcludedApps({
           setName("");
         }}
       >
-        <input
+        <Input
           type="text"
           value={name}
           placeholder={t("excludedPlaceholder")}
           aria-label={t("excludedPlaceholder")}
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="secondary" disabled={name.trim() === ""}>
+        <Button type="submit" variant="outline" disabled={name.trim() === ""}>
           {t("excludedAdd")}
-        </button>
+        </Button>
       </form>
-    </section>
+    </Section>
   );
 }
 
@@ -88,33 +98,35 @@ function DeleteEverything() {
   };
 
   return (
-    <section>
-      <h2>{t("deleteTitle")}</h2>
-      <p className="muted">{t("deleteBody")}</p>
+    <Section title={t("deleteTitle")} description={t("deleteBody")}>
       {confirming ? (
-        <div role="alertdialog" aria-label={t("deleteTitle")} className="confirm">
-          <p>{t("deleteConfirm")}</p>
-          <div className="actions-row">
-            <button type="button" className="danger" disabled={working} onClick={() => void confirm()}>
-              {working ? t("deleteWorking") : t("deleteYes")}
-            </button>
-            <button
+        <div
+          role="alertdialog"
+          aria-label={t("deleteTitle")}
+          className="flex flex-col gap-3 rounded-xl bg-destructive/5 p-4 ring-1 ring-destructive/30"
+        >
+          <p className="text-sm">{t("deleteConfirm")}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
               type="button"
-              className="secondary"
+              className="bg-destructive text-white hover:bg-destructive/90"
               disabled={working}
-              onClick={() => setConfirming(false)}
+              onClick={() => void confirm()}
             >
+              {working ? t("deleteWorking") : t("deleteYes")}
+            </Button>
+            <Button type="button" variant="outline" disabled={working} onClick={() => setConfirming(false)}>
               {t("cancel")}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
-        <button type="button" className="danger" onClick={() => setConfirming(true)}>
+        <Button type="button" variant="destructive" className="self-start" onClick={() => setConfirming(true)}>
           {t("deleteButton")}
-        </button>
+        </Button>
       )}
-      {error && <p role="alert">{error}</p>}
-    </section>
+      {error && <Failed>{error}</Failed>}
+    </Section>
   );
 }
 
@@ -141,91 +153,81 @@ export default function Privacy() {
       })
       .catch((err) => setError(String(err)));
 
-  if (!settings) return error ? <p role="alert">{error}</p> : <p className="muted">{t("loading")}</p>;
+  if (!settings) return error ? <Failed>{error}</Failed> : <Muted>{t("loading")}</Muted>;
 
   return (
     <>
-      <h2>{t("privacySources")}</h2>
-      <Permissions />
-      <section>
-        {LIVE_SWITCHES.map(({ key, label }) => (
-          <label key={key} className="switch">
-            <input
-              type="checkbox"
+      <Section title={t("privacySources")}>
+        <Permissions />
+        <List>
+          {LIVE_SWITCHES.map(({ key, label }) => (
+            <SwitchRow
+              key={key}
+              label={t(label)}
               checked={settings.live[key]}
-              onChange={(e) =>
-                void change(api.setLive({ ...settings.live, [key]: e.target.checked }))
-              }
+              onChange={(on) => void change(api.setLive({ ...settings.live, [key]: on }))}
             />
-            {t(label)}
-          </label>
-        ))}
-      </section>
+          ))}
+        </List>
+      </Section>
 
       <ExcludedApps
         apps={settings.excluded_apps}
         onChange={(apps) => void change(api.setExcludedApps(apps))}
       />
 
-      <section>
-        <h2>{t("retentionTitle")}</h2>
-        <select
-          aria-label={t("retentionTitle")}
-          value={settings.retention_days === null ? "forever" : String(settings.retention_days)}
-          onChange={(e) =>
-            void change(
-              api.setRetention(RETENTION.find((r) => r.value === e.target.value)?.days ?? null),
-            )
-          }
-        >
-          {RETENTION.map(({ value, label }) => (
-            <option key={value} value={value}>
-              {t(label)}
-            </option>
-          ))}
-        </select>
-      </section>
-
-      <section>
-        <h2>{t("storageTitle")}</h2>
-        <p>{bytes === null ? t("loading") : t("storageValue", { size: (bytes / MB).toFixed(1) })}</p>
-      </section>
-
-      <section>
-        <h2>{t("mcpTitle")}</h2>
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={settings.mcp_rewind}
-            onChange={(e) =>
-              void change(api.setMcpSwitches(e.target.checked, settings.mcp_workflows))
+      <List>
+        <li className="flex items-center justify-between gap-4 px-4 py-3">
+          <span className="text-sm">{t("retentionTitle")}</span>
+          <Select
+            value={settings.retention_days === null ? "forever" : String(settings.retention_days)}
+            onValueChange={(value) =>
+              void change(api.setRetention(RETENTION.find((r) => r.value === value)?.days ?? null))
             }
+          >
+            <SelectTrigger aria-label={t("retentionTitle")} className="min-w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RETENTION.map(({ value, label }) => (
+                <SelectItem key={value} value={value}>
+                  {t(label)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </li>
+        <li className="flex items-center justify-between gap-4 px-4 py-3">
+          <span className="text-sm">{t("storageTitle")}</span>
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {bytes === null ? t("loading") : t("storageValue", { size: (bytes / MB).toFixed(1) })}
+          </span>
+        </li>
+      </List>
+
+      <Section title={t("mcpTitle")} description={t("cloudNote")}>
+        <List>
+          <SwitchRow
+            label={t("switchRewind")}
+            checked={settings.mcp_rewind}
+            onChange={(on) => void change(api.setMcpSwitches(on, settings.mcp_workflows))}
           />
-          {t("switchRewind")}
-        </label>
-        <label className="switch">
-          <input
-            type="checkbox"
+          <SwitchRow
+            label={t("switchWorkflows")}
             checked={settings.mcp_workflows}
-            onChange={(e) => void change(api.setMcpSwitches(settings.mcp_rewind, e.target.checked))}
+            onChange={(on) => void change(api.setMcpSwitches(settings.mcp_rewind, on))}
           />
-          {t("switchWorkflows")}
-        </label>
-        <p className="muted">{t("cloudNote")}</p>
-      </section>
+        </List>
+      </Section>
 
-      <section>
-        <h2>{t("audioTitle")}</h2>
+      <Section title={t("audioTitle")}>
         <CallAudio />
-      </section>
+      </Section>
 
-      {error && <p role="alert">{error}</p>}
+      {error && <Failed>{error}</Failed>}
       <DeleteEverything />
 
-      <section>
-        <h2>{t("aboutTitle")}</h2>
-        <p className="muted">{t("aboutBody")}</p>
-      </section>
+      <Section title={t("aboutTitle")} description={t("aboutBody")} />
     </>
   );
 }

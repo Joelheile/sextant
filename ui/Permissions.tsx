@@ -5,7 +5,10 @@ import {
   type PermissionName,
   type SettingsPane,
 } from "./api";
+import { Check } from "lucide-react";
 import { t, type Key } from "./i18n";
+import { Failed, List, Muted } from "./layout";
+import { Button } from "@/components/ui/button";
 
 const PERMISSION_LABEL: Record<PermissionName, Key> = {
   calendar: "permCalendar",
@@ -112,66 +115,59 @@ export default function Permissions() {
   );
 
   return (
-    <>
-      {permissions?.length === 0 && <p className="muted">{t("accessNone")}</p>}
+    <div className="flex flex-col gap-3">
+      {permissions?.length === 0 && <Muted>{t("accessNone")}</Muted>}
       {missing.length > 1 && walking === null && (
-        <button type="button" onClick={() => void walkFrom(null)}>
+        <Button type="button" className="self-start" onClick={() => void walkFrom(null)}>
           {t("allowAll")}
-        </button>
+        </Button>
       )}
-      <ul className="choices">
-        {permissions?.map((permission) => (
-          <li
-            key={permission.name}
-            className="permission"
-            aria-current={walking === permission.name ? "step" : undefined}
-          >
-            <span>
-              <strong>{t(PERMISSION_LABEL[permission.name])}</strong>
-              <span
-                className={permission.status === "granted" ? "ok" : "muted"}
-              >
-                {t(permission.status)}
-              </span>
-            </span>
-            {walking === permission.name ? (
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => void walkFrom(permission.name)}
-              >
-                {t("next")}
-              </button>
-            ) : (
-              permission.status !== "granted" && (
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => void allow(permission)}
-                >
-                  {t(label(permission))}
-                </button>
-              )
-            )}
-          </li>
-        ))}
-      </ul>
+      {permissions && permissions.length > 0 && (
+        <List>
+          {permissions.map((permission) => (
+            <li
+              key={permission.name}
+              className="flex items-center justify-between gap-4 px-4 py-3 aria-[current=step]:bg-primary/5"
+              aria-current={walking === permission.name ? "step" : undefined}
+            >
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">{t(PERMISSION_LABEL[permission.name])}</span>
+                {permission.status === "granted" ? (
+                  <span className="flex items-center gap-1 text-xs text-success">
+                    <Check aria-hidden className="size-3.5" />
+                    {t(permission.status)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{t(permission.status)}</span>
+                )}
+              </div>
+              {walking === permission.name ? (
+                <Button type="button" onClick={() => void walkFrom(permission.name)}>
+                  {t("next")}
+                </Button>
+              ) : (
+                permission.status !== "granted" && (
+                  <Button type="button" variant="outline" onClick={() => void allow(permission)}>
+                    {t(label(permission))}
+                  </Button>
+                )
+              )}
+            </li>
+          ))}
+        </List>
+      )}
       {reopen && (
-        <p className="muted">
-          {t("reopenHint")}{" "}
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => void api.relaunch()}
-          >
+        <div className="flex flex-wrap items-center gap-3">
+          <Muted>{t("reopenHint")}</Muted>
+          <Button type="button" variant="outline" onClick={() => void api.relaunch()}>
             {t("reopen")}
-          </button>
-        </p>
+          </Button>
+        </div>
       )}
-      {permissions?.some(
-        (p) => p.name === "automation" && p.status !== "granted",
-      ) && <p className="muted">{t("automationHint")}</p>}
-      {error && <p role="alert">{error}</p>}
-    </>
+      {permissions?.some((p) => p.name === "automation" && p.status !== "granted") && (
+        <Muted>{t("automationHint")}</Muted>
+      )}
+      {error && <Failed>{error}</Failed>}
+    </div>
   );
 }

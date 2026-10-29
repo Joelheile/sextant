@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import { api, type AutomationPlan, type Detail, type Enjoyment, type Understood } from "./api";
 import { dateTime, hours } from "./format";
 import { t } from "./i18n";
-import { Steps } from "./Workflows";
+import { Done, Failed, Muted, Section } from "./layout";
+import { Steps, Tags } from "./Workflows";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const BULLETS = "flex list-disc flex-col gap-1 pl-5 text-sm marker:text-muted-foreground";
 
 function Correction({
   detail,
@@ -37,55 +46,49 @@ function Correction({
   };
 
   return (
-    <section>
-      <h2>{t("correctTitle")}</h2>
-      <p className="muted">{t("correctHint")}</p>
-      <ul className="picks">
+    <Section title={t("correctTitle")} description={t("correctHint")}>
+      <ul className="flex flex-col gap-2">
         {detail.workflow.steps.map((step) => (
           <li key={step.key}>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={picked.includes(step.key)}
-                onChange={() => toggle(step.key)}
-              />
+            <Label className="font-normal">
+              <Checkbox checked={picked.includes(step.key)} onCheckedChange={() => toggle(step.key)} />
               {step.name}
-            </label>
+            </Label>
           </li>
         ))}
       </ul>
-      <p className="muted">{t("stepsMergeHint")}</p>
+      <Muted>{t("stepsMergeHint")}</Muted>
       <form
-        className="inline"
+        className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           void apply();
         }}
       >
-        <input
+        <Input
           type="text"
           value={phrase}
           placeholder={t("correctPlaceholder")}
           aria-label={t("correctTitle")}
           onChange={(e) => setPhrase(e.target.value)}
         />
-        <button type="submit" disabled={phrase.trim() === ""}>
+        <Button type="submit" disabled={phrase.trim() === ""}>
           {t("correctApply")}
-        </button>
+        </Button>
       </form>
-      {understood === null && <p role="alert">{t("correctUnknown")}</p>}
+      {understood === null && <Failed>{t("correctUnknown")}</Failed>}
       {understood && (
-        <p className="ok" aria-live="polite">
+        <Done>
           {t(`understood_${understood.rule}`, {
             arg:
               understood.rule === "enjoyment" && understood.arg
                 ? t(`enjoy_${understood.arg as Enjoyment}`)
                 : (understood.arg ?? ""),
           })}
-        </p>
+        </Done>
       )}
-      {error && <p role="alert">{error}</p>}
-    </section>
+      {error && <Failed>{error}</Failed>}
+    </Section>
   );
 }
 
@@ -141,42 +144,32 @@ function Automation({ detail, onHandedOff }: { detail: Detail; onHandedOff: () =
   };
 
   return (
-    <section>
-      <h2>{t("automationTitle")}</h2>
-      <p className="muted">{t("automationBody")}</p>
+    <Section title={t("automationTitle")} description={t("automationBody")}>
       {plan && (
-        <p className="muted">
-          {t("automationWhere")} <code>{plan.path}</code>
-        </p>
+        <Muted>
+          {t("automationWhere")} <code className="font-mono text-xs break-all text-foreground">{plan.path}</code>
+        </Muted>
       )}
-      <div className="actions-row">
-        <button type="button" className="secondary" onClick={() => void choose()}>
-          {t("automationChoose")}
-        </button>
-        <button type="button" disabled={!plan} onClick={() => void create()}>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" disabled={!plan} onClick={() => void create()}>
           {t("automationCreate")}
-        </button>
-        <button
+        </Button>
+        <Button type="button" variant="outline" onClick={() => void choose()}>
+          {t("automationChoose")}
+        </Button>
+        <Button
           type="button"
-          className="secondary"
+          variant="ghost"
           disabled={detail.workflow.handed_off || handedOff}
           onClick={() => void handoff()}
         >
           {t("handoffButton")}
-        </button>
+        </Button>
       </div>
-      {done && (
-        <p className="ok" aria-live="polite">
-          {t("automationDone", { path: done })}
-        </p>
-      )}
-      {handedOff && (
-        <p className="ok" aria-live="polite">
-          {t("handoffDone")}
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
-    </section>
+      {done && <Done>{t("automationDone", { path: done })}</Done>}
+      {handedOff && <Done>{t("handoffDone")}</Done>}
+      {error && <Failed>{error}</Failed>}
+    </Section>
   );
 }
 
@@ -203,88 +196,90 @@ export default function WorkflowDetail({ id, onBack }: { id: number; onBack: () 
   }, [load]);
 
   const back = (
-    <button type="button" className="link" onClick={onBack}>
+    <Button type="button" variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground" onClick={onBack}>
+      <ChevronLeft data-icon="inline-start" />
       {t("back")}
-    </button>
+    </Button>
   );
-  if (error) return <p role="alert">{error}</p>;
+  if (error) return <Failed>{error}</Failed>;
   if (gone) {
     return (
       <>
         {back}
-        <p className="muted">{t("workflowGone")}</p>
+        <Muted>{t("workflowGone")}</Muted>
       </>
     );
   }
-  if (!detail) return <p className="muted">{t("loading")}</p>;
+  if (!detail) return <Muted>{t("loading")}</Muted>;
   const { workflow } = detail;
 
   return (
     <>
-      {back}
-      <h1>{workflow.name}</h1>
-      <p>
-        <span className="tag">{t(`action_${workflow.action}`)}</span>{" "}
-        <span className="muted">
-          {t("hoursWeek", { hours: hours(workflow.hours_week) })}, {t("cases", { n: workflow.cases })}
-        </span>
-      </p>
-      <Steps steps={workflow.steps} />
+      <header className="flex flex-col gap-2">
+        {back}
+        <h1 className="text-2xl font-semibold tracking-tight">{workflow.name}</h1>
+        <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground tabular-nums">
+          <Tags row={workflow} />
+          <span className="ml-1">
+            {t("hoursWeek", { hours: hours(workflow.hours_week) })}, {t("cases", { n: workflow.cases })}
+          </span>
+        </div>
+        <Steps steps={workflow.steps} />
+      </header>
 
-      <section>
-        <h2>{t("reasonsTitle")}</h2>
-        <ul>
+      <Section title={t("reasonsTitle")}>
+        <ul className={BULLETS}>
           {detail.reasons.map((reason) => (
             <li key={reason}>{reason}</li>
           ))}
         </ul>
-      </section>
+      </Section>
 
       {detail.copy_points.length > 0 && (
-        <section>
-          <h2>{t("copyPointsTitle")}</h2>
-          <ul>
+        <Section title={t("copyPointsTitle")}>
+          <ul className={BULLETS}>
             {detail.copy_points.map((point) => (
               <li key={`${point.from}-${point.to}`}>
                 {t("copyPoint", { from: point.from, to: point.to, n: point.copies })}
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
 
       {detail.examples.length > 0 && (
-        <section>
-          <h2>{t("examplesTitle")}</h2>
-          <p className="muted">{t("examplesNote")}</p>
-          <ul className="examples">
+        <Section title={t("examplesTitle")} description={t("examplesNote")}>
+          <ul className="flex flex-col gap-2 text-sm">
             {detail.examples.map((example) => (
               <li key={`${example.entity}-${example.first_ts}`}>
-                <strong>{example.entity}</strong>{" "}
-                <span className="muted">{dateTime(example.first_ts)}</span>
-                <div className="muted">{example.path.join(" › ")}</div>
+                <span className="font-medium">{example.entity}</span>{" "}
+                <span className="text-muted-foreground tabular-nums">{dateTime(example.first_ts)}</span>
+                <div className="text-muted-foreground">{example.path.join(" › ")}</div>
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
 
       {detail.commitments.length > 0 && (
-        <section>
-          <h2>{t("commitmentsTitle")}</h2>
-          <ul>
+        <Section title={t("commitmentsTitle")}>
+          <ul className={BULLETS}>
             {detail.commitments.map((c) => (
               <li key={`${c.ts}-${c.text}`}>
-                {c.text} <span className="muted">{dateTime(c.ts)}</span>
-                {c.overdue && <span className="tag">{t("overdue")}</span>}
+                {c.text} <span className="text-muted-foreground tabular-nums">{dateTime(c.ts)}</span>
+                {c.overdue && (
+                  <Badge variant="destructive" className="ml-1.5">
+                    {t("overdue")}
+                  </Badge>
+                )}
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
 
-      <Correction detail={detail} onChanged={() => void load()} />
       <Automation detail={detail} onHandedOff={() => void load()} />
+      <Correction detail={detail} onChanged={() => void load()} />
     </>
   );
 }

@@ -2,32 +2,38 @@ import { useEffect, useState } from "react";
 import { api, type ResultRow, type Results as ResultsData } from "./api";
 import { hours, shortDate } from "./format";
 import { t } from "./i18n";
+import { Failed, List, Muted, Section } from "./layout";
 import Report from "./Report";
+import { Progress } from "@/components/ui/progress";
 
 function Row({ row, minDays }: { row: ResultRow; minDays: number }) {
   const measured = row.hours_before !== null && row.hours_after !== null;
   return (
-    <li className="result">
-      <div className="workflow-head">
-        <strong>{row.name}</strong>
-        <span className="muted">{t("handoffOn", { date: shortDate(row.ts) })}</span>
+    <li className="flex flex-col gap-2 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-medium">{row.name}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {t("handoffOn", { date: shortDate(row.ts) })}
+        </span>
       </div>
       {measured ? (
-        <div className="before-after">
+        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm tabular-nums">
           <span>
-            <span className="muted">{t("hoursBefore")}</span>{" "}
+            <span className="text-muted-foreground">{t("hoursBefore")}</span>{" "}
             {t("hoursWeek", { hours: hours(row.hours_before ?? 0) })}
           </span>
           <span>
-            <span className="muted">{t("hoursAfter")}</span>{" "}
+            <span className="text-muted-foreground">{t("hoursAfter")}</span>{" "}
             {t("hoursWeek", { hours: hours(row.hours_after ?? 0) })}
           </span>
-          <strong>{t("hoursBack", { hours: hours(row.saved ?? 0) })}</strong>
+          <span className="font-medium text-success">{t("hoursBack", { hours: hours(row.saved ?? 0) })}</span>
         </div>
       ) : (
-        <div aria-live="polite">
-          <progress value={row.progress} max={minDays} />{" "}
-          <span className="muted">{t("measuring", { n: row.progress, total: minDays })}</span>
+        <div aria-live="polite" className="flex items-center gap-3">
+          <Progress value={(row.progress / minDays) * 100} className="max-w-48" />
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {t("measuring", { n: row.progress, total: minDays })}
+          </span>
         </div>
       )}
     </li>
@@ -46,21 +52,22 @@ export default function Results() {
       .catch((err) => setError(String(err)));
   }, []);
 
-  if (error) return <p role="alert">{error}</p>;
-  if (!results) return <p className="muted">{t("loading")}</p>;
+  if (error) return <Failed>{error}</Failed>;
+  if (!results) return <Muted>{t("loading")}</Muted>;
 
   return (
     <>
-      <h2>{t("resultsTitle")}</h2>
-      {results.rows.length === 0 ? (
-        <p className="muted">{t("resultsEmpty")}</p>
-      ) : (
-        <ul className="workflows">
-          {results.rows.map((row) => (
-            <Row key={row.handoff_id} row={row} minDays={results.min_days} />
-          ))}
-        </ul>
-      )}
+      <Section title={t("resultsTitle")}>
+        {results.rows.length === 0 ? (
+          <Muted>{t("resultsEmpty")}</Muted>
+        ) : (
+          <List>
+            {results.rows.map((row) => (
+              <Row key={row.handoff_id} row={row} minDays={results.min_days} />
+            ))}
+          </List>
+        )}
+      </Section>
       <Report />
     </>
   );

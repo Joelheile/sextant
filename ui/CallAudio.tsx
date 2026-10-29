@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, listenDownload, type Models } from "./api";
 import { t } from "./i18n";
+import { Failed, List, Muted, SwitchRow } from "./layout";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 
 const MB = 1024 * 1024;
 
@@ -64,46 +67,43 @@ export default function CallAudio() {
     }
   };
 
-  if (!models) return error ? <p role="alert">{error}</p> : null;
+  if (!models) return error ? <Failed>{error}</Failed> : null;
 
   return (
-    <section className="call-audio">
+    <div className="flex flex-col gap-3">
       {models.installed ? (
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={models.audio}
-            onChange={(e) => void toggle(e.target.checked)}
-          />
-          {t("audioSwitch")}
-        </label>
+        <List>
+          <SwitchRow label={t("audioSwitch")} checked={models.audio} onChange={(on) => void toggle(on)} />
+        </List>
       ) : (
         <>
-          <p>{t("audioBody")}</p>
-          <p>{t("audioDownload", { size: Math.round(models.bytes / MB) })}</p>
-          <p className="muted">{t("audioCredit")}</p>
-          <p className="muted">{t("audioLaw")}</p>
+          <p className="text-sm">{t("audioBody")}</p>
+          <Muted>{t("audioDownload", { size: Math.round(models.bytes / MB) })}</Muted>
+          <Muted>{t("audioCredit")}</Muted>
+          <Muted>{t("audioLaw")}</Muted>
           {progress ? (
-            <div aria-live="polite">
-              <progress value={progress.done} max={progress.total} />
-              <span className="muted">
-                {t("downloading", {
-                  done: Math.round(progress.done / MB),
-                  total: Math.round(progress.total / MB),
-                })}
-              </span>
-              <button type="button" className="secondary" onClick={() => void api.cancelDownload()}>
-                {t("cancel")}
-              </button>
+            <div aria-live="polite" className="flex flex-col gap-2">
+              <Progress value={(progress.done / progress.total) * 100} />
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {t("downloading", {
+                    done: Math.round(progress.done / MB),
+                    total: Math.round(progress.total / MB),
+                  })}
+                </span>
+                <Button type="button" variant="ghost" size="sm" onClick={() => void api.cancelDownload()}>
+                  {t("cancel")}
+                </Button>
+              </div>
             </div>
           ) : (
-            <button type="button" onClick={() => void download()}>
+            <Button type="button" className="self-start" onClick={() => void download()}>
               {t("audioDownloadButton")}
-            </button>
+            </Button>
           )}
         </>
       )}
-      {error && <p role="alert">{error}</p>}
-    </section>
+      {error && <Failed>{error}</Failed>}
+    </div>
   );
 }

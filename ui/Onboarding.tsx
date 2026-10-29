@@ -11,19 +11,34 @@ import {
 } from "./api";
 import { t, type Key } from "./i18n";
 import CallAudio from "./CallAudio";
+import { Done, Failed, List, Muted, Page, Section, SwitchRow } from "./layout";
 import MapList from "./MapList";
 import Permissions from "./Permissions";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 
 const STEPS = 5;
 
 function Frame({ step, title, children }: { step: number; title: string; children: ReactNode }) {
   return (
-    <main className="shell">
-      <p className="muted">{t("step", { n: step, total: STEPS })}</p>
-      <h1>{title}</h1>
+    <Page>
+      <header className="flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          <Progress value={(step / STEPS) * 100} className="h-1 max-w-24" />
+          <span className="text-xs text-muted-foreground tabular-nums">{t("step", { n: step, total: STEPS })}</span>
+        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+      </header>
       {children}
-    </main>
+    </Page>
   );
+}
+
+/** Back and Next, bottom right. */
+function Actions({ children }: { children: ReactNode }) {
+  return <div className="flex justify-end gap-2">{children}</div>;
 }
 
 type SourceChoice = {
@@ -65,49 +80,50 @@ function PickSources({ settings, onNext }: { settings: Settings; onNext: () => v
 
   return (
     <Frame step={1} title={t("sourcesTitle")}>
-      <p>{t("sourcesBody")}</p>
-      <ul className="choices">
+      <p className="text-sm">{t("sourcesBody")}</p>
+      <List>
         {CHOICES.map(({ key, title, note }) => (
-          <li key={key}>
-            <label>
-              <input
-                type="checkbox"
+          <li key={key} className="flex flex-col gap-3 px-4 py-3">
+            <Label className="items-start font-normal">
+              <Checkbox
+                className="mt-0.5"
                 checked={sources[key]}
-                onChange={(e) => setSources({ ...sources, [key]: e.target.checked })}
+                onCheckedChange={(on) => setSources({ ...sources, [key]: on === true })}
               />
-              <span>
-                <strong>{t(title)}</strong>
-                <span className="muted">{t(note)}</span>
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium">{t(title)}</span>
+                <span className="text-muted-foreground">{t(note)}</span>
               </span>
-            </label>
+            </Label>
             {key === "git" && sources.git && (
-              <div className="folders">
+              <div className="ml-6 flex flex-col items-start gap-1.5">
                 {folders.map((folder) => (
-                  <div key={folder} className="folder">
-                    <code>{folder}</code>
-                    <button
+                  <div key={folder} className="flex items-center gap-2">
+                    <code className="font-mono text-xs break-all">{folder}</code>
+                    <Button
                       type="button"
-                      className="link"
+                      variant="ghost"
+                      size="xs"
                       onClick={() => setFolders(folders.filter((f) => f !== folder))}
                     >
                       {t("removeFolder")}
-                    </button>
+                    </Button>
                   </div>
                 ))}
-                <button type="button" className="secondary" onClick={() => void addFolder()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => void addFolder()}>
                   {t("addFolder")}
-                </button>
+                </Button>
               </div>
             )}
           </li>
         ))}
-      </ul>
-      {error && <p role="alert">{error}</p>}
-      <div className="actions">
-        <button type="button" onClick={() => void next()}>
+      </List>
+      {error && <Failed>{error}</Failed>}
+      <Actions>
+        <Button type="button" onClick={() => void next()}>
           {t("next")}
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </Frame>
   );
 }
@@ -115,16 +131,16 @@ function PickSources({ settings, onNext }: { settings: Settings; onNext: () => v
 function GrantAccess({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
   return (
     <Frame step={2} title={t("accessTitle")}>
-      <p>{t("accessBody")}</p>
+      <p className="text-sm">{t("accessBody")}</p>
       <Permissions />
-      <div className="actions">
-        <button type="button" className="secondary" onClick={onBack}>
+      <Actions>
+        <Button type="button" variant="ghost" onClick={onBack}>
           {t("back")}
-        </button>
-        <button type="button" onClick={onNext}>
+        </Button>
+        <Button type="button" onClick={onNext}>
           {t("readHistory")}
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </Frame>
   );
 }
@@ -162,23 +178,21 @@ function FirstMap({ onNext }: { onNext: () => void }) {
   return (
     <Frame step={3} title={t("mapTitle")}>
       {backfill.state === "running" && (
-        <>
-          <p>{t("mapWorking")}</p>
+        <div className="flex flex-col gap-1">
+          <p className="text-sm">{t("mapWorking")}</p>
           {backfill.stage && (
-            <p className="muted" aria-live="polite">
+            <p className="text-sm text-muted-foreground" aria-live="polite">
               {t(`stage_${backfill.stage}`)}
             </p>
           )}
-        </>
+        </div>
       )}
-      {backfill.state === "failed" && (
-        <p role="alert">{t("mapFailed", { message: backfill.message })}</p>
-      )}
+      {backfill.state === "failed" && <Failed>{t("mapFailed", { message: backfill.message })}</Failed>}
       {backfill.state === "done" && (
         <>
-          <p className="muted">{t("mapRough")}</p>
+          <Muted>{t("mapRough")}</Muted>
           <MapList headline />
-          <ul className="skipped muted">
+          <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
             {backfill.summary.sources.flatMap((source) =>
               source.errors.map((message) => (
                 <li key={`${source.stage}-${message}`}>
@@ -189,11 +203,11 @@ function FirstMap({ onNext }: { onNext: () => void }) {
           </ul>
         </>
       )}
-      <div className="actions">
-        <button type="button" disabled={backfill.state === "running"} onClick={onNext}>
+      <Actions>
+        <Button type="button" disabled={backfill.state === "running"} onClick={onNext}>
           {t("next")}
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </Frame>
   );
 }
@@ -202,14 +216,14 @@ function Audio({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
   return (
     <Frame step={4} title={t("audioTitle")}>
       <CallAudio />
-      <div className="actions">
-        <button type="button" className="secondary" onClick={onBack}>
+      <Actions>
+        <Button type="button" variant="ghost" onClick={onBack}>
           {t("back")}
-        </button>
-        <button type="button" onClick={onNext}>
+        </Button>
+        <Button type="button" onClick={onNext}>
           {t("next")}
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </Frame>
   );
 }
@@ -268,63 +282,55 @@ function ConnectToClaude({ onFinish }: { onFinish: () => void }) {
 
   return (
     <Frame step={5} title={t("connectTitle")}>
-      <p>{t("connectBody")}</p>
+      <p className="text-sm">{t("connectBody")}</p>
 
-      <section>
-        <h2>{t("desktopTitle")}</h2>
-        <button type="button" onClick={() => void addToDesktop()} disabled={!info}>
+      <Section title={t("desktopTitle")}>
+        <Button type="button" className="self-start" onClick={() => void addToDesktop()} disabled={!info}>
           {t("desktopAdd")}
-        </button>
+        </Button>
         {written && (
-          <p className="ok" aria-live="polite">
+          <Done>
             {written.backup
               ? t("desktopDone", { backup: written.backup })
               : t("desktopDoneNoBackup", { path: written.path })}
-          </p>
+          </Done>
         )}
-      </section>
+      </Section>
 
-      <section>
-        <h2>{t("codeTitle")}</h2>
-        <p className="muted">{t("codeBody")}</p>
+      <Section title={t("codeTitle")} description={t("codeBody")}>
         {info && (
-          <div className="command">
-            <code>{info.claude_code_command}</code>
-            <button type="button" className="secondary" onClick={() => void copy()}>
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-2.5">
+            <code className="font-mono text-xs break-all">{info.claude_code_command}</code>
+            <Button type="button" variant="outline" size="sm" onClick={() => void copy()}>
               {copied ? t("copied") : t("copy")}
-            </button>
+            </Button>
           </div>
         )}
-      </section>
+      </Section>
 
       {settings && (
-        <section>
-          <label className="switch">
-            <input
-              type="checkbox"
+        <Section description={t("cloudNote")}>
+          <List>
+            <SwitchRow
+              label={t("switchRewind")}
               checked={settings.mcp_rewind}
-              onChange={(e) => void switches(e.target.checked, settings.mcp_workflows)}
+              onChange={(on) => void switches(on, settings.mcp_workflows)}
             />
-            {t("switchRewind")}
-          </label>
-          <label className="switch">
-            <input
-              type="checkbox"
+            <SwitchRow
+              label={t("switchWorkflows")}
               checked={settings.mcp_workflows}
-              onChange={(e) => void switches(settings.mcp_rewind, e.target.checked)}
+              onChange={(on) => void switches(settings.mcp_rewind, on)}
             />
-            {t("switchWorkflows")}
-          </label>
-        </section>
+          </List>
+        </Section>
       )}
 
-      <p className="muted">{t("cloudNote")}</p>
-      {error && <p role="alert">{error}</p>}
-      <div className="actions">
-        <button type="button" onClick={() => void finish()}>
+      {error && <Failed>{error}</Failed>}
+      <Actions>
+        <Button type="button" onClick={() => void finish()}>
           {t("finish")}
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </Frame>
   );
 }
