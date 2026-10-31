@@ -1,6 +1,6 @@
 # Sextant
 
-Read `plan.md` first. It is the spec: principles, privacy rules (§10), budgets (§11), working rules (§12) and milestones (§13). Do one milestone per session.
+Read `AGENTS.md` first for the vision, then `plan.md`. It is the spec: principles, privacy rules (§10), budgets (§11), working rules (§12) and milestones (§13). Do one milestone per session.
 
 ## Layout
 
@@ -24,7 +24,7 @@ Read `plan.md` first. It is the spec: principles, privacy rules (§10), budgets 
 | OCR budget on synthetic fixtures (macOS; the test enforces the budget only with `SEXTANT_BUDGET_TESTS=1`, which the Stop hook sets) | `SEXTANT_BUDGET_TESTS=1 cargo test -p sextant-app --release ocr -- --nocapture` or `cargo run -p sextant-app --release -- bench` |
 | Live capture bench (user step: needs Screen Recording; agents never run it) | `cargo run -p sextant-app --release -- bench --live 60` |
 | Fetch ONNX Runtime into `app/frameworks` (needed once for `bench --asr`, `tauri build`) | `scripts/fetch-onnxruntime.sh` |
-| Build the signed DMG (CI only; see README "Cut a release") | `bun tauri build --target aarch64-apple-darwin` |
+| Build the signed DMG (CI only; see `docs/RELEASING.md`) | `bun tauri build --target aarch64-apple-darwin` |
 | Fetch speech fixtures (dev network; LibriSpeech and MLS German) | `scripts/fetch-speech.sh` |
 | Fetch the audio models into `.dev-data/models` (about 670 MB, dev network) | `cargo run -p sextant-app --release -- bench --fetch-models` |
 | ASR budget: RTF, WER, memory on the fixtures (add `--coreml` to compare) | `cargo run -p sextant-app --release -- bench --asr` |

@@ -1,85 +1,115 @@
-# Sextant
+<p align="center">
+  <img src="app/icons/128x128@2x.png" width="96" alt="Sextant icon">
+</p>
 
-Sextant is a small app for macOS that makes your work searchable and finds the parts worth handing to an agent.
+<h1 align="center">Sextant</h1>
 
-- **Rewind for your agents.** Everything you saw and said becomes searchable text. Claude, or any MCP client, can ask: "What did Anna say about pricing on Tuesday?" or "Find the invoice number I saw yesterday."
-- **Automation finder.** Sextant maps your work into workflows across apps and days, shows which ones to hand to an agent, and measures the hours you get back.
+<p align="center">
+  <b>Find the work worth automating.</b><br>
+  A text-only record of your Mac work, with no screenshots, no audio and no telemetry.
+</p>
 
-On install, Sextant reads history you already have (browser history, calendar, git commits, recent files) and draws a first workflow map in under a minute.
+<p align="center">
+  <a href="https://github.com/Joelheile/sextant/releases/latest"><img src="https://img.shields.io/github/v/release/Joelheile/sextant?label=release" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/macOS%2026-Apple%20silicon-black" alt="macOS 26 on Apple silicon">
+</p>
+
+You repeat the same steps every week, and you can't see where the hours go. Sextant runs in your menu bar, keeps a private record of how you work, and shows you which routines to hand to an agent. Each one comes with a skill file that Claude can run.
+
+It's for anyone who works on a Mac: developers, ops people, founders, consultants, assistants.
+
+<p align="center">
+  <img src="docs/assets/demo.gif" width="800" alt="Sextant shows where the week went and flags the invoice routine. Claude is asked what to automate and picks invoices. Sextant then writes a SKILL.md for it. Sample data.">
+</p>
 
 ## Install
-
-Sextant needs a Mac with Apple silicon and macOS 26 or later.
 
 ```sh
 curl -fsSL https://github.com/Joelheile/sextant/releases/latest/download/install.sh | sh
 ```
 
-The script downloads the latest disk image over HTTPS, checks its SHA-256 against the checksum published with the release, copies `Sextant.app` to `/Applications` and opens it. You can also download `Sextant.dmg` from the [releases page](https://github.com/Joelheile/sextant/releases/latest) and drag the app to `/Applications`.
+Or download [`Sextant.dmg`](https://github.com/Joelheile/sextant/releases/latest) and drag the app to `/Applications`. You need a Mac with Apple silicon and macOS 26 or later. The app is about 17 MB.
 
-While the repository is private, the `curl` command can't download anything. Use the GitHub CLI instead: `gh release download -R Joelheile/sextant -p Sextant.dmg`, then open the disk image and drag the app to `/Applications`.
+The script checks the disk image against the SHA-256 published with the release before it installs anything.
 
-The app is about 17 MB. The speech models (about 670 MB) are optional and download only after you press "Download".
+## What it does
 
-## Privacy
+- **Shows where your time goes.** Sextant groups what you do into tasks across apps and days, like "invoices: Mail, then Excel, then lexoffice".
+- **Finds your routines.** Tasks you repeat become routines with their steps, how often you run them and the hours they take.
+- **Ranks what to automate.** Each routine gets a score from the hours it takes and how much of it an agent could do, such as values you copy by hand between apps.
+- **Writes the skill.** Every routine becomes a `SKILL.md` with its steps, example cases and rules, ready for Claude.
+- **Makes your work searchable.** Ask "Find the invoice number I saw yesterday" or "What did Anna say about pricing on Tuesday?"
 
-- Everything stays on your Mac, in one encrypted database. The key lives in your Keychain.
-- Sextant never stores pixels or audio. Screen text and transcripts are stored as text only.
-- It reads only the focused window, and only when no gate is closed: excluded apps (password managers and messengers by default), private browser windows, secure input, paused, or the source switched off.
-- Emails, IBANs, card numbers, API keys and tokens are redacted before anything is stored.
-- Search answers come from Apple's on-device model (Foundation Models) when Apple Intelligence is on, and from keyword search when it is off. The same model judges how much of each recurring step an agent could do, from the step's name, apps and templated titles, never raw screen text. Without it, a fixed guess per category is used. Either way, everything stays on your Mac.
-- The only network call is the speech model download you start yourself, from pinned URLs with a SHA-256 check. There is no telemetry, crash reporter, analytics or auto-updater.
-- You choose how long raw data stays: 30, 90 or 365 days, or forever. "Delete everything" empties the data folder.
-- If you tell your agent to read from Sextant, the text it reads goes to wherever that agent's model runs, which may be the cloud. Excluded apps and redaction apply to that output too.
+On first launch, Sextant reads history you already have (browser history, calendar, git commits, recent files) and draws a first map in under a minute.
 
-Transcribing people without their consent is a crime in some countries, including Germany (section 201 StGB). Tell the other side before you record a call.
+## Use it with Claude
 
-## Connect to Claude
-
-The onboarding has a "Connect to Claude" step. It adds Sextant to the Claude Desktop config, and keeps a backup of the old file. For Claude Code, run:
+The onboarding has a "Connect to Claude" step for Claude Desktop. For Claude Code, run:
 
 ```sh
 claude mcp add sextant -- /Applications/Sextant.app/Contents/MacOS/sextant mcp
 ```
 
-## Build from source
+Then ask Claude:
 
-You need Rust (stable), [Bun](https://bun.sh) and Xcode command line tools.
+- "What should I automate first?"
+- "How did I spend last week?"
+- "Write a skill for my invoice routine."
 
-```sh
-bun install
-scripts/fetch-onnxruntime.sh   # the speech runtime, bundled into the app
-bun tauri dev                  # run with data in ./.dev-data
-bun tauri build                # build Sextant.app and the DMG
-scripts/stop-hook.sh           # format, lint, tests and the network check
+## Privacy at a glance
+
+- **Stored:** text only. App and window names, URLs, text on screen, buttons you click, what you leave in text fields, and meeting transcripts.
+- **Never stored:** pixels, audio, keystrokes or passwords. Password managers, messengers and private browser windows are skipped by default.
+- **Redacted before storage:** emails, IBANs, card numbers, API keys and tokens.
+- **Where it lives:** one encrypted database on your Mac. The key is in your Keychain.
+- **Network:** none, except the optional speech model download you start yourself. There is no telemetry, analytics, crash reporter or auto-updater. A CI check fails the build if network code appears outside one file.
+- **Agents:** your data stays on your Mac until you ask an agent to read it. What the agent reads goes to wherever its model runs.
+
+Read the details in [docs/PRIVACY.md](docs/PRIVACY.md).
+
+## How it works
+
+```mermaid
+flowchart LR
+  A[Focused window<br>and clicks] --> B[Text only,<br>redacted]
+  B --> C[(Encrypted<br>database)]
+  C --> D[Tasks and<br>routines]
+  D --> E[Ranked list<br>and SKILL.md]
+  C -. MCP .-> F[Claude]
+  E -. MCP .-> F
 ```
 
-Dev builds read and write only `./.dev-data`. See `CLAUDE.md` for all commands and `plan.md` for the design.
+1. Sextant reads the focused window through macOS Accessibility, and falls back to on-device text recognition when an app exposes no text.
+2. It redacts the text and stores it in an encrypted SQLite database.
+3. It groups activity into tasks and finds the tasks you repeat.
+4. It scores each routine and writes a skill file for it.
+5. Claude reads all of this through a local MCP server, `sextant mcp`, which Claude starts when it needs it.
 
-## Cut a release
+## FAQ
 
-You need a paid Apple Developer account. The `curl` installer also needs the repository to be public.
+**Does Sextant record my keystrokes?**
+No. It notes which labelled button you clicked and the text left in a field when you move on. It never reads password fields.
 
-1. Create a "Developer ID Application" certificate, export it as a `.p12` file and encode it: `base64 -i cert.p12 | pbcopy`.
-2. Add these repository secrets (Settings, Secrets and variables, Actions):
+**Who can read my data?**
+Only you, on your Mac. The database is encrypted and nothing is uploaded. An agent sees the data only when you connect it and it calls Sextant.
 
-   | Secret                       | Value                                                                            |
-   | ---------------------------- | -------------------------------------------------------------------------------- |
-   | `APPLE_CERTIFICATE`          | The base64 text of the `.p12` file                                               |
-   | `APPLE_CERTIFICATE_PASSWORD` | The password you set on export                                                   |
-   | `APPLE_SIGNING_IDENTITY`     | The certificate name, for example `Developer ID Application: Your Name (TEAMID)` |
-   | `APPLE_ID`                   | Your Apple ID email                                                              |
-   | `APPLE_PASSWORD`             | An app-specific password from appleid.apple.com                                  |
-   | `APPLE_TEAM_ID`              | Your 10-character team ID                                                        |
+**Why macOS 26?**
+Sextant uses Apple's on-device model (Foundation Models) to answer questions and judge which steps an agent can do. Without Apple Intelligence, it falls back to keyword search and fixed estimates.
 
-3. Set the same version in `app/tauri.conf.json`, `package.json` and `Cargo.toml`, commit it, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
-4. The `Release` workflow builds, signs with the hardened runtime, notarizes, staples and publishes `Sextant.dmg`, `Sextant.dmg.sha256` and `install.sh`.
+**How do I delete everything?**
+Open the menu bar popover, go to Settings, then Privacy, and press "Delete everything". You can also choose how long raw data stays: 30, 90 or 365 days, or forever.
 
-To check a release, run the install command on a Mac that has never seen Sextant. It must open without a Gatekeeper warning, ask for each permission only when its onboarding step needs it, and show a map.
+**Can Sextant transcribe calls?**
+Yes, with the optional speech models (about 670 MB, downloaded only when you press "Download and turn on"). Sextant listens only while a call app or a browser has the microphone open, and keeps the transcript as text, never the audio. Call audio follows the same rules as screen capture: it does not start for an excluded app (Apple Passwords is excluded by default) or a private browser window. "Stop audio" in the menu bar menu ends it at once, and pausing capture ends it too. Transcribing people without consent is a crime in some countries, including Germany. Tell the other side first.
 
-## Licenses
+## Contributing
 
-Sextant is MIT licensed. See `LICENSE`.
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to build from source and run the checks.
+
+## License
+
+Sextant is MIT licensed. See [LICENSE](LICENSE).
 
 - **Parakeet TDT 0.6B v3** by NVIDIA, [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/), used as the ONNX export by istupakov. NVIDIA is the credited author.
 - **Silero VAD** by the Silero team, MIT.

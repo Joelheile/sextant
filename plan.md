@@ -14,7 +14,7 @@ Everything stays on the device, encrypted. It should feel invisible: no fan, no 
 - **Value in 60 seconds.** On install, Sextant reads history you already have and shows a first workflow map before recording anything.
 - **The agent is the main interface.** Rewind lives in Claude through MCP. The app window is small: a workflow map, a search box, privacy settings.
 - **Lean beats complete.** Text only, event driven, one process, one database file, two Rust crates. Every feature has to earn its CPU and its lines of code.
-- **Explain everything.** Every score shows its reasons and evidence. The only model inside Sextant is Apple's on-device one: it turns a search question into terms and a time span writes a short cited answer, and judges how much of each recurring step an agent could do. Keyword search and the category priors take over without it. The agent does the rest of the language work.
+- **Explain everything.** Every score shows its reasons and evidence. The only model inside Sextant is Apple's on-device one: it turns a search question into terms and a time span, writes a short cited answer and judges how much of each recurring step an agent could do. Keyword search and the category priors take over without it. The agent does the rest of the language work.
 - **Private by construction.** No pixels or audio on disk, no network except one consented model download, MIT license forever.
 
 ## 2. Stack
@@ -36,11 +36,12 @@ Pre-approved crates for core: rusqlite, thiserror, regex, serde, serde_json, pet
 
 | Source                                                                                                                                                                                        | When                        | Default                                       |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | --------------------------------------------- |
-| **Backfill:** browser history (Chrome, Arc, Brave, Edge; Safari if Full Disk Access is granted), calendar and reminders (90 days), git commits in folders the user picks, recently used files | once at install, then daily | on, each source can be unticked in onboarding |
+| **Backfill:** browser history (Chrome, Arc, Brave, Edge; Safari if Full Disk Access is granted), calendar and reminders (90 days), git commits in folders the user picks, recently used files | once, in onboarding         | on, each source can be unticked in onboarding |
 | **Live:** focused app, window title, document, browser URL                                                                                                                                    | while working               | on                                            |
 | **Live:** OCR text of the focused window                                                                                                                                                      | while working               | on                                            |
 | **Live:** mic and system audio transcripts                                                                                                                                                    | during calls and voice use  | on, tray shows it, one click stops it         |
 | **Live:** copy events (which app, never the content)                                                                                                                                          | while working               | on                                            |
+| **Live:** actions: presses on labelled controls and the value left in each text field (never keystrokes, never secure fields)                                                                 | while working               | on                                            |
 | Screenshots or audio files on disk                                                                                                                                                            | never                       | never                                         |
 | Retention of raw data                                                                                                                                                                         |                             | 90 days; 30, 365 or forever                   |
 
@@ -49,20 +50,22 @@ A call is detected when another process (not Sextant) uses the mic and it is a k
 ## 4. Live capture pipeline
 
 ```
-triggers ─▶ capture ─▶ diff gate ─▶ OCR ─▶ redact + dedupe ─▶ writer (flush 1 s) ─▶ SQLCipher
+triggers ─▶ AX tree ─(too little text)▶ capture ─▶ diff gate ─▶ OCR ─▶ redact + dedupe ─▶ writer (flush 1 s) ─▶ SQLCipher
 mic + system audio ─▶ 30 s ring buffer ─▶ VAD ─▶ Parakeet ─▶ writer
 every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶ scores
 ```
 
 - One process, plain threads for capture and audio, `crossbeam_queue::ArrayQueue::force_push` between them (oldest frame drops under load).
 - **Triggers:** focus change (300 ms settle), input pause (1 s after activity, read from OS idle time, never keyboard hooks), 10 s tick while active. Nothing when idle over 60 s, locked or asleep.
-- **Gates before any frame or stream exists:** excluded app (password managers, Health, messengers by default), private browser window (Chromium `mode`, Arc `incognito`; Safari excluded unless the user opts in), secure input (`IsSecureEventInputEnabled`), paused, source off.
-- **Capture:** only the focused window, `SCScreenshotManager` (macOS 14+).
+- **Gates before any frame or stream exists:** excluded app (password managers including Apple Passwords, Health and messengers by default), private browser window (Chromium `mode`, Arc `incognito`; Safari excluded unless the user opts in), secure input (`IsSecureEventInputEnabled`), paused, source off. Call audio passes the excluded-app and private-window gates before a stream opens.
+- **AX tree first:** walk the focused window's Accessibility tree (core `capture::window_lines`, one batched `AXUIElementCopyMultipleAttributeValues` per element, 3000 nodes, 120 ms). Menus, toolbars, scroll bars and secure fields are pruned, offscreen subtrees skipped, rows joined with " · ", checkboxes rendered `[ ]`, `[x]`, `[-]`. `AXManualAccessibility` is set once per app so Electron and Chromium expose their tree. Exact text, no pixels; an unchanged window and text hash writes nothing.
+- **Actions (the UI log for workflow mining):** a global left-mouse-down monitor (`NSEvent`, position only) unparks the capture thread, which resolves the press before the UI changes: `AXUIElementCopyElementAtPosition`, dropped unless it belongs to the focused app, then up to 6 parents to the nearest button, link, menu item, checkbox, row or cell, named by its own label or the text clicked (core `capture::press_event`). The focused text field (`AXFocusedUIElement`) is read each poll; when focus leaves it, it is read once more and the value left in it becomes one edit (core `capture::Edits`). A press first writes the open field, so order holds. A field that empties on send keeps what was typed. Secure fields, values over 2000 characters and keystrokes are never read. Actions are read only while the focus key (pid and window) is the one that last passed every gate, so a private window of the same browser process is closed before anything is read. Redaction applies like any event.
+- **Capture:** only when the tree gives under 80 letters and digits. Only the focused window, `SCScreenshotManager` (macOS 14+).
 - **Diff gate:** 64×64 grayscale hash, skip OCR if nearly equal to the last frame of that window. Tune with synthetic frames in tests.
 - **OCR:** Vision `VNRecognizeTextRequest`, compare `.fast` and `.accurate` against the budget, drop confidence < 0.3. Output per line: text, confidence, box.
 - **Redaction before storage:** emails, IBANs, card numbers, API keys, tokens. Emails become `<email:hash>` so entity linking still works.
 - **Audio:** per-process mic detection (`kAudioProcessPropertyIsRunningInput`, skipping Sextant), mic via `cpal`, system audio via a Core Audio process tap on the call app only (macOS 14.2+), 16 kHz mono, Silero VAD, Parakeet loaded on first speech and unloaded after 5 min of silence. Mic and system are separate streams, so "me" vs "them" is known without diarization.
-- Timeouts on every OS call that can hang (AX 0.5 s, AppleScript 2 s).
+- Timeouts on every OS call that can hang (AX 0.5 s, 0.1 s per element in the tree walk, AppleScript 2 s).
 
 ## 5. Storage
 
@@ -70,12 +73,14 @@ every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶
 - `frames(id, ts, window_id, packed)` varint list of `(line_id, box)`, boxes on a 256 grid.
 - `frame_lines(line_id, frame_id) WITHOUT ROWID` for search and cleanup.
 - `windows(id, app, bundle_id, title, doc, url_host_path)` deduped.
-- `utterances(id, ts_start, ts_end, source mic|system, text)` plus `utterances_fts`.
-- `events(ts, kind, source, json)` for focus, idle, copy, calendar, reminder, browser visit, commit, file use, pause. `source` is `live` or `backfill`.
-- Engine: `episodes`, `commitments`, `overrides`, `corrections`, `handoffs`.
-- Work graph: `steps`, `entities`, `mentions(entity_id, episode_id)`, `follows(from_step, to_step, count, median_gap_s, copies)`, `cases(entity_id, first_ts, last_ts, variant)`, `workflows(id, variant, case_count, hours_week)`.
-- Core has a passive `Writer` (`push`, `flush(now)`); the app's writer thread flushes every second. Readers (UI and MCP) use read-only connections, WAL mode lets them run while the app writes.
-- **Retention, hourly:** delete raw rows past the window, then unreferenced lines and windows. Weekly `VACUUM` when idle. Workflows and scores keep only redacted, templated keys.
+- `utterances(id, start_ts, end_ts, source mic|system, text)` plus `utterances_fts`.
+- `events(ts, kind, source, json)` for focus, idle, copy, press (`app`, `role`, `label`), edit (`app`, `role`, `label`, `value`), calendar, reminder, browser visit, commit, file use, pause. `source` is `live` or `backfill`.
+- Engine: `episodes`, `overrides`, `corrections`, `handoffs`, `judgments(key, share, reason, ts)` (the on-device model's share an agent could do, per step key), `turns` (rewind questions and answers, redacted) and `meta` (the email hash secret, the last vacuum).
+- Work graph: `steps`, `entities`, `mentions(entity_id, episode_id)`, `follows(from_step_id, to_step_id, count, median_gap_s, copies, days)`, `tasks(id, label, workflow_id, first_ts, last_ts, active_s)`, `task_episodes(task_id, episode_id)`, `commitments(..., task_id)` and `workflows(id, variant, task_count, hours_week, ...)`.
+- Agent bridge: `agent_runs` (one row, the last run) and `agent_ideas` (the ideas it found, redacted before they are stored).
+- Shipped migrations (`core/src/schema_v1.sql` to `schema_v5.sql`) never change. `schema_v6.sql` drops `cases` and adds `tasks`, `task_episodes`, `commitments` keyed by `task_id`, `agent_runs` and `agent_ideas`.
+- Core has a passive `Writer` (`push`, `flush(now)`); the app's writer thread flushes every second. Readers (UI and MCP) use read-only connections, WAL mode lets them run while the app writes. The one exception is `report_handoff` (§8), which opens a short-lived keyed write connection.
+- **Retention, hourly:** delete raw rows past the window (lines, frames, windows, utterances, events and rewind turns, with their FTS rows), then unreferenced lines and windows, then run a refresh so the engine tables hold only what the remaining rows make. Once a week, when nothing was captured for 15 minutes, `VACUUM` returns the freed space. Workflows and scores keep only redacted, templated keys.
 - Dev builds use `SEXTANT_HOME=./.dev-data` (in `.cargo/config.toml`) and keychain service `sextant-dev`, and refuse to start without it.
 
 ## 6. Backfill (the 60-second first map)
@@ -86,32 +91,36 @@ every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶
 - Recent files: Spotlight `kMDItemLastUsedDate` for documents, file names only.
 - Everything becomes `events` with `source = backfill` and goes through the same compiler. Workflows built only from backfill are labeled "rough" until live data confirms them.
 
-## 7. Automation finder (core, deterministic, time passed in as `now`)
+## 7. Automation finder (core, deterministic, time passed in as `Local { now, utc_offset_s }`)
 
-Process mining applied to one person: a **case** is one piece of work (one client, ticket, invoice), a **step** is a recurring activity, a **workflow** is a step sequence that repeats across cases.
+Functions take a `Local` built per call, so day boundaries follow daylight saving. Process mining applied to one person: a **task** is one piece of work (one client, ticket, invoice), a **step** is a recurring activity, a **workflow** is a step sequence that repeats across tasks.
+
+The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`, `press` and `edit` events. Commit and file events from backfill feed the MCP timeline, not the map.
 
 1. **Episodes:** consecutive focus on the same object key, min 5 s, max 120 min, merge gaps under 2 min. Object key: host + first 2 path segments + 3 title tokens; else app + document; else app + title template (numbers and ids replaced). OCR headings and form titles refine the key.
 2. **Steps:** group episodes by object key, merge within the same app or site at Jaccard ≥ 0.5 on title tokens. Name from shared tokens. Category by rules: meeting, email, spreadsheet, crm, finance, chat, planning, coding, design, writing, slides, calendar, social, media, web, other.
 3. **Entities** (rules, no LLM): ticket and invoice ids, email hashes and domains, document names, amounts with currency, names or companies seen in 3+ episodes. Ignore entities that appear almost everywhere.
-4. **Follows edges:** B starts within 10 min after A ends. Keep count, median gap and copy events from A's app to B's app.
-5. **Cases:** episodes that mention the same entity, in time order, across days.
-6. **Workflows:** group cases by step sequence (edit distance ≤ 1), 3+ cases. Frequent follows chains without a shared entity (count ≥ 5 on 3+ days) are routine workflows.
-7. **Commitments:** promises in transcripts ("I'll", "let me", "ich werde", "ich schicke", "mach ich") and reminders, linked to cases by entity, else token overlap ≥ 0.34.
+4. **Follows edges:** B starts within 10 min after A ends. Keep count, median gap and copy events from A's app to B's app. A **retype** is B showing an entity of A in another app with no copy event between them: the value was typed again.
+5. **Tasks:** episodes joined in time order across days by shared anchors (invoice and ticket ids, and edit values that are ids). An episode joins the open task it shares the most anchors with from the last 7 days. With no anchor, it joins only the task of an episode in the same object that ended within 2 minutes. Tasks that share an anchor and sit at most 14 days apart merge.
+6. **Workflows:** group tasks by step sequence (edit distance ≤ 1), 3+ tasks. `from_tasks` in `core/src/finder/graph.rs` does the grouping. Frequent follows chains without a shared entity (count ≥ 5 on 3+ days) are routine workflows.
+7. **Commitments:** promises in transcripts ("I'll", "let me", "ich werde", "ich schicke", "mach ich") and reminders, linked to tasks by anchor, else token overlap ≥ 0.34.
 8. **Scores:**
    - hours per week = minutes / 60 / observed days × 5
-   - step potential = category prior × length factor (≤ 60 min 1.0, ≤ 180 min 0.85, else 0.75) × (0.6 + 0.4 × stability) × repetition (2+ days 1.0, else 0.8). Priors: crm .75, spreadsheet .7, calendar .7, finance .65, email .6, planning .55, coding .55, web .5, writing .45, slides .4, social .35, other .35, chat .3, design .2, meeting .1, media .05
+   - step potential = prior × length factor (≤ 60 min 1.0, ≤ 180 min 0.85, else 0.75) × (0.6 + 0.4 × stability) × repetition (2+ days 1.0, else 0.8). The prior is the share the on-device model judged for that step when it exists, else the category prior: crm .75, spreadsheet .7, calendar .7, finance .65, email .6, planning .55, coding .55, web .5, writing .45, slides .4, social .35, other .35, chat .3, design .2, meeting .1, media .05
    - workflow potential = time-weighted mean of steps, + 0.1 if data is copied by hand between steps (cap 0.95)
-   - desire from user enjoyment: hate 1, dislike .9, neutral .7, unknown .6, like .35, love 0
+   - desire from user enjoyment: hate 1, dislike .9, neutral .7, unknown .6, like .35, love 0. While enjoyment is unknown, a **complaint** in my own speech linked to the workflow's tasks counts as dislike (.9). Complaints, rules only, English and German: "annoying", "by hand", "every week I have to", "nervig", "schon wieder", "jedes Mal", "händisch" and similar. The workflow still goes to ask first.
    - estimated benefit = hours per week × potential × desire, halved for "assist"
-   - waiting = median case length minus active time; procrastination = overdue commitments × 0.35 + abandoned opens × 0.15 + 0.1 per waiting day over 2 (cap 1)
-9. **Kind:** friction (data copied by hand, or 12+ app switches per hour), promise gap (procrastination ≥ 0.4), routine (3+ cases or steady daily repetition), long tail (< 0.5 h per week).
+   - waiting = median task length minus active time; procrastination = overdue commitments × 0.35 + abandoned opens × 0.15 + 0.1 per waiting day over 2 + 0.1 per day with a **flinch** (cap 1). A flinch is focused work opened for 30 s or less, then social or media within a minute.
+   - **interruptions** (reason only): focused work of 1 min or more, then chat or mail within 10 s for at most 5 min. Report the count, who cut in, the median time away until the work is picked up again, and how many were not picked up within 30 min.
+   - rank = benefit × (1 + procrastination): work that is put off costs more than its hours.
+9. **Kind:** friction (data copied or retyped by hand, or 12+ app switches per hour), promise gap (procrastination ≥ 0.4), routine (3+ tasks or steady daily repetition), long tail (< 0.5 h per week).
 10. **Action:** love → protect; hobby or media → ignore; mostly meetings → assist; else automate if potential ≥ 0.6 and ≥ 0.5 h per week. Name the best first step to hand off.
 11. **Ask first:** the 3 biggest workflows with unknown enjoyment.
 12. **Corrections, rules only, English and German:** "I hate this", "it's for a client", "can't be automated", "rename to …", "hide this", "these belong together", "this is not one workflow". Stored per step key and variant.
 
 ## 8. MCP (the agent interface)
 
-`sextant mcp` runs the same binary as a stdio MCP server with a read-only DB connection. Onboarding has "Connect to Claude": it adds Sextant to Claude Desktop's config and shows the one-line command for Claude Code (`claude mcp add sextant -- <path>/sextant mcp`).
+`sextant mcp` runs the same binary as a stdio MCP server. It opens the database read-only, and every tool is read-only except `report_handoff`, which writes one row on a short-lived keyed connection. Onboarding has "Connect to Claude": it adds Sextant to Claude Desktop's config and shows the one-line command for Claude Code (`claude mcp add sextant -- <path>/sextant mcp`).
 
 | Tool                                | Returns                                                                                  |
 | ----------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -128,20 +137,23 @@ Process mining applied to one person: a **case** is one piece of work (one clien
 
 ## 9. App UI (small)
 
-- Tray icon while capturing (filled on, outline paused, dot while transcribing). Menu: status, Pause 1 h, Open, Quit.
+- Tray icon while capturing (filled on, outline paused, dot while transcribing, ring with "!" when a permission blocks capture). Right click: status, Pause 1 h, Stop audio, Search, Open Sextant, Quit Sextant.
+- **Popover** (left click on the tray icon): a status line with a breathing dot ("Reading Safari, 12 s ago"), chips for what is captured now, a banner with an Allow button when capture is blocked. Tabs: **Today** (time at the Mac, 7-day bars, longest focus, app switches an hour, lines saved, call minutes, top apps, all computed on this Mac), **Ideas** (hours you could get back, trend against last week, ideas from your agent), **Settings** (agent bridge and everything from Privacy).
 - **Onboarding** (one screen per step): pick backfill sources, grant permissions, see the first map, connect to Claude.
 - **Workflows:** "X hours a week you could get back", quick enjoyment question, ranked workflows as rows of steps (apps, gaps, copy points), promises you keep pushing, things to protect. Detail: reasons, example cases, correction box, "Create automation" (writes `SKILL.md`, copies a ready prompt for Claude).
 - **Search:** one box over screen text and transcripts, results by session. No timeline replay.
 - **Results:** hours before and after each handoff, from 3+ days of data.
-- **Privacy:** sources and permissions, excluded apps, retention, storage used, MCP tool switches, "Delete everything".
-- Plain CSS, light and dark, English and German strings, short copy, no em dashes. Data only through typed Tauri commands, paginated. CSP `default-src 'self'; connect-src ipc: http://ipc.localhost`, no `shell`, `http` or `updater` plugins.
+- **Privacy** (in the popover Settings tab): sources and permissions, excluded apps, retention, storage used, MCP tool switches, "Delete everything".
+- **Agent bridge:** the user picks their own Claude Code or Codex CLI. "Analyze" (or a weekly run, off by default) sends the redacted step graph on stdin (Claude with tools off, Codex in a read-only sandbox, §10) and gets back up to 8 ideas, saved locally.
+- Tailwind and shadcn/ui components, light and dark, English and German strings, short copy, no em dashes. Data only through typed Tauri commands, paginated. CSP `default-src 'self'; connect-src ipc: http://ipc.localhost`, no `shell`, `http` or `updater` plugins.
 
 ## 10. Privacy rules (non-negotiable)
 
 - Pixels and audio never touch disk, logs or panic messages. Only test fixtures may hold images or audio.
 - Only the focused window, only after all gates pass.
 - Network code only in `app/src/models.rs` (model download with pinned URL and SHA-256 after consent). A CI script fails on network crates or `std::net` anywhere else, checked with `cargo tree --target all`.
-- No telemetry, crash reporter, auto-updater or analytics.
+- The agent bridge spawns the user's own CLI in an empty temp folder, only when the user picks an agent. Claude runs with no tools. Codex has no no-tools mode: it runs `exec --sandbox read-only` with the network off, with `--ignore-user-config` and `--ignore-rules`, and with web search, apps, plugins, the browser, computer use and hooks off. Its shell can still read files, so the empty folder and the redacted brief are the protection. Sextant opens no connection; the CLI does. The brief holds, per workflow: id, hours a week, task count, kind, steps and links. Per step: number, app (the part of the step name before ": ", redacted), category, minutes and agent share. Per link: from, to, count, median gap and copies. Never window titles, workflow or step names, screen text, transcripts, entities, example tasks or commitments.
+- No telemetry, crash reporter, auto-updater or analytics. Usage stats in the popover are computed and shown on this Mac only.
 - Logs hold counts and timings, never text, titles, URLs or transcripts.
 - Enjoyment and value only from the user. Never infer emotions.
 - Claude Code never reads the real data folder (`~/Library/Application Support/Sextant`) or the `sextant` keychain entry.
@@ -179,7 +191,7 @@ If a budget can't be met, stop and report numbers and options. Never loosen one 
 
 **(user)** marks steps a human must do. The agent prepares them and waits.
 
-**M0 Skeleton.** Workspace with the two crates, Tauri app with tray and empty React window, `.cargo/config.toml`, `app/Info.plist` and `app/Entitlements.plist` (§14), a short `CLAUDE.md` that points here and lists the commands, a Claude Code Stop hook that runs fmt, clippy, tests and the network script (exit 2 on failure), CI (core on ubuntu, app on macos-15).
+**M0 Skeleton.** Workspace with the two crates, Tauri app with tray and empty React window, `.cargo/config.toml`, `app/Info.plist` and `app/Entitlements.plist` (§14), a short `CLAUDE.md` that points here and lists the commands, a Claude Code Stop hook that runs fmt, clippy, tests and the network script (exit 2 on failure), CI (core on ubuntu, app on macos-26).
 Done when: the hook passes; **(user)** CI green, tray icon visible.
 
 **M1 Core.** Synthetic fixtures with a fixed date and timezone (a week of events, 5 invoices each spread over 2 to 4 days across email, spreadsheet and lexoffice, noise in between, English and German OCR samples), store and migrations, dedupe, FTS search, retention, work graph, finder, corrections, `SKILL.md` builder, `insta` golden tests.

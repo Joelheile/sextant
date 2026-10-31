@@ -1,0 +1,13 @@
+# Privacy
+
+- Your data stays on your Mac, in one encrypted database, until an agent you connect reads it. The key lives in your Keychain.
+- Sextant never stores pixels or audio. Screen text and transcripts are stored as text only.
+- It reads only the focused window, and only when no gate is closed: excluded apps (password managers and messengers by default), private browser windows, secure input, paused, or the source switched off. Call transcription follows the same gates: it does not start for an excluded app or a private browser window.
+- It notes which labelled buttons you click and the text left in a field when you move on. It never records keystrokes and never reads secure (password) fields.
+- Emails, IBANs, card numbers, API keys and tokens are redacted before anything is stored.
+- Search answers come from Apple's on-device model (Foundation Models) when Apple Intelligence is on, and from keyword search when it is off. The same model judges how much of each recurring step an agent could do, from the step's name, apps and templated titles, never raw screen text. Without it, a fixed guess per category is used. Either way, everything stays on your Mac.
+- The only network call is the speech model download you start yourself, from pinned URLs with a SHA-256 check. There is no telemetry, crash reporter, analytics or auto-updater.
+- You choose how long raw data stays: 30, 90 or 365 days, or forever. "Delete everything" empties the data folder.
+- If you tell your agent to read from Sextant, the text it reads goes to wherever that agent's model runs, which may be the cloud. Excluded apps and redaction apply to that output too.
+
+Transcribing people without their consent is a crime in some countries, including Germany (section 201 StGB). Tell the other side before you transcribe a call.
