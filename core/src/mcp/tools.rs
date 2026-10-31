@@ -8,11 +8,13 @@ use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
 use crate::finder::Workflow;
+use crate::model::Speaker;
 use crate::redact::{redact, redact_json};
 use crate::search::HitSource;
 use crate::settings::Settings;
 use crate::store::Store;
-use crate::time::{self, iso};
+use crate::text::round2;
+use crate::time::{self, Local, iso};
 use crate::writer::unpack;
 
 pub const DEFAULT_LIMIT: usize = 50;
@@ -32,6 +34,7 @@ pub struct Tool {
     pub name: &'static str,
     pub group: Group,
     pub description: &'static str,
+    pub read_only: bool,
     pub schema: fn() -> Value,
 }
 
@@ -55,6 +58,7 @@ pub const TOOLS: &[Tool] = &[
             "Find text the user saw on screen or said, newest first, grouped into sessions with time, app and window. Every word must appear in the same line. Use it for questions like what did Anna say about pricing, or find the invoice number I saw yesterday. ",
             time_note!()
         ),
+        read_only: true,
         schema: || {
             page_schema(
                 json!({
@@ -74,6 +78,7 @@ pub const TOOLS: &[Tool] = &[
             "The screen text and speech around one moment, nearest lines first in each group. Use it after search to read what surrounded a hit. ",
             time_note!()
         ),
+        read_only: true,
         schema: || {
             json!({"type": "object", "required": ["time"], "properties": {
                 "time": {"type": "string", "description": "The moment."},
@@ -89,6 +94,7 @@ pub const TOOLS: &[Tool] = &[
             "What the user worked on in a time range: episodes per app, meetings, reminders, commits and files, oldest first. Episodes are rebuilt every few minutes, so the last minutes can be missing. ",
             time_note!()
         ),
+        read_only: true,
         schema: || {
             page_schema(
                 json!({
@@ -103,12 +109,14 @@ pub const TOOLS: &[Tool] = &[
         name: "list_workflows",
         group: Group::Workflows,
         description: "The user's recurring workflows across apps, ranked by estimated hours a week an agent could save. Each has hours, automation potential, rough (backfill only) and the reasons behind its scores.",
+        read_only: true,
         schema: || page_schema(json!({}), &[]),
     },
     Tool {
         name: "get_workflow",
         group: Group::Workflows,
         description: "One workflow in detail: steps, how steps follow each other, data copied by hand, example cases and open promises.",
+        read_only: true,
         schema: || {
             json!({"type": "object", "required": ["id"], "properties": {
                 "id": {"type": "integer", "description": "Workflow id from list_workflows."},
@@ -119,6 +127,7 @@ pub const TOOLS: &[Tool] = &[
         name: "get_skill",
         group: Group::Workflows,
         description: "A ready SKILL.md in Markdown that tells an agent how to run one workflow.",
+        read_only: true,
         schema: || {
             json!({"type": "object", "required": ["id"], "properties": {
                 "id": {"type": "integer", "description": "Workflow id from list_workflows."},
@@ -129,6 +138,7 @@ pub const TOOLS: &[Tool] = &[
         name: "report_handoff",
         group: Group::Workflows,
         description: "Record that an agent took over a workflow, so Sextant can compare the hours before and after. This is the only tool that writes.",
+        read_only: false,
         schema: || {
             json!({"type": "object", "required": ["id", "status"], "properties": {
                 "id": {"type": "integer", "description": "Workflow id from list_workflows."},
@@ -142,7 +152,7 @@ pub const TOOLS: &[Tool] = &[
 pub struct Ctx<'a> {
     pub store: &'a Store,
     pub settings: &'a Settings,
-    pub now: i64,
+    pub when: Local,
 }
 
 /// Runs one tool. `Err` text goes back to the model as a tool error.
@@ -168,23 +178,27 @@ fn bad(message: &'static str) -> Error {
     Error::Invalid(message.to_string())
 }
 
-fn int(value: &Value) -> Option<i64> {
-    value
-        .as_i64()
-        .or_else(|| value.as_f64().map(|f| f as i64))
-        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
+/// A whole number argument. Missing or null is `None`; a float or a string is an error.
+fn int(args: &Value, key: &str) -> Result<Option<i64>> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_i64()
+            .map(Some)
+            .ok_or_else(|| Error::Invalid(format!("{key} must be a whole number"))),
+    }
 }
 
-fn page(args: &Value) -> (usize, usize) {
-    let limit = args
-        .get("limit")
-        .and_then(int)
-        .unwrap_or(DEFAULT_LIMIT as i64);
-    let offset = args.get("offset").and_then(int).unwrap_or(0);
-    (
-        limit.clamp(1, MAX_LIMIT as i64) as usize,
-        offset.max(0) as usize,
-    )
+fn page(args: &Value) -> Result<(usize, usize)> {
+    let limit = int(args, "limit")?.unwrap_or(DEFAULT_LIMIT as i64);
+    let offset = int(args, "offset")?.unwrap_or(0);
+    if limit < 1 {
+        return Err(bad("limit must be at least 1"));
+    }
+    if offset < 0 {
+        return Err(bad("offset must not be negative"));
+    }
+    Ok((limit.min(MAX_LIMIT as i64) as usize, offset as usize))
 }
 
 fn time_arg(ctx: &Ctx, args: &Value, key: &str, end_of_day: bool) -> Result<Option<i64>> {
@@ -195,7 +209,7 @@ fn time_arg(ctx: &Ctx, args: &Value, key: &str, end_of_day: bool) -> Result<Opti
         Value::Number(n) => n
             .as_i64()
             .map(|s| if s > 100_000_000_000 { s / 1000 } else { s }),
-        Value::String(text) => time::parse(text, ctx.store.utc_offset(), end_of_day),
+        Value::String(text) => time::parse(text, ctx.when.utc_offset_s, end_of_day),
         _ => None,
     };
     parsed.map(Some).ok_or_else(|| {
@@ -212,12 +226,8 @@ fn text_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
-fn r2(value: f64) -> f64 {
-    (value * 100.0).round() / 100.0
-}
-
 fn at(ctx: &Ctx, ts: i64) -> String {
-    iso(ts, ctx.store.utc_offset())
+    iso(ts, ctx.when.utc_offset_s)
 }
 
 fn next_offset(full: bool, offset: usize, taken: usize) -> Value {
@@ -233,7 +243,7 @@ fn search(ctx: &Ctx, args: &Value) -> Result<Value> {
     let from = time_arg(ctx, args, "from", false)?;
     let to = time_arg(ctx, args, "to", true)?;
     let app = text_arg(args, "app");
-    let (limit, offset) = page(args);
+    let (limit, offset) = page(args)?;
     let page = ctx
         .store
         .search_sessions(ctx.settings, query, (from, to), app, limit, offset)?;
@@ -266,17 +276,15 @@ fn search(ctx: &Ctx, args: &Value) -> Result<Value> {
 
 fn context_at(ctx: &Ctx, args: &Value) -> Result<Value> {
     let center = time_arg(ctx, args, "time", false)?.ok_or_else(|| bad("time is required"))?;
-    let window = args
-        .get("window")
-        .and_then(int)
+    let window = int(args, "window")?
         .unwrap_or(DEFAULT_WINDOW_S)
         .clamp(1, MAX_WINDOW_S);
-    let (limit, _) = page(args);
+    let (limit, _) = page(args)?;
     let (low, high) = (center - window, center + window);
 
     let mut speech = ctx.store.conn.prepare_cached(
-        "SELECT ts_start, source, text FROM utterances WHERE ts_start BETWEEN ?1 AND ?2
-         ORDER BY ABS(ts_start - ?3), id LIMIT ?4",
+        "SELECT start_ts, source, text FROM utterances WHERE start_ts BETWEEN ?1 AND ?2
+         ORDER BY ABS(start_ts - ?3), id LIMIT ?4",
     )?;
     let speech_cap = (limit / 2).max(1);
     let mut said: Vec<(i64, String, String)> = speech
@@ -332,7 +340,7 @@ fn context_at(ctx: &Ctx, args: &Value) -> Result<Value> {
             "time": at(ctx, *ts), "app": app, "window": title, "url": url, "lines": lines,
         })).collect::<Vec<_>>(),
         "speech": said.iter().map(|(ts, source, text)| json!({
-            "time": at(ctx, *ts), "who": if source == "mic" { "me" } else { "them" }, "text": text,
+            "time": at(ctx, *ts), "who": if Speaker::parse(source) == Some(Speaker::Mic) { "me" } else { "them" }, "text": text,
         })).collect::<Vec<_>>(),
         "truncated": truncated,
     }))
@@ -349,7 +357,7 @@ struct Item {
 fn timeline(ctx: &Ctx, args: &Value) -> Result<Value> {
     let from = time_arg(ctx, args, "from", false)?.ok_or_else(|| bad("from is required"))?;
     let to = time_arg(ctx, args, "to", true)?.ok_or_else(|| bad("to is required"))?;
-    let (limit, offset) = page(args);
+    let (limit, offset) = page(args)?;
     let want = (limit + offset) as i64;
 
     let mut items: Vec<Item> = Vec::new();
@@ -440,14 +448,14 @@ fn workflow_row(workflow: &Workflow) -> Value {
     json!({
         "id": workflow.id,
         "name": workflow.name,
-        "hours_week": r2(workflow.hours_week),
-        "potential": r2(workflow.potential),
-        "benefit": r2(workflow.benefit),
+        "hours_week": round2(workflow.hours_week),
+        "potential": round2(workflow.potential),
+        "benefit": round2(workflow.benefit),
         "kind": workflow.kind.as_str(),
         "action": workflow.action.as_str(),
         "enjoyment": workflow.enjoyment.as_str(),
         "rough": workflow.rough,
-        "cases": workflow.case_count,
+        "cases": workflow.task_count,
         "first_step": workflow.first_step,
         "steps": workflow.steps.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
         "reasons": workflow.reasons,
@@ -455,7 +463,7 @@ fn workflow_row(workflow: &Workflow) -> Value {
 }
 
 fn list_workflows(ctx: &Ctx, args: &Value) -> Result<Value> {
-    let (limit, offset) = page(args);
+    let (limit, offset) = page(args)?;
     let all: Vec<Workflow> = ctx
         .store
         .workflows()?
@@ -464,16 +472,14 @@ fn list_workflows(ctx: &Ctx, args: &Value) -> Result<Value> {
         .collect();
     Ok(json!({
         "total": all.len(),
-        "hours_back": r2(ctx.store.hours_back()?),
+        "hours_back": round2(ctx.store.hours_back()?),
         "workflows": all.iter().skip(offset).take(limit).map(workflow_row).collect::<Vec<_>>(),
         "next_offset": next_offset(all.len() > offset + limit, offset, limit),
     }))
 }
 
 fn workflow_id(args: &Value) -> Result<i64> {
-    args.get("id")
-        .and_then(int)
-        .ok_or_else(|| bad("id is required"))
+    int(args, "id")?.ok_or_else(|| bad("id is required"))
 }
 
 /// The workflow if it exists and shows no excluded app.
@@ -496,7 +502,7 @@ fn get_workflow(ctx: &Ctx, args: &Value) -> Result<Value> {
         .workflow
         .steps
         .iter()
-        .map(|s| json!({"name": s.name, "category": s.category.as_str(), "minutes": r2(s.minutes), "potential": r2(s.potential)}))
+        .map(|s| json!({"name": s.name, "category": s.category.as_str(), "minutes": round2(s.minutes), "potential": round2(s.potential)}))
         .collect();
 
     row["follows"] = ctx
@@ -508,7 +514,7 @@ fn get_workflow(ctx: &Ctx, args: &Value) -> Result<Value> {
     row["copy_points"] = detail
         .copy_points
         .iter()
-        .map(|c| json!({"from": c.from, "to": c.to, "copies": c.copies}))
+        .map(|c| json!({"from": c.from, "to": c.to, "copies": c.copies, "retypes": c.retypes}))
         .collect();
     row["examples"] = detail
         .examples
@@ -529,7 +535,10 @@ fn get_workflow(ctx: &Ctx, args: &Value) -> Result<Value> {
 fn get_skill(ctx: &Ctx, args: &Value) -> Result<String> {
     let id = workflow_id(args)?;
     visible(ctx, id)?;
-    Ok(redact(&ctx.store.skill_md(id)?, &ctx.store.secret))
+    Ok(redact(
+        &ctx.store.skill_md(id, ctx.when.utc_offset_s)?,
+        &ctx.store.secret,
+    ))
 }
 
 fn report_handoff(ctx: &Ctx, args: &Value) -> Result<Value> {
@@ -539,7 +548,7 @@ fn report_handoff(ctx: &Ctx, args: &Value) -> Result<Value> {
     visible(ctx, id)?;
     let handoff = ctx.store.record_handoff(
         id,
-        ctx.now,
+        ctx.when.now,
         &status.chars().take(40).collect::<String>(),
         &note.chars().take(500).collect::<String>(),
     )?;

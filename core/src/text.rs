@@ -7,10 +7,33 @@ pub(crate) fn pattern(source: &str) -> Regex {
     Regex::new(source).expect("static pattern compiles")
 }
 
+macro_rules! text_enum {
+    ($(#[$meta:meta])* $name:ident { $($variant:ident => $text:literal),+ $(,)? }) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        pub enum $name { $($variant),+ }
+
+        impl $name {
+            pub fn as_str(self) -> &'static str {
+                match self { $(Self::$variant => $text),+ }
+            }
+
+            pub fn parse(text: &str) -> Option<Self> {
+                match text { $($text => Some(Self::$variant),)+ _ => None }
+            }
+        }
+    };
+}
+pub(crate) use text_enum;
+
 const STOP: &[&str] = &[
     "the", "and", "for", "from", "with", "to", "of", "in", "on", "at", "an", "is", "der", "die",
     "das", "und", "von", "mit", "für", "im", "am", "zu", "den", "dem", "ein", "eine",
 ];
+
+pub(crate) fn round2(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
 
 /// FNV-1a, 64 bit. Stable across platforms, used for line hashes and email hashes.
 pub(crate) fn fnv1a(text: &str) -> u64 {

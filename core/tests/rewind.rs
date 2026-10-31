@@ -51,7 +51,7 @@ fn retention_deletes_old_turns() {
         .add_turn(WEEK_NOW - 40 * DAY, "old", "")
         .expect("test setup");
     store.add_turn(WEEK_NOW, "new", "").expect("test setup");
-    let gone = store.retention(WEEK_NOW, 30).expect("test setup");
+    let gone = store.retention(local(WEEK_NOW), 30).expect("test setup");
     assert_eq!(gone.turns, 1);
     let left: Vec<String> = store
         .turns(None, 10)

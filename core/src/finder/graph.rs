@@ -5,15 +5,15 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use petgraph::Direction::{Incoming, Outgoing};
 use petgraph::graph::{DiGraph, NodeIndex};
 
-use super::entities::Case;
 use super::episodes::Episode;
 use super::steps::Step;
+use super::tasks::Task;
 use crate::time::day;
 
 pub(crate) const FOLLOW_WINDOW_S: i64 = 600;
 const ROUTINE_COUNT: usize = 5;
 const ROUTINE_DAYS: usize = 3;
-const MIN_CASES: usize = 3;
+const MIN_TASKS: usize = 3;
 
 pub(crate) struct Follow {
     pub from: usize,
@@ -21,6 +21,8 @@ pub(crate) struct Follow {
     pub count: usize,
     pub median_gap_s: i64,
     pub copies: usize,
+    /// B shows an entity of A in another app and nothing was copied: it was typed again.
+    pub retypes: usize,
     pub days: usize,
 }
 
@@ -28,18 +30,21 @@ pub(crate) struct Follow {
 struct Edge {
     gaps: Vec<i64>,
     copies: usize,
+    retypes: usize,
     days: HashSet<i64>,
 }
 
 /// B follows A when B is the next episode and starts within 10 minutes of A's end.
 /// `copies` are (ts, app) of copy events; one counts for A's edge when it happens in A's app before B starts.
+/// `entities` are the entity indexes of each episode, sorted.
 pub(crate) fn follows(
     episodes: &[Episode],
     copies: &[(i64, &str)],
+    entities: &[Vec<usize>],
     utc_offset_s: i32,
 ) -> Vec<Follow> {
     let mut edges: BTreeMap<(usize, usize), Edge> = BTreeMap::new();
-    for pair in episodes.windows(2) {
+    for (index, pair) in episodes.windows(2).enumerate() {
         let (a, b) = (&pair[0], &pair[1]);
         let gap = b.start - a.end;
         if a.step == b.step || !(0..=FOLLOW_WINDOW_S).contains(&gap) {
@@ -49,11 +54,15 @@ pub(crate) fn follows(
         edge.gaps.push(gap);
         edge.days.insert(day(a.start, utc_offset_s));
         let first = copies.partition_point(|(ts, _)| *ts < a.start);
-        edge.copies += copies[first..]
+        let copied = copies[first..]
             .iter()
             .take_while(|(ts, _)| *ts < b.start)
             .filter(|(_, app)| *app == a.app)
             .count();
+        edge.copies += copied;
+        if copied == 0 && a.app != b.app && shares(&entities[index], &entities[index + 1]) {
+            edge.retypes += 1;
+        }
     }
     edges
         .into_iter()
@@ -65,14 +74,19 @@ pub(crate) fn follows(
                 count: edge.gaps.len(),
                 median_gap_s: edge.gaps[edge.gaps.len() / 2],
                 copies: edge.copies,
+                retypes: edge.retypes,
                 days: edge.days.len(),
             }
         })
         .collect()
 }
 
+fn shares(a: &[usize], b: &[usize]) -> bool {
+    a.iter().any(|x| b.binary_search(x).is_ok())
+}
+
 pub(crate) enum Basis {
-    Cases,
+    Tasks,
     Chain,
 }
 
@@ -80,7 +94,7 @@ pub(crate) struct Workflow {
     pub variant: String,
     pub basis: Basis,
     pub sequence: Vec<usize>,
-    pub cases: Vec<usize>,
+    pub tasks: Vec<usize>,
     /// Episode indexes in time order.
     pub episodes: Vec<usize>,
     pub count: usize,
@@ -94,16 +108,16 @@ pub(crate) fn variant_of(sequence: &[usize], steps: &[Step]) -> String {
         .join(" > ")
 }
 
-/// Cases with the same step sequence (edit distance <= 1) form one workflow when there are 3+ of them.
-/// A variant in `split` only takes identical sequences. Sets `Case::workflow`.
-pub(crate) fn from_cases(
-    cases: &mut [Case],
+/// Tasks with the same step sequence (edit distance <= 1) form one workflow when there are 3+ of them.
+/// A variant in `split` only takes identical sequences. Sets `Task::workflow`.
+pub(crate) fn from_tasks(
+    tasks: &mut [Task],
     steps: &[Step],
     split: &HashSet<String>,
 ) -> Vec<Workflow> {
     let mut by_sequence: BTreeMap<Vec<usize>, Vec<usize>> = BTreeMap::new();
-    for (index, case) in cases.iter().enumerate() {
-        by_sequence.entry(case.seq.clone()).or_default().push(index);
+    for (index, task) in tasks.iter().enumerate() {
+        by_sequence.entry(task.seq.clone()).or_default().push(index);
     }
     let mut distinct: Vec<(Vec<usize>, Vec<usize>)> = by_sequence.into_iter().collect();
     distinct.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
@@ -124,24 +138,24 @@ pub(crate) fn from_cases(
 
     let mut workflows = Vec::new();
     for (sequence, _, mut members) in clusters {
-        if members.len() < MIN_CASES || sequence.len() < 2 {
+        if members.len() < MIN_TASKS || sequence.len() < 2 {
             continue;
         }
         members.sort_unstable();
         let mut episodes: Vec<usize> = members
             .iter()
-            .flat_map(|&c| cases[c].episodes.iter().copied())
+            .flat_map(|&c| tasks[c].episodes.iter().copied())
             .collect();
         episodes.sort_unstable();
         for &member in &members {
-            cases[member].workflow = Some(workflows.len());
+            tasks[member].workflow = Some(workflows.len());
         }
         workflows.push(Workflow {
             variant: variant_of(&sequence, steps),
-            basis: Basis::Cases,
+            basis: Basis::Tasks,
             sequence,
             count: members.len(),
-            cases: members,
+            tasks: members,
             episodes,
         });
     }
@@ -213,7 +227,7 @@ pub(crate) fn chains(follows: &[Follow]) -> Vec<Vec<usize>> {
     found
 }
 
-/// Routine workflows: chains that no case workflow already contains.
+/// Routine workflows: chains that no task workflow already contains.
 pub(crate) fn from_chains(
     chains: Vec<Vec<usize>>,
     follows: &[Follow],
@@ -249,7 +263,7 @@ pub(crate) fn from_chains(
             variant: variant_of(&chain, steps),
             basis: Basis::Chain,
             sequence: chain,
-            cases: Vec::new(),
+            tasks: Vec::new(),
             episodes: members.into_iter().collect(),
             count,
         });
@@ -277,6 +291,7 @@ mod tests {
             count: 5,
             median_gap_s: 10,
             copies: 0,
+            retypes: 0,
             days: 3,
         };
         // 0 -> 1 -> 2 is a chain; 5 -> 6 and 5 -> 7 branch; 8 <-> 9 loop.

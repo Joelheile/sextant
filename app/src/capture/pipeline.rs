@@ -4,7 +4,7 @@
 //! transaction is open while they work: finished records go to the writer through a sink.
 
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle, Thread};
 use std::time::{Duration, Instant};
@@ -12,10 +12,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use crossbeam_queue::ArrayQueue;
 use sextant_core::capture::{
-    self, Blocked, DiffGate, Sample, Signal, Triggers, classify, copy_event, focus_event,
-    idle_event, pause_event,
+    self, Blocked, DiffGate, Edits, IDLE_LIMIT_S, Sample, Signal, Triggers, classify, copy_event,
+    focus_event, idle_event, pause_event, press_event,
 };
-use sextant_core::{Frame, Item, Settings, Window};
+use sextant_core::{Event, Frame, Item, OcrLine, Settings, Window};
 
 use super::sensors::{App, Ocr, Sensors};
 use super::stats::Stats;
@@ -93,6 +93,22 @@ fn window_key(window: &Window) -> u64 {
     hasher.finish()
 }
 
+/// Identifies the focused app and window, so switching windows inside one app counts as a focus
+/// change and passes the gates again.
+fn focus_key(pid: i32, window: u64) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    (pid, window).hash(&mut hasher);
+    hasher.finish()
+}
+
+fn text_key(lines: &[OcrLine]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for line in lines {
+        line.text.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 pub struct Capturer<S: Sensors> {
     sensors: S,
     control: Arc<Control>,
@@ -104,9 +120,16 @@ pub struct Capturer<S: Sensors> {
     triggers: Triggers,
     diff: DiffGate,
     last_window: Option<Window>,
+    /// Window and text hash of the last frame read from the Accessibility tree.
+    last_tree: Option<(u64, u64)>,
     /// A `focus` event is open: the next gate or absence has to close it.
     open: bool,
     clipboard: Option<i64>,
+    /// The focused app and window of this poll.
+    focus: u64,
+    /// The focus that last passed every gate. Presses and fields are read only while it holds.
+    allowed: Option<u64>,
+    edits: Edits,
 }
 
 impl<S: Sensors> Capturer<S> {
@@ -127,8 +150,12 @@ impl<S: Sensors> Capturer<S> {
             triggers: Triggers::new(),
             diff: DiffGate::new(),
             last_window: None,
+            last_tree: None,
             open: false,
             clipboard: None,
+            focus: 0,
+            allowed: None,
+            edits: Edits::new(),
         }
     }
 
@@ -146,9 +173,15 @@ impl<S: Sensors> Capturer<S> {
 
         let presence = self.sensors.presence();
         let app = self.sensors.focused_app();
+        let present = !presence.locked && !presence.asleep && presence.idle_s < IDLE_LIMIT_S;
+        self.focus = match &app {
+            Some(app) if present => focus_key(app.pid, self.sensors.window_id(app)),
+            Some(app) => focus_key(app.pid, 0),
+            None => 0,
+        };
         let signal = self.triggers.step(Sample {
             now_ms,
-            focus: app.as_ref().map_or(0, |app| app.pid as u64),
+            focus: self.focus,
             idle_s: presence.idle_s,
             locked: presence.locked,
             asleep: presence.asleep,
@@ -158,6 +191,7 @@ impl<S: Sensors> Capturer<S> {
             (Some(Signal::Look(_)), Some(app)) => self.look(app, now_s, &settings),
             _ => {}
         }
+        self.act(app.as_ref(), now_s, &settings);
         self.watch_clipboard(app.as_ref(), now_s, &settings);
 
         if self.triggers.away().is_some() {
@@ -178,6 +212,7 @@ impl<S: Sensors> Capturer<S> {
             (self.sink)(Item::Event(event), Instant::now());
         }
         self.last_window = None;
+        self.allowed = None;
     }
 
     fn look(&mut self, app: &App, now_s: i64, settings: &Settings) {
@@ -190,6 +225,7 @@ impl<S: Sensors> Capturer<S> {
                 return;
             }
         };
+        self.allowed = Some(self.focus);
         if settings.live.metadata && self.last_window.as_ref() != Some(&window) {
             (self.sink)(Item::Event(focus_event(now_s, &window)), Instant::now());
             self.last_window = Some(window.clone());
@@ -233,8 +269,25 @@ impl<S: Sensors> Capturer<S> {
         Ok(window)
     }
 
+    /// The Accessibility tree first; a screenshot and OCR only when it says too little.
     fn capture(&mut self, app: &App, window: Window, now_s: i64) {
         let taken = Instant::now();
+        let lines = self.sensors.window_lines(app);
+        if capture::enough(&lines) {
+            let key = (window_key(&window), text_key(&lines));
+            if self.last_tree.replace(key) == Some(key) {
+                Stats::add(&self.stats.skipped);
+                return;
+            }
+            Stats::add(&self.stats.tree);
+            let frame = Frame {
+                ts: now_s,
+                window,
+                lines,
+            };
+            (self.sink)(Item::Frame(frame), taken);
+            return;
+        }
         let shot = match self.sensors.capture(app) {
             Ok(shot) => shot,
             Err(_) => {
@@ -258,6 +311,43 @@ impl<S: Sensors> Capturer<S> {
         }
         if let Some(ocr) = &self.waker {
             ocr.unpark();
+        }
+    }
+
+    /// Presses and the focused text field, only while the window that last passed the gates is
+    /// still in front. Anything else drops the queued presses unread.
+    fn act(&mut self, app: Option<&App>, now_s: i64, settings: &Settings) {
+        let clicks = self.sensors.clicks();
+        let readable = settings.live.actions
+            && self.triggers.away().is_none()
+            && self.allowed == Some(self.focus);
+        let Some(app) = app
+            .filter(|_| readable)
+            .filter(|_| !self.sensors.secure_input())
+        else {
+            let left = self.edits.observe(now_s, "", None, |_| None);
+            self.emit(left, &self.stats.edits);
+            return;
+        };
+        if !clicks.is_empty() {
+            let typed = self.edits.checkpoint(now_s, |id| self.sensors.reread(id));
+            self.emit(typed, &self.stats.edits);
+        }
+        for point in clicks {
+            let chain = self.sensors.element_chain(app, point);
+            self.emit(press_event(now_s, &app.name, &chain), &self.stats.presses);
+        }
+        let field = self.sensors.focused_field(app);
+        let left = self
+            .edits
+            .observe(now_s, &app.name, field, |id| self.sensors.reread(id));
+        self.emit(left, &self.stats.edits);
+    }
+
+    fn emit(&self, event: Option<Event>, counter: &AtomicU64) {
+        if let Some(event) = event {
+            Stats::add(counter);
+            (self.sink)(Item::Event(event), Instant::now());
         }
     }
 
@@ -368,11 +458,12 @@ impl Pipeline {
             .spawn({
                 let stop = stop.clone();
                 move || {
+                    capturer.sensors.wake_on_click(thread::current());
                     let start = Instant::now();
                     while !stop.load(Ordering::Relaxed) {
                         let now_ms = start.elapsed().as_millis() as i64;
                         let wait = capturer.step(now_ms, crate::clock::now());
-                        thread::sleep(wait);
+                        thread::park_timeout(wait);
                     }
                 }
             })

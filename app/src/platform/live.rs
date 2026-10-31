@@ -2,8 +2,10 @@
 //! input, idle time, lock and sleep state, clipboard changes, browser tab and the window capture.
 //! Timing out or failing never opens a gate: callers treat a missing answer as "do not capture".
 
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::ptr::NonNull;
+use std::thread::Thread;
 
 use anyhow::Result;
 use objc2_app_kit::{NSPasteboard, NSWorkspace};
@@ -13,10 +15,11 @@ use objc2_core_graphics::{
     CGEventSource, CGEventSourceStateID, CGEventType, CGMainDisplayID,
     CGSessionCopyCurrentDictionary,
 };
-use sextant_core::capture::Browser;
+use sextant_core::OcrLine;
+use sextant_core::capture::{Browser, Element, Field};
 
 use super::vision::Frame;
-use super::{automation, screen};
+use super::{act, automation, screen, tree};
 use crate::capture::{App, Presence, Sensors, Shot, Tab, WindowText};
 
 /// Accessibility calls give up after this many seconds, so a hung app cannot stall capture.
@@ -34,12 +37,31 @@ unsafe extern "C" {
 
 pub struct Mac {
     own_pid: i32,
+    /// Apps already asked to build their Accessibility tree.
+    asked: HashSet<i32>,
+    /// The last focused text fields, newest last, so one that just lost focus can be read again.
+    recent: Vec<(u64, Focused)>,
 }
+
+/// An element kept between polls on the capture thread.
+struct Focused(CFRetained<AXUIElement>);
+
+// SAFETY: Accessibility elements are CF objects, which may be used from any thread. Only the
+// capture thread touches these.
+unsafe impl Send for Focused {}
 
 impl Mac {
     pub fn new() -> Self {
         Self {
             own_pid: std::process::id() as i32,
+            asked: HashSet::new(),
+            recent: Vec::new(),
+        }
+    }
+
+    fn enable_tree(&mut self, pid: i32) {
+        if self.asked.insert(pid) {
+            tree::enable_tree(pid);
         }
     }
 }
@@ -63,22 +85,26 @@ fn text_attribute(element: &AXUIElement, name: &'static str) -> String {
         .unwrap_or_default()
 }
 
-fn focused_window_text(pid: i32) -> WindowText {
+fn focused_window(pid: i32) -> Option<CFRetained<AXUIElement>> {
     // SAFETY: Accessibility calls on elements owned here, each bounded by the timeout.
     unsafe {
         let application = AXUIElement::new_application(pid);
         application.set_messaging_timeout(AX_TIMEOUT);
-        attribute(&application, "AXFocusedWindow")
-            .and_then(|window| window.downcast::<AXUIElement>().ok())
-            .map(|window| {
-                window.set_messaging_timeout(AX_TIMEOUT);
-                WindowText {
-                    title: text_attribute(&window, "AXTitle"),
-                    doc: text_attribute(&window, "AXDocument"),
-                }
-            })
-            .unwrap_or_default()
+        let window = attribute(&application, "AXFocusedWindow")?
+            .downcast::<AXUIElement>()
+            .ok()?;
+        window.set_messaging_timeout(AX_TIMEOUT);
+        Some(window)
     }
+}
+
+fn focused_window_text(pid: i32) -> WindowText {
+    focused_window(pid)
+        .map(|window| WindowText {
+            title: text_attribute(&window, "AXTitle"),
+            doc: text_attribute(&window, "AXDocument"),
+        })
+        .unwrap_or_default()
 }
 
 impl Sensors for Mac {
@@ -139,6 +165,45 @@ impl Sensors for Mac {
 
     fn window_text(&mut self, app: &App) -> WindowText {
         focused_window_text(app.pid)
+    }
+
+    fn window_lines(&mut self, app: &App) -> Vec<OcrLine> {
+        self.enable_tree(app.pid);
+        focused_window(app.pid).map(tree::lines).unwrap_or_default()
+    }
+
+    fn window_id(&mut self, app: &App) -> u64 {
+        act::window(app.pid)
+    }
+
+    fn clicks(&mut self) -> Vec<[f64; 2]> {
+        act::clicks()
+    }
+
+    fn wake_on_click(&mut self, thread: Thread) {
+        act::watch_clicks(thread);
+    }
+
+    fn element_chain(&mut self, app: &App, point: [f64; 2]) -> Vec<Element> {
+        self.enable_tree(app.pid);
+        act::chain(app.pid, point, &act::element_names())
+    }
+
+    fn focused_field(&mut self, app: &App) -> Option<Field> {
+        self.enable_tree(app.pid);
+        let (element, field) = act::focused(app.pid, &act::field_names())?;
+        if self.recent.last().is_none_or(|(id, _)| *id != field.id) {
+            self.recent.push((field.id, Focused(element)));
+            if self.recent.len() > 2 {
+                self.recent.remove(0);
+            }
+        }
+        Some(field)
+    }
+
+    fn reread(&mut self, id: u64) -> Option<String> {
+        let (_, Focused(element)) = self.recent.iter().find(|(seen, _)| *seen == id)?;
+        act::value(element)
     }
 
     fn browser_tab(&mut self, app: &App, browser: Browser) -> Result<Tab> {

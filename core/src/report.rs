@@ -4,9 +4,8 @@
 use crate::error::Result;
 use crate::finder::{Action, Category};
 use crate::store::Store;
-use crate::time::DAY;
+use crate::time::{DAY, Local, WEEK_DAYS};
 
-const DAYS: i64 = 7;
 const TOP: usize = 3;
 
 /// A workflow as the share image shows it: the categories its steps pass through.
@@ -30,9 +29,9 @@ pub struct WeeklyReport {
 }
 
 impl Store {
-    /// The report for the 7 days up to `now`.
-    pub fn weekly_report(&self, now: i64) -> Result<WeeklyReport> {
-        let results = self.results(now)?;
+    /// The report for the 7 days up to `when.now`.
+    pub fn weekly_report(&self, when: Local) -> Result<WeeklyReport> {
+        let results = self.results(when)?;
         let top = self
             .workflows()?
             .iter()
@@ -49,8 +48,8 @@ impl Store {
             })
             .collect();
         Ok(WeeklyReport {
-            from_ts: now - DAYS * DAY,
-            to_ts: now,
+            from_ts: when.now - WEEK_DAYS * DAY,
+            to_ts: when.now,
             hours_back: self.hours_back()?,
             hours_saved: results.iter().filter_map(|m| m.saved()).sum(),
             handoffs: results.len(),

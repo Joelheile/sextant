@@ -168,12 +168,30 @@ fn apps_that_are_not_calls_and_sextant_itself_open_nothing() {
         .call_app(std::process::id() as i32, "us.zoom.xos");
     session.run(10);
     assert_eq!(session.world.opened.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn an_excluded_app_opens_no_stream() {
+    let mut session = Session::new();
     session
         .control
-        .update(|s| s.call_apps = vec!["com.example.Dictation".into()]);
-    session.world.call_app(4243, "com.example.Dictation");
-    session.run(3);
-    assert_eq!(session.world.streams(), 2, "marked by the user");
+        .update(|s| s.excluded_apps.push("us.zoom".into()));
+    session.world.call_app(4242, "us.zoom.xos");
+    session.run(10);
+    assert_eq!(session.world.opened.load(Ordering::Relaxed), 0);
+    assert!(!session.stats.listening());
+}
+
+#[test]
+fn a_browser_call_opens_no_stream_while_its_front_window_is_private() {
+    let mut session = Session::new();
+    session.world.private_window.store(true, Ordering::Relaxed);
+    session.world.call_app(4242, "com.google.Chrome");
+    session.run(10);
+    assert_eq!(session.world.opened.load(Ordering::Relaxed), 0);
+    session.world.private_window.store(false, Ordering::Relaxed);
+    session.run(4);
+    assert_eq!(session.world.streams(), 2, "a normal window is listened to");
 }
 
 #[test]

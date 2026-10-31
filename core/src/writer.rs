@@ -113,7 +113,7 @@ fn write_utterance(
     secret: &Secret,
 ) -> Result<()> {
     tx.prepare_cached(
-        "INSERT INTO utterances(ts_start, ts_end, source, text) VALUES (?1, ?2, ?3, ?4)",
+        "INSERT INTO utterances(start_ts, end_ts, source, text) VALUES (?1, ?2, ?3, ?4)",
     )?
     .execute(params![
         utterance.ts_start.min(now),
@@ -290,8 +290,8 @@ mod tests {
             columns,
             [
                 ("id", "INTEGER"),
-                ("ts_start", "INTEGER"),
-                ("ts_end", "INTEGER"),
+                ("start_ts", "INTEGER"),
+                ("end_ts", "INTEGER"),
                 ("source", "TEXT"),
                 ("text", "TEXT"),
             ]

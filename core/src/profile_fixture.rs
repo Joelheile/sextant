@@ -9,10 +9,7 @@ use crate::backfill::{
 };
 use crate::error::{Error, Result};
 use crate::fixtures::{CLIENTS, INVOICES, Part, Rng, SLACK_TEXT, at};
-use crate::time::DAY;
-
-const WEBKIT_TO_UNIX_S: i64 = 11_644_473_600;
-const SAFARI_TO_UNIX_S: i64 = 978_307_200;
+use crate::time::{DAY, SAFARI_TO_UNIX_S, WEBKIT_TO_UNIX_S};
 
 pub struct ProfileSpec {
     /// Local midnight of a Monday.

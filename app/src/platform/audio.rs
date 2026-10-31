@@ -33,7 +33,9 @@ use objc2_core_audio_types::{AudioBufferList, AudioStreamBasicDescription};
 use objc2_core_foundation::{CFDictionary, CFRetained, CFString};
 use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSObject, NSString, NSUUID};
 use sextant_core::audio::MicUser;
+use sextant_core::capture::Browser;
 
+use super::automation;
 use crate::audio::{Chunk, Devices, Inbox};
 
 pub struct Mac;
@@ -73,6 +75,12 @@ impl Devices for Mac {
             })
         })
         .collect()
+    }
+
+    fn front_window_private(&mut self, bundle_id: &str, browser: Browser) -> Option<bool> {
+        automation::tab(bundle_id, browser)
+            .ok()
+            .map(|tab| tab.private)
     }
 
     fn open_mic(&mut self, into: Inbox) -> Result<Stream> {

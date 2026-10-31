@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Live, type Settings } from "./api";
 import CallAudio from "./CallAudio";
 import { X } from "lucide-react";
+import { MB } from "./format";
 import { t, type Key } from "./i18n";
 import { Failed, List, Muted, Section, SwitchRow } from "./layout";
 import Permissions from "./Permissions";
@@ -10,12 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const MB = 1024 * 1024;
 
 const LIVE_SWITCHES: { key: keyof Omit<Live, "audio">; label: Key }[] = [
   { key: "metadata", label: "liveMetadata" },
   { key: "ocr", label: "liveOcr" },
   { key: "copy", label: "liveCopy" },
+  { key: "actions", label: "liveActions" },
   { key: "opaque_browsers", label: "liveOpaque" },
 ];
 

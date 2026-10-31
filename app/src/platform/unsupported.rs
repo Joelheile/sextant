@@ -5,6 +5,7 @@ use anyhow::{Result, bail};
 use sextant_core::backfill::{CalendarRecord, FileRecord, HistoryFile, Platform, ReminderRecord};
 use sextant_core::{Error, Result as CoreResult};
 
+use super::{Prompt, SettingsPane};
 use crate::audio::{self, Runs, Speech, Vad};
 use crate::capture::{Control, Pipeline, Sink};
 
@@ -118,11 +119,11 @@ pub fn silero(_models: &Path) -> impl FnMut() -> Result<Silero> + Send + 'static
     || bail!("needs macOS")
 }
 
-pub fn request_permission(_name: &str) -> Result<bool> {
+pub fn request_permission(_prompt: Prompt) -> Result<bool> {
     bail!("needs macOS")
 }
 
-pub fn open_settings_pane(_pane: &str, _hint: Option<&str>) -> Result<()> {
+pub fn open_settings_pane(_pane: SettingsPane, _hint: Option<&str>) -> Result<()> {
     bail!("needs macOS")
 }
 
@@ -152,11 +153,17 @@ pub mod language {
         pub note: usize,
     }
 
+    pub fn prewarm() {}
+
     pub fn plan(_question: &str) -> Option<Plan> {
         None
     }
 
-    pub fn answer(_question: &str, _notes: &[Note]) -> Option<Answer> {
+    pub fn answer(
+        _question: &str,
+        _notes: &[Note],
+        _on_text: impl FnMut(&str) + Send,
+    ) -> Option<Answer> {
         None
     }
 

@@ -11,7 +11,7 @@ mod stats;
 #[cfg(test)]
 mod tests;
 
-pub use ingest::Ingest;
+pub use ingest::{FLUSH_EVERY, Ingest};
 pub use pipeline::{Control, Pipeline, Sink};
 pub use sensors::{App, Ocr, Presence, Sensors, Shot, Tab, WindowText};
 pub use stats::{Stats, percentile};

@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use sextant_core::Speaker;
 use sextant_core::audio::{Call, CallTracker, Change, detect};
+use sextant_core::capture;
 
 use super::devices::{Devices, Inbox, Speech, Vad, inbox};
 use super::lane::Lane;
@@ -80,10 +81,9 @@ where
         }
         if now_ms >= self.next_poll_ms {
             self.next_poll_ms = now_ms + POLL_MS;
-            let marked = self.control.settings().call_apps;
-            let seen = detect(&self.devices.mic_users(), self.own_pid, &marked);
+            let seen = detect(&self.devices.mic_users(), self.own_pid);
             match self.tracker.step(now_ms, seen) {
-                Some(Change::Started(call)) => self.open(&call, now_s),
+                Some(Change::Started(call)) => self.start(&call, now_s),
                 Some(Change::Ended) => self.close(true),
                 None => {}
             }
@@ -96,6 +96,21 @@ where
         } else {
             BUSY_WAIT
         }
+    }
+
+    /// Opens the streams unless a screen gate would have closed: an excluded app, or a browser
+    /// whose front window is private. The call is looked at again after the next start delay.
+    fn start(&mut self, call: &Call, now_s: i64) {
+        let settings = self.control.settings();
+        let devices = &mut self.devices;
+        let gate = capture::call(&settings, &call.name, &call.app_id, |browser| {
+            devices.front_window_private(&call.app_id, browser)
+        });
+        if gate.is_err() {
+            self.tracker.reset();
+            return;
+        }
+        self.open(call, now_s);
     }
 
     fn open(&mut self, call: &Call, now_s: i64) {
@@ -123,7 +138,8 @@ where
             (self.new_vad)().and_then(|vad| Ok((vad, open(&mut self.devices, into.clone())?)));
         match opened {
             Ok((vad, stream)) => Some(Lane::new(speaker, into, stream, vad, now_s)),
-            Err(_) => {
+            Err(err) => {
+                eprintln!("opening the {speaker:?} stream failed: {err:#}");
                 Stats::add(&self.stats.stream_errors);
                 None
             }

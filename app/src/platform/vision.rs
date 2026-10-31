@@ -95,8 +95,7 @@ impl fmt::Debug for Frame {
     }
 }
 
-/// The level capture uses. `.accurate` read text better but took 320 ms p50 and about 700 ms p95
-/// per window on the fixtures, against a budget of 250 ms; `.fast` took under 60 ms p95.
+/// The OCR level capture runs. `.accurate` misses the 250 ms p95 budget; `.fast` meets it.
 pub const CHOSEN: Level = Level::Fast;
 
 pub struct Recognizer {

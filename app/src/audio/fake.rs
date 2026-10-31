@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use sextant_core::audio::MicUser;
+use sextant_core::capture::Browser;
 
 use super::devices::{Chunk, Devices, Inbox, Speech, Vad};
 
@@ -16,6 +17,8 @@ pub struct World {
     mic: Mutex<Option<Inbox>>,
     system: Mutex<Option<Inbox>>,
     pub fail_system: AtomicBool,
+    /// What the front window of a browser says about itself.
+    pub private_window: AtomicBool,
     pub system_pids: Mutex<Vec<i32>>,
     pub opened: AtomicUsize,
     pub open_streams: AtomicUsize,
@@ -102,6 +105,10 @@ impl Devices for FakeDevices {
 
     fn mic_users(&mut self) -> Vec<MicUser> {
         self.0.users.lock().expect("users").clone()
+    }
+
+    fn front_window_private(&mut self, _: &str, _: Browser) -> Option<bool> {
+        Some(self.0.private_window.load(Ordering::Relaxed))
     }
 
     fn open_mic(&mut self, into: Inbox) -> Result<FakeStream> {

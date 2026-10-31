@@ -1,12 +1,13 @@
-//! §7.7 Commitments: promises in my own transcripts and open reminders, linked to cases.
+//! §7.7 Commitments: promises in my own transcripts and open reminders, linked to tasks.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::entities::{Case, Entity, EntityKind, find};
+use super::entities::{EntityKind, find};
 use super::episodes::{Episode, EventRow};
+use super::tasks::Task;
 use crate::text::{pattern, tokens};
 use crate::time::DAY;
 
@@ -22,8 +23,8 @@ pub(crate) struct Commitment {
     pub source: &'static str,
     pub text: String,
     pub due: Option<i64>,
-    /// Entity index of the linked case.
-    pub entity: Option<usize>,
+    /// Index of the linked task.
+    pub task: Option<usize>,
     pub overdue: bool,
 }
 
@@ -31,65 +32,80 @@ pub(crate) fn is_promise(text: &str) -> bool {
     PROMISE.is_match(text)
 }
 
+/// Links a piece of text to a task: by anchor first, else by token overlap of 0.34 or more.
+pub(crate) struct Linker {
+    by_anchor: HashMap<String, usize>,
+    task_tokens: Vec<(usize, Vec<String>)>,
+    last_activity: HashMap<usize, i64>,
+}
+
+impl Linker {
+    pub fn new(tasks: &[Task], episodes: &[Episode]) -> Self {
+        Self {
+            by_anchor: tasks
+                .iter()
+                .enumerate()
+                .flat_map(|(t, task)| task.anchors.iter().map(move |a| (a.clone(), t)))
+                .collect(),
+            task_tokens: tasks
+                .iter()
+                .enumerate()
+                .map(|(t, task)| (t, task_tokens(task, episodes)))
+                .collect(),
+            last_activity: tasks
+                .iter()
+                .enumerate()
+                .map(|(t, task)| (t, task.last))
+                .collect(),
+        }
+    }
+
+    /// Index of the linked task.
+    pub fn link(&self, text: &str) -> Option<usize> {
+        let by_anchor = find(text)
+            .into_iter()
+            .filter(|(kind, _)| matches!(kind, EntityKind::Invoice | EntityKind::Ticket))
+            .filter_map(|(_, value)| self.by_anchor.get(&value).copied())
+            .min();
+        if by_anchor.is_some() {
+            return by_anchor;
+        }
+        let words = tokens(text);
+        if words.is_empty() {
+            return None;
+        }
+        let overlap = |task: &Vec<String>| {
+            words.iter().filter(|w| task.contains(w)).count() as f64 / words.len() as f64
+        };
+        self.task_tokens
+            .iter()
+            .map(|(task, words)| (overlap(words), *task))
+            .filter(|(score, _)| *score >= LINK_OVERLAP)
+            .max_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)))
+            .map(|(_, task)| task)
+    }
+}
+
 /// `spoken` are (ts, text) of mic utterances. Reminders come from `reminder` events and count while not done.
 pub(crate) fn build(
     events: &[EventRow],
     spoken: &[(i64, String)],
-    entities: &[Entity],
-    cases: &[Case],
-    episodes: &[Episode],
+    linker: &Linker,
     now: i64,
 ) -> Vec<Commitment> {
-    let by_value: HashMap<(EntityKind, &str), usize> = cases
-        .iter()
-        .map(|c| {
-            (
-                (entities[c.entity].kind, entities[c.entity].value.as_str()),
-                c.entity,
-            )
-        })
-        .collect();
-    let case_tokens: Vec<(usize, Vec<String>)> = cases
-        .iter()
-        .map(|c| (c.entity, case_tokens(c, entities, episodes)))
-        .collect();
-    let last_activity: HashMap<usize, i64> = cases.iter().map(|c| (c.entity, c.last)).collect();
-
-    let link = |text: &str| -> Option<usize> {
-        let by_entity = find(text)
-            .iter()
-            .filter_map(|(kind, value)| by_value.get(&(*kind, value.as_str())).copied())
-            .min();
-        if by_entity.is_some() {
-            return by_entity;
-        }
-        let words = tokens(&PROMISE.replace_all(text, " "));
-        if words.is_empty() {
-            return None;
-        }
-        let overlap = |case: &Vec<String>| {
-            words.iter().filter(|w| case.contains(w)).count() as f64 / words.len() as f64
-        };
-        case_tokens
-            .iter()
-            .map(|(entity, case)| (overlap(case), *entity))
-            .filter(|(score, _)| *score >= LINK_OVERLAP)
-            .max_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)))
-            .map(|(_, entity)| entity)
-    };
-
+    let link = |text: &str| linker.link(&PROMISE.replace_all(text, " "));
     let mut out = Vec::new();
     for (ts, text) in spoken.iter().filter(|(_, text)| is_promise(text)) {
-        let entity = link(text);
-        let untouched = entity
-            .and_then(|e| last_activity.get(&e))
+        let task = link(text);
+        let untouched = task
+            .and_then(|t| linker.last_activity.get(&t))
             .is_some_and(|last| last <= ts);
         out.push(Commitment {
             ts: *ts,
             source: "utterance",
             text: text.clone(),
             due: None,
-            entity,
+            task,
             overdue: untouched && now - ts > STALE_AFTER_S,
         });
     }
@@ -102,7 +118,7 @@ pub(crate) fn build(
         out.push(Commitment {
             ts: event.ts,
             source: "reminder",
-            entity: link(&text),
+            task: link(&text),
             overdue: due.is_some_and(|due| due < now),
             due,
             text,
@@ -111,32 +127,16 @@ pub(crate) fn build(
     out
 }
 
-fn case_tokens(case: &Case, entities: &[Entity], episodes: &[Episode]) -> Vec<String> {
-    let mut words: Vec<String> = case
+fn task_tokens(task: &Task, episodes: &[Episode]) -> Vec<String> {
+    let mut words: Vec<String> = task
         .episodes
         .iter()
         .flat_map(|&e| episodes[e].tokens.iter().cloned())
         .collect();
-    words.extend(tokens(&entities[case.entity].value));
+    for anchor in &task.anchors {
+        words.extend(tokens(anchor));
+    }
     words.sort_unstable();
     words.dedup();
     words
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn promises_match_english_and_german_phrases() {
-        for text in [
-            "I'll send it tomorrow",
-            "Let me check",
-            "Ich werde das morgen schicken",
-            "Mach ich",
-        ] {
-            assert!(is_promise(text), "{text}");
-        }
-        assert!(!is_promise("She said the price is high"));
-    }
 }

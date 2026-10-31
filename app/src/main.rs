@@ -11,6 +11,7 @@ mod judge;
 mod keys;
 mod mcp;
 mod models;
+mod panel;
 mod platform;
 mod prefs;
 mod rewind;

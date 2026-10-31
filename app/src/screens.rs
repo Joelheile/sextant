@@ -10,9 +10,10 @@ use sextant_core::{
     Action, Category, Enjoyment, Kind, Live, MIN_DAYS, Measurement, Session, Settings, Store,
     Target, Turn, Workflow, WorkflowDetail, keywords, parse_correction, redact, skill,
 };
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
-use crate::commands::{AppState, MAX_ROWS, Reply, msg};
+use crate::commands::{AppState, MAX_ROWS, Reply, blocking, msg};
 use crate::keys::Keychain;
 use crate::platform::language::Note;
 use crate::{clock, data, platform};
@@ -26,7 +27,6 @@ const RETENTION_CHOICES: [Option<u32>; 4] = [Some(30), Some(90), Some(365), None
 pub struct StepView {
     key: String,
     name: String,
-    category: &'static str,
     /// Typical wait before the next step, in seconds.
     gap_s: Option<i64>,
     /// How often data was copied by hand to the next step.
@@ -65,7 +65,6 @@ fn row(store: &Store, workflow: &Workflow) -> sextant_core::Result<WorkflowRow> 
             StepView {
                 key: step.key.clone(),
                 name: step.name.clone(),
-                category: step.category.as_str(),
                 gap_s: link.map(|l| l.median_gap_s),
                 copies: link.map_or(0, |l| l.copies),
             }
@@ -76,7 +75,7 @@ fn row(store: &Store, workflow: &Workflow) -> sextant_core::Result<WorkflowRow> 
         name: workflow.name.clone(),
         steps,
         hours_week: workflow.hours_week,
-        cases: workflow.case_count,
+        cases: workflow.task_count,
         benefit: workflow.benefit,
         procrastination: workflow.procrastination,
         action: workflow.action.as_str(),
@@ -109,49 +108,51 @@ pub struct Overview {
 
 /// The Workflows screen, one page of the ranked list at a time.
 #[tauri::command]
-pub async fn workflow_overview(
-    state: State<'_, AppState>,
-    offset: usize,
-    limit: usize,
-) -> Reply<Overview> {
-    state
-        .engine()?
-        .read(|store| {
-            let all = store.workflows()?;
-            let is_promise =
-                |w: &&Workflow| w.kind == Kind::PromiseGap && w.action != Action::Protect;
-            let is_protect = |w: &&Workflow| w.action == Action::Protect;
-            let ranked: Vec<&Workflow> = all
-                .iter()
-                .filter(|w| !is_promise(w) && !is_protect(w))
-                .collect();
-            Ok(Overview {
-                hours_back: store.hours_back()?,
-                total: ranked.len(),
-                ask: rows(store, store.ask_first()?.iter())?,
-                ranked: rows(
-                    store,
-                    ranked.into_iter().skip(offset).take(limit.min(MAX_ROWS)),
-                )?,
-                promises: rows(store, all.iter().filter(is_promise).take(MAX_ROWS))?,
-                protect: rows(store, all.iter().filter(is_protect).take(MAX_ROWS))?,
+pub async fn workflow_overview(app: AppHandle, offset: usize, limit: usize) -> Reply<Overview> {
+    blocking(app, move |state| {
+        state
+            .engine()?
+            .read(|store| {
+                let all = store.workflows()?;
+                let is_promise =
+                    |w: &&Workflow| w.kind == Kind::PromiseGap && w.action != Action::Protect;
+                let is_protect = |w: &&Workflow| w.action == Action::Protect;
+                let ranked: Vec<&Workflow> = all
+                    .iter()
+                    .filter(|w| !is_promise(w) && !is_protect(w))
+                    .collect();
+                Ok(Overview {
+                    hours_back: store.hours_back()?,
+                    total: ranked.len(),
+                    ask: rows(store, store.ask_first()?.iter())?,
+                    ranked: rows(
+                        store,
+                        ranked.into_iter().skip(offset).take(limit.min(MAX_ROWS)),
+                    )?,
+                    promises: rows(store, all.iter().filter(is_promise).take(MAX_ROWS))?,
+                    protect: rows(store, all.iter().filter(is_protect).take(MAX_ROWS))?,
+                })
             })
-        })
-        .map_err(msg)
+            .map_err(msg)
+    })
+    .await
 }
 
 /// The answer to the quick enjoyment question. Stored as a correction, never inferred.
 #[tauri::command]
-pub async fn answer_enjoyment(state: State<'_, AppState>, id: i64, enjoyment: String) -> Reply<()> {
-    let enjoyment = Enjoyment::parse(&enjoyment).ok_or("unknown answer")?;
-    state
-        .engine()?
-        .change(move |store| {
-            store
-                .answer_enjoyment(clock::now(), Target::Workflow(id), enjoyment)
-                .map(|_| ())
-        })
-        .map_err(msg)
+pub async fn answer_enjoyment(app: AppHandle, id: i64, enjoyment: String) -> Reply<()> {
+    blocking(app, move |state| {
+        let enjoyment = Enjoyment::parse(&enjoyment).ok_or("unknown answer")?;
+        state
+            .engine()?
+            .change(move |store| {
+                store
+                    .answer_enjoyment(clock::now(), Target::Workflow(id), enjoyment)
+                    .map(|_| ())
+            })
+            .map_err(msg)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -234,16 +235,19 @@ fn detail(store: &Store, found: WorkflowDetail) -> sextant_core::Result<Detail> 
 
 /// Reasons for every score, redacted example cases and linked promises of one workflow.
 #[tauri::command]
-pub async fn workflow_detail(state: State<'_, AppState>, id: i64) -> Reply<Option<Detail>> {
-    state
-        .engine()?
-        .read(|store| {
-            store
-                .workflow_detail(id)?
-                .map(|found| detail(store, found))
-                .transpose()
-        })
-        .map_err(msg)
+pub async fn workflow_detail(app: AppHandle, id: i64) -> Reply<Option<Detail>> {
+    blocking(app, move |state| {
+        state
+            .engine()?
+            .read(|store| {
+                store
+                    .workflow_detail(id)?
+                    .map(|found| detail(store, found))
+                    .transpose()
+            })
+            .map_err(msg)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -256,28 +260,31 @@ pub struct Understood {
 /// merge needs. `None` when no rule matches the phrase.
 #[tauri::command]
 pub async fn correct_workflow(
-    state: State<'_, AppState>,
+    app: AppHandle,
     id: i64,
     phrase: String,
     steps: Vec<String>,
 ) -> Reply<Option<Understood>> {
-    let Some(rule) = parse_correction(&phrase) else {
-        return Ok(None);
-    };
-    let targets = match rule.name() {
-        "merge" => steps.into_iter().map(Target::Step).collect(),
-        _ => vec![Target::Workflow(id)],
-    };
-    state
-        .engine()?
-        .change(move |store| store.correct(clock::now(), &phrase, &targets))
-        .map(|rule| {
-            Some(Understood {
-                rule: rule.name(),
-                arg: rule.arg().map(str::to_owned),
+    blocking(app, move |state| {
+        let Some(rule) = parse_correction(&phrase) else {
+            return Ok(None);
+        };
+        let targets = match rule.name() {
+            "merge" => steps.into_iter().map(Target::Step).collect(),
+            _ => vec![Target::Workflow(id)],
+        };
+        state
+            .engine()?
+            .change(move |store| store.correct(clock::now(), &phrase, &targets))
+            .map(|rule| {
+                Some(Understood {
+                    rule: rule.name(),
+                    arg: rule.arg().map(str::to_owned),
+                })
             })
-        })
-        .map_err(msg)
+            .map_err(msg)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -322,55 +329,63 @@ fn workflow_of(store: &Store, id: i64) -> sextant_core::Result<Workflow> {
 /// Where the skill goes and the prompt for Claude. Writes nothing.
 #[tauri::command]
 pub async fn automation_plan(
-    state: State<'_, AppState>,
+    app: AppHandle,
     id: i64,
     folder: Option<String>,
 ) -> Reply<AutomationPlan> {
-    let workflow = state
-        .engine()?
-        .read(|store| workflow_of(store, id))
-        .map_err(msg)?;
-    let path = skill_path(&state.dir, folder.as_deref(), &workflow)?;
-    let path = path.to_string_lossy().into_owned();
-    Ok(AutomationPlan {
-        prompt: skill::prompt(&workflow, &path),
-        path,
+    blocking(app, move |state| {
+        let workflow = state
+            .engine()?
+            .read(|store| workflow_of(store, id))
+            .map_err(msg)?;
+        let path = skill_path(&state.dir, folder.as_deref(), &workflow)?;
+        let path = path.to_string_lossy().into_owned();
+        Ok(AutomationPlan {
+            prompt: skill::prompt(&workflow, &path),
+            path,
+        })
     })
+    .await
 }
 
 /// Writes the `SKILL.md` and returns its path.
 #[tauri::command]
-pub async fn write_skill(
-    state: State<'_, AppState>,
-    id: i64,
-    folder: Option<String>,
-) -> Reply<String> {
-    let (workflow, text) = state
-        .engine()?
-        .read(|store| {
-            let text = redact(&store.skill_md(id)?, &store.secret());
-            Ok((workflow_of(store, id)?, text))
-        })
-        .map_err(msg)?;
-    let path = skill_path(&state.dir, folder.as_deref(), &workflow)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(msg)?;
-    }
-    fs::write(&path, text).map_err(msg)?;
-    Ok(path.to_string_lossy().into_owned())
+pub async fn write_skill(app: AppHandle, id: i64, folder: Option<String>) -> Reply<String> {
+    blocking(app, move |state| {
+        let (workflow, text) = state
+            .engine()?
+            .read(|store| {
+                let text = redact(
+                    &store.skill_md(id, clock::local().utc_offset_s)?,
+                    &store.secret(),
+                );
+                Ok((workflow_of(store, id)?, text))
+            })
+            .map_err(msg)?;
+        let path = skill_path(&state.dir, folder.as_deref(), &workflow)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(msg)?;
+        }
+        fs::write(&path, text).map_err(msg)?;
+        Ok(path.to_string_lossy().into_owned())
+    })
+    .await
 }
 
 /// "I handed this off": starts the before and after measurement.
 #[tauri::command]
-pub async fn report_handoff(state: State<'_, AppState>, id: i64) -> Reply<()> {
-    state
-        .engine()?
-        .write(move |store| {
-            store
-                .record_handoff(id, clock::now(), "started", "")
-                .map(|_| ())
-        })
-        .map_err(msg)
+pub async fn report_handoff(app: AppHandle, id: i64) -> Reply<()> {
+    blocking(app, move |state| {
+        state
+            .engine()?
+            .write(move |store| {
+                store
+                    .record_handoff(id, clock::now(), "started", "")
+                    .map(|_| ())
+            })
+            .map_err(msg)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -416,28 +431,31 @@ impl From<Measurement> for ResultRow {
 }
 
 #[tauri::command]
-pub async fn results(state: State<'_, AppState>) -> Reply<Results> {
-    let measured = state
-        .engine()?
-        .read(|store| store.results(clock::now()))
-        .map_err(msg)?;
-    Ok(Results {
-        min_days: MIN_DAYS,
-        rows: measured
-            .into_iter()
-            .take(MAX_ROWS)
-            .map(Into::into)
-            .collect(),
+pub async fn results(app: AppHandle) -> Reply<Results> {
+    blocking(app, move |state| {
+        let measured = state
+            .engine()?
+            .read(|store| store.results(clock::local()))
+            .map_err(msg)?;
+        Ok(Results {
+            min_days: MIN_DAYS,
+            rows: measured
+                .into_iter()
+                .take(MAX_ROWS)
+                .map(Into::into)
+                .collect(),
+        })
     })
+    .await
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct LineView {
     ts: i64,
     text: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct SessionView {
     source: &'static str,
     app: String,
@@ -448,7 +466,7 @@ pub struct SessionView {
     lines: Vec<LineView>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct SearchPage {
     sessions: Vec<SessionView>,
 }
@@ -496,27 +514,30 @@ pub struct ReportView {
 
 /// The numbers and category names behind the share image. No entity, title, URL or text.
 #[tauri::command]
-pub async fn weekly_report(state: State<'_, AppState>) -> Reply<ReportView> {
-    let report = state
-        .engine()?
-        .read(|store| store.weekly_report(clock::now()))
-        .map_err(msg)?;
-    Ok(ReportView {
-        from_ts: report.from_ts,
-        to_ts: report.to_ts,
-        hours_back: report.hours_back,
-        hours_saved: report.hours_saved,
-        handoffs: report.handoffs,
-        top: report
-            .top
-            .into_iter()
-            .map(|row| ReportRowView {
-                categories: row.categories.into_iter().map(Category::as_str).collect(),
-                hours_week: row.hours_week,
-                action: row.action.as_str(),
-            })
-            .collect(),
+pub async fn weekly_report(app: AppHandle) -> Reply<ReportView> {
+    blocking(app, move |state| {
+        let report = state
+            .engine()?
+            .read(|store| store.weekly_report(clock::local()))
+            .map_err(msg)?;
+        Ok(ReportView {
+            from_ts: report.from_ts,
+            to_ts: report.to_ts,
+            hours_back: report.hours_back,
+            hours_saved: report.hours_saved,
+            handoffs: report.handoffs,
+            top: report
+                .top
+                .into_iter()
+                .map(|row| ReportRowView {
+                    categories: row.categories.into_iter().map(Category::as_str).collect(),
+                    hours_week: row.hours_week,
+                    action: row.action.as_str(),
+                })
+                .collect(),
+        })
     })
+    .await
 }
 
 /// Writes the share image to the Downloads folder. Called only when the user presses Save.
@@ -588,20 +609,23 @@ pub async fn set_live(state: State<'_, AppState>, live: Live) -> Reply<Settings>
 
 /// Keeps raw data for 30, 90 or 365 days, or forever (`None`), and applies it now.
 #[tauri::command]
-pub async fn set_retention(state: State<'_, AppState>, days: Option<u32>) -> Reply<Settings> {
-    if !RETENTION_CHOICES.contains(&days) {
-        return Err("choose 30, 90, 365 days or forever".into());
-    }
-    let engine = state.engine()?;
-    let settings = engine
-        .change_settings(move |s| s.retention_days = days)
-        .map_err(msg)?;
-    if let Some(days) = days {
-        engine
-            .write(move |store| store.retention(clock::now(), days).map(|_| ()))
+pub async fn set_retention(app: AppHandle, days: Option<u32>) -> Reply<Settings> {
+    blocking(app, move |state| {
+        if !RETENTION_CHOICES.contains(&days) {
+            return Err("choose 30, 90, 365 days or forever".into());
+        }
+        let engine = state.engine()?;
+        let settings = engine
+            .change_settings(move |s| s.retention_days = days)
             .map_err(msg)?;
-    }
-    Ok(settings)
+        if let Some(days) = days {
+            engine
+                .write(move |store| store.retention(clock::local(), days).map(|_| ()))
+                .map_err(msg)?;
+        }
+        Ok(settings)
+    })
+    .await
 }
 
 /// Stops capture and audio, closes the database, empties the data folder, deletes the key and
@@ -644,6 +668,15 @@ impl From<Turn> for TurnView {
 pub struct Asked {
     turn: TurnView,
     page: SearchPage,
+}
+
+/// What `rewind_ask` streams while it works: the sessions as soon as they are found, then the
+/// answer text so far as the model writes it.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Progress {
+    Sessions { page: SearchPage },
+    Answer { text: String },
 }
 
 const DAY_S: i64 = 86_400;
@@ -705,7 +738,11 @@ fn recall_views(state: &AppState, question: &str, now: i64) -> Result<Vec<Sessio
 
 /// A short answer from the on-device model that cites one session, which moves to the top.
 /// Empty when the model is unavailable or nothing was found.
-fn answer(question: &str, sessions: &mut [SessionView]) -> String {
+fn answer(
+    question: &str,
+    sessions: &mut [SessionView],
+    on_text: impl FnMut(&str) + Send,
+) -> String {
     let notes: Vec<Note> = sessions
         .iter()
         .map(|session| Note {
@@ -723,7 +760,7 @@ fn answer(question: &str, sessions: &mut [SessionView]) -> String {
     if notes.is_empty() {
         return String::new();
     }
-    let Some(answer) = platform::language::answer(question, &notes) else {
+    let Some(answer) = platform::language::answer(question, &notes, on_text) else {
         return String::new();
     };
     if (1..=sessions.len()).contains(&answer.note) {
@@ -732,9 +769,14 @@ fn answer(question: &str, sessions: &mut [SessionView]) -> String {
     answer.text
 }
 
-/// Answers a question in the rewind search panel and adds it to the history.
+/// Answers a question in the rewind search panel and adds it to the history. Streams the sessions
+/// and then the answer to `progress`, so the panel shows them before the turn is saved.
 #[tauri::command]
-pub async fn rewind_ask(app: AppHandle, question: String) -> Reply<Asked> {
+pub async fn rewind_ask(
+    app: AppHandle,
+    question: String,
+    progress: Channel<Progress>,
+) -> Reply<Asked> {
     let question = question.trim().to_string();
     if question.is_empty() {
         return Err("Type a question first.".into());
@@ -743,7 +785,18 @@ pub async fn rewind_ask(app: AppHandle, question: String) -> Reply<Asked> {
         let state = app.state::<AppState>();
         let now = clock::now();
         let mut sessions = recall_views(&state, &question, now)?;
-        let text = answer(&question, &mut sessions);
+        progress
+            .send(Progress::Sessions {
+                page: SearchPage {
+                    sessions: sessions.clone(),
+                },
+            })
+            .map_err(msg)?;
+        let text = answer(&question, &mut sessions, |text| {
+            if let Err(err) = progress.send(Progress::Answer { text: text.into() }) {
+                eprintln!("streaming the answer failed: {err}");
+            }
+        });
         let turn = state
             .engine()?
             .write(move |store| store.add_turn(now, &question, &text))
@@ -770,15 +823,15 @@ pub async fn rewind_results(app: AppHandle, question: String) -> Reply<SearchPag
 
 /// Up to 20 past questions older than turn `before` (or the newest), newest first.
 #[tauri::command]
-pub async fn rewind_history(
-    state: State<'_, AppState>,
-    before: Option<i64>,
-) -> Reply<Vec<TurnView>> {
-    state
-        .engine()?
-        .read(|store| store.turns(before, REWIND_PAGE))
-        .map(|turns| turns.into_iter().map(TurnView::from).collect())
-        .map_err(msg)
+pub async fn rewind_history(app: AppHandle, before: Option<i64>) -> Reply<Vec<TurnView>> {
+    blocking(app, move |state| {
+        state
+            .engine()?
+            .read(|store| store.turns(before, REWIND_PAGE))
+            .map(|turns| turns.into_iter().map(TurnView::from).collect())
+            .map_err(msg)
+    })
+    .await
 }
 
 /// Fits the panel to its content, `height` logical pixels.

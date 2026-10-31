@@ -1,6 +1,8 @@
 //! Live capture logic without OS APIs (plan.md §4): when to look, whether to look, whether the
 //! picture changed and what to keep from the OCR result. Time and OS state are passed in.
 
+mod act;
+mod ax;
 mod browser;
 mod diff;
 mod focus;
@@ -13,10 +15,14 @@ use serde_json::{Value, json};
 use crate::model::{Event, EventKind, Source, Window};
 use crate::text::host_path;
 
+pub use act::{
+    Edits, Element, Field, MAX_DEPTH, MAX_VALUE_CHARS, editable, press_event, pressable,
+};
+pub use ax::{AxRead, AxSource, MAX_NODES, enough, window_lines};
 pub use browser::{Browser, classify};
 pub use diff::{CELL_DELTA, DiffGate, MIN_CELLS, SIDE, Thumb};
 pub use focus::focused_window;
-pub use gate::{Blocked, app, secure_input, session, tab};
+pub use gate::{Blocked, app, call, secure_input, session, tab};
 pub use ocr::{MIN_CONFIDENCE, RawLine, lines};
 pub use triggers::{
     Away, IDLE_LIMIT_S, INPUT_PAUSE_S, Reason, SETTLE_MS, Sample, Signal, TICK_MS, Triggers,

@@ -102,7 +102,7 @@ const en = {
   tabPrivacy: "Privacy",
 
   askTitle: "How do you feel about this work?",
-  askBody: "Sextant never guesses. Your answer changes which work it suggests first.",
+  askBody: "Your answer outranks what Sextant infers from your day and changes which work it suggests first.",
   enjoy_hate: "Hate it",
   enjoy_dislike: "Dislike it",
   enjoy_neutral: "Neutral",
@@ -129,7 +129,6 @@ const en = {
   durDays: "{n} d",
 
   reasonsTitle: "Why this score",
-  stepsTitle: "Steps",
   stepsMergeHint: "Tick two steps and write \"these belong together\" to merge them.",
   copyPointsTitle: "Copied by hand",
   copyPoint: "{from} to {to}, {n}x",
@@ -178,7 +177,6 @@ const en = {
   hoursBefore: "Before",
   hoursAfter: "After",
   hoursBack: "{hours} h a week back",
-  thinSide: "Not enough days with data yet on one side.",
 
   reportTitle: "Weekly report",
   reportHint: "A picture you can share. It shows hours and kinds of work only, never names, titles or text.",
@@ -208,11 +206,11 @@ const en = {
   cat_web: "Web",
   cat_other: "Other",
 
-  privacyTitle: "Privacy",
   privacySources: "Sources and permissions",
   liveMetadata: "Window titles and app names",
   liveOcr: "Text on screen",
   liveCopy: "Which app copied (never what)",
+  liveActions: "Buttons you click and what you leave in text fields (never keystrokes or passwords)",
   liveOpaque: "Browsers that cannot report private windows",
   excludedTitle: "Excluded apps",
   excludedBody: "Text from these apps is never shown to Claude or in search.",
@@ -341,7 +339,7 @@ const de: Record<Key, string> = {
   tabPrivacy: "Datenschutz",
 
   askTitle: "Wie fühlt sich diese Arbeit für dich an?",
-  askBody: "Sextant rät nie. Deine Antwort ändert, welche Arbeit zuerst vorgeschlagen wird.",
+  askBody: "Deine Antwort zählt mehr als alles, was Sextant aus deinem Tag ableitet, und ändert, welche Arbeit zuerst vorgeschlagen wird.",
   enjoy_hate: "Hasse ich",
   enjoy_dislike: "Mag ich nicht",
   enjoy_neutral: "Egal",
@@ -368,7 +366,6 @@ const de: Record<Key, string> = {
   durDays: "{n} Tg.",
 
   reasonsTitle: "Warum diese Bewertung",
-  stepsTitle: "Schritte",
   stepsMergeHint: "Wähle zwei Schritte und schreibe \"das gehört zusammen\", um sie zu verbinden.",
   copyPointsTitle: "Von Hand kopiert",
   copyPoint: "{from} nach {to}, {n}x",
@@ -417,7 +414,6 @@ const de: Record<Key, string> = {
   hoursBefore: "Vorher",
   hoursAfter: "Nachher",
   hoursBack: "{hours} Std. pro Woche zurück",
-  thinSide: "Auf einer Seite fehlen noch Tage mit Daten.",
 
   reportTitle: "Wochenbericht",
   reportHint: "Ein Bild zum Teilen. Es zeigt nur Stunden und Arten von Arbeit, nie Namen, Titel oder Text.",
@@ -447,11 +443,11 @@ const de: Record<Key, string> = {
   cat_web: "Web",
   cat_other: "Sonstiges",
 
-  privacyTitle: "Datenschutz",
   privacySources: "Quellen und Berechtigungen",
   liveMetadata: "Fenstertitel und App-Namen",
   liveOcr: "Text auf dem Bildschirm",
   liveCopy: "Welche App kopiert hat (nie was)",
+  liveActions: "Angeklickte Schaltflächen und was in Textfeldern steht (nie Tastenanschläge oder Passwörter)",
   liveOpaque: "Browser, die private Fenster nicht melden",
   excludedTitle: "Ausgeschlossene Apps",
   excludedBody: "Text aus diesen Apps wird nie an Claude oder in der Suche gezeigt.",

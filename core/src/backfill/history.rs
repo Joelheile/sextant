@@ -8,11 +8,8 @@ use serde_json::json;
 use crate::error::Result;
 use crate::model::{Event, EventKind, Source};
 use crate::text::split_url;
+use crate::time::{SAFARI_TO_UNIX_S, WEBKIT_TO_UNIX_S};
 
-/// Chromium counts microseconds since 1601-01-01.
-const WEBKIT_TO_UNIX_S: i64 = 11_644_473_600;
-/// Safari counts seconds since 2001-01-01.
-const SAFARI_TO_UNIX_S: i64 = 978_307_200;
 /// A visit more than this long after the last one on the same host starts a new session.
 const SESSION_GAP_S: i64 = 300;
 /// Visits report no duration until the tab closes, so the gap to the next visit stands in.

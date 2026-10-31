@@ -6,7 +6,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Serialize;
 
+/// Dev builds use a file in the dev data folder, so they never touch the real Claude config.
 pub fn desktop_config_path() -> Result<PathBuf> {
+    if cfg!(debug_assertions) {
+        return Ok(crate::home::data_dir()?.join("claude_desktop_config.json"));
+    }
     let home = std::env::var_os("HOME").context("HOME is not set")?;
     Ok(PathBuf::from(home).join("Library/Application Support/Claude/claude_desktop_config.json"))
 }

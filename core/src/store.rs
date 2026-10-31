@@ -9,7 +9,7 @@ use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 use crate::error::{Error, Result};
 use crate::model::EventKind;
 use crate::redact::{Secret, redact};
-use crate::time::DAY;
+use crate::time::{DAY, Local};
 use crate::writer::unpack;
 
 const MIGRATIONS: &[&str] = &[
@@ -18,13 +18,22 @@ const MIGRATIONS: &[&str] = &[
     include_str!("schema_v3.sql"),
     include_str!("schema_v4.sql"),
     include_str!("schema_v5.sql"),
+    include_str!("schema_v6.sql"),
 ];
 
 const EMAIL_SECRET: &str = "email_secret";
+const LAST_VACUUM: &str = "last_vacuum";
+
+/// Decrypted pages each connection keeps, in KiB. SQLCipher turns memory mapping off, so this
+/// cache is what spares a read the AES and HMAC pass.
+const CACHE_KIB: i64 = 16 * 1024;
+/// The WAL file shrinks back to this after a checkpoint. Every refresh rewrites the engine tables.
+const WAL_LIMIT_BYTES: i64 = 64 * 1024 * 1024;
+const VACUUM_EVERY: i64 = 7 * DAY;
+/// No capture for this long counts as away, so the vacuum never pauses capture while you work.
+const AWAY_S: i64 = 15 * 60;
 
 pub type Key = [u8; 32];
-
-pub const DEFAULT_RETENTION_DAYS: u32 = 90;
 
 pub struct Store {
     pub(crate) conn: Connection,
@@ -32,10 +41,6 @@ pub struct Store {
     key: Key,
     /// Keys the email hashes. Lives in the `meta` table, so it never leaves the encrypted file.
     pub(crate) secret: Secret,
-    /// Fixed UTC offset used to cut local days. The app sets it from the OS at start.
-    pub(crate) utc_offset_s: i32,
-    /// Raw-data retention in days. Refresh never reads further back than this.
-    pub(crate) retention_days: u32,
 }
 
 /// Rows removed by [`Store::retention`].
@@ -46,9 +51,6 @@ pub struct Retained {
     pub events: usize,
     pub lines: usize,
     pub windows: usize,
-    pub episodes: usize,
-    pub entities: usize,
-    pub commitments: usize,
     /// Rewind search questions and answers.
     pub turns: usize,
 }
@@ -73,8 +75,11 @@ impl Store {
             row.get::<_, String>(0)
         })?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "cache_size", -CACHE_KIB)?;
+        conn.pragma_update(None, "journal_size_limit", WAL_LIMIT_BYTES)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         migrate(&mut conn, MIGRATIONS)?;
+        conn.execute_batch("PRAGMA optimize = 0x10002")?;
         conn.execute(
             "INSERT OR IGNORE INTO meta(key, value) VALUES (?1, ?2)",
             params![EMAIL_SECRET, secret],
@@ -85,17 +90,12 @@ impl Store {
             path: path.to_path_buf(),
             key: *key,
             secret,
-            utc_offset_s: 0,
-            retention_days: DEFAULT_RETENTION_DAYS,
         })
     }
 
     /// A read-only connection to the same file. WAL mode lets it run while the writer writes.
     pub fn reader(&self) -> Result<Self> {
-        let mut reader = Self::open_read_only(&self.path, &self.key)?;
-        reader.utc_offset_s = self.utc_offset_s;
-        reader.retention_days = self.retention_days;
-        Ok(reader)
+        Self::open_read_only(&self.path, &self.key)
     }
 
     /// Opens an existing database without writing: no migration, no journal change. Fails with
@@ -104,6 +104,7 @@ impl Store {
         let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
         let conn = Connection::open_with_flags(path, flags)?;
         unlock(&conn, key)?;
+        conn.pragma_update(None, "cache_size", -CACHE_KIB)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         let found = user_version(&conn)?;
         if found != MIGRATIONS.len() as i32 {
@@ -118,26 +119,12 @@ impl Store {
             path: path.to_path_buf(),
             key: *key,
             secret,
-            utc_offset_s: 0,
-            retention_days: DEFAULT_RETENTION_DAYS,
         })
     }
 
     /// The key for email hashes, as stored in the database.
     pub fn secret(&self) -> Secret {
         self.secret
-    }
-
-    pub fn set_utc_offset(&mut self, seconds: i32) {
-        self.utc_offset_s = seconds;
-    }
-
-    pub fn set_retention_days(&mut self, days: u32) {
-        self.retention_days = days;
-    }
-
-    pub fn utc_offset(&self) -> i32 {
-        self.utc_offset_s
     }
 
     pub fn counts(&self) -> Result<Counts> {
@@ -203,15 +190,57 @@ impl Store {
         Ok(conn.last_insert_rowid())
     }
 
+    /// Hourly upkeep: updates the query planner's statistics and, once a week while the user is
+    /// away, rewrites the file so deleted rows give their space back (plan.md §5). `true` when
+    /// it vacuumed.
+    pub fn maintain(&mut self, now: i64) -> Result<bool> {
+        self.conn.execute_batch("PRAGMA optimize")?;
+        let last: i64 = self
+            .conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                params![LAST_VACUUM],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0);
+        let away = self
+            .last_capture()?
+            .is_none_or(|(ts, _)| now - ts >= AWAY_S);
+        if now - last < VACUUM_EVERY || !away {
+            return Ok(false);
+        }
+        self.conn.execute_batch("VACUUM")?;
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?1, ?2)",
+            params![LAST_VACUUM, now],
+        )?;
+        Ok(true)
+    }
+
+    /// When the last screen was captured and in which app.
+    pub fn last_capture(&self) -> Result<Option<(i64, String)>> {
+        let found = self.conn.query_row(
+            "SELECT f.ts, w.app FROM frames f JOIN windows w ON w.id = f.window_id
+             ORDER BY f.ts DESC LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+        match found {
+            Ok(last) => Ok(Some(last)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
     pub fn schema_version(&self) -> Result<i32> {
         user_version(&self.conn)
     }
 
-    /// Deletes raw rows and the engine rows built from them (episodes, mentions, cases, commitments,
-    /// entities nobody mentions) older than `days`, then lines and windows nothing references
-    /// (plan.md §5). Steps, follows and workflows keep only aggregate, templated data.
-    pub fn retention(&mut self, now: i64, days: u32) -> Result<Retained> {
-        let cutoff = now - i64::from(days) * DAY;
+    /// Deletes raw capture rows older than `days` (plan.md §5) and lines and windows nothing
+    /// references, then refreshes, so the engine tables hold only what the remaining rows make.
+    pub fn retention(&mut self, when: Local, days: u32) -> Result<Retained> {
+        let cutoff = when.now - i64::from(days) * DAY;
         let tx = self.conn.transaction()?;
         let mut gone = Retained::default();
         let mut line_ids = HashSet::new();
@@ -232,24 +261,9 @@ impl Store {
         }
         gone.frames = tx.execute("DELETE FROM frames WHERE ts < ?1", params![cutoff])?;
         gone.utterances =
-            tx.execute("DELETE FROM utterances WHERE ts_end < ?1", params![cutoff])?;
+            tx.execute("DELETE FROM utterances WHERE end_ts < ?1", params![cutoff])?;
         gone.events = tx.execute("DELETE FROM events WHERE ts < ?1", params![cutoff])?;
-        tx.execute(
-            "DELETE FROM mentions WHERE episode_id IN (SELECT id FROM episodes WHERE end_ts < ?1)",
-            params![cutoff],
-        )?;
-        gone.episodes = tx.execute("DELETE FROM episodes WHERE end_ts < ?1", params![cutoff])?;
-        gone.commitments = tx.execute("DELETE FROM commitments WHERE ts < ?1", params![cutoff])?;
         gone.turns = tx.execute("DELETE FROM turns WHERE ts < ?1", params![cutoff])?;
-        tx.execute("DELETE FROM cases WHERE last_ts < ?1", params![cutoff])?;
-        gone.entities = tx.execute(
-            "DELETE FROM entities WHERE id NOT IN (SELECT entity_id FROM mentions)",
-            [],
-        )?;
-        tx.execute(
-            "DELETE FROM cases WHERE entity_id NOT IN (SELECT id FROM entities)",
-            [],
-        )?;
         {
             let mut line = tx.prepare(
                 "DELETE FROM lines WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM frame_lines WHERE line_id = ?1)",
@@ -265,6 +279,7 @@ impl Store {
             }
         }
         tx.commit()?;
+        self.refresh(when)?;
         Ok(gone)
     }
 }
@@ -353,27 +368,35 @@ mod tests {
     }
 
     #[test]
-    fn retention_expires_engine_rows_with_the_raw_rows() {
-        use crate::fixtures::{TempDb, WEEK_NOW, WEEK_START, load, week};
+    fn retention_rebuilds_engine_rows_from_the_raw_rows_left() {
+        use crate::fixtures::{TempDb, WEEK_NOW, WEEK_START, load, local, week};
 
         let db = TempDb::new("retention-engine");
         let mut store = db.open().expect("test setup");
         load(&mut store, &week(), WEEK_NOW).expect("test setup");
-        store.refresh(WEEK_NOW).expect("test setup");
-        for table in ["episodes", "entities", "mentions", "cases", "commitments"] {
+        store.refresh(local(WEEK_NOW)).expect("test setup");
+        let tables = [
+            "episodes",
+            "entities",
+            "mentions",
+            "tasks",
+            "task_episodes",
+            "commitments",
+        ];
+        for table in tables {
             assert!(count(&store, &format!("SELECT count(*) FROM {table}")) > 0);
         }
+        let before = count(&store, "SELECT count(*) FROM episodes");
 
         let cutoff = WEEK_START + 2 * DAY;
-        let gone = store.retention(cutoff + 30 * DAY, 30).expect("retention");
-        assert!(
-            gone.episodes > 0 && gone.entities > 0 && gone.commitments > 0,
-            "{gone:?}"
-        );
+        store
+            .retention(local(cutoff + 30 * DAY), 30)
+            .expect("retention");
         let newer = |sql: &str| count(&store, &format!("{sql} {cutoff}"));
+        assert_eq!(newer("SELECT count(*) FROM events WHERE ts <"), 0);
         assert_eq!(newer("SELECT count(*) FROM episodes WHERE end_ts <"), 0);
         assert_eq!(newer("SELECT count(*) FROM commitments WHERE ts <"), 0);
-        assert_eq!(newer("SELECT count(*) FROM cases WHERE last_ts <"), 0);
+        assert_eq!(newer("SELECT count(*) FROM tasks WHERE last_ts <"), 0);
         assert_eq!(
             count(
                 &store,
@@ -384,21 +407,17 @@ mod tests {
         assert_eq!(
             count(
                 &store,
-                "SELECT count(*) FROM entities WHERE id NOT IN (SELECT entity_id FROM mentions)"
+                "SELECT count(*) FROM task_episodes WHERE episode_id NOT IN (SELECT id FROM episodes)"
             ),
             0
         );
-        assert_eq!(
-            count(
-                &store,
-                "SELECT count(*) FROM cases WHERE entity_id NOT IN (SELECT id FROM entities)"
-            ),
-            0
-        );
-        assert!(count(&store, "SELECT count(*) FROM episodes") > 0);
+        let kept = count(&store, "SELECT count(*) FROM episodes");
+        assert!(kept > 0 && kept < before, "{kept} of {before} episodes");
 
-        store.retention(WEEK_NOW + 60 * DAY, 30).expect("retention");
-        for table in ["episodes", "entities", "mentions", "cases", "commitments"] {
+        store
+            .retention(local(WEEK_NOW + 60 * DAY), 30)
+            .expect("retention");
+        for table in tables {
             assert_eq!(
                 count(&store, &format!("SELECT count(*) FROM {table}")),
                 0,

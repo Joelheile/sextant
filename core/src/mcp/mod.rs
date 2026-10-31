@@ -11,6 +11,7 @@ pub use self::tools::DEFAULT_LIMIT;
 use self::tools::{Ctx, Group, TOOLS};
 use crate::settings::Settings;
 use crate::store::Store;
+use crate::time::Local;
 
 const LATEST: &str = "2025-06-18";
 const SUPPORTED: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -24,16 +25,17 @@ const INVALID_PARAMS: i64 = -32602;
 pub struct Server {
     store: Store,
     settings: Box<dyn Fn() -> Settings>,
-    clock: Box<dyn Fn() -> i64>,
+    clock: Box<dyn Fn() -> Local>,
 }
 
 impl Server {
     /// `store` should be a read-only reader. `settings` is read for every request, so switches
-    /// flipped in the app apply to a running server. `clock` gives Unix seconds.
+    /// flipped in the app apply to a running server. `clock` gives the time and UTC offset of each
+    /// request.
     pub fn new(
         store: Store,
         settings: impl Fn() -> Settings + 'static,
-        clock: impl Fn() -> i64 + 'static,
+        clock: impl Fn() -> Local + 'static,
     ) -> Self {
         Self {
             store,
@@ -100,7 +102,7 @@ impl Server {
             let ctx = Ctx {
                 store: &self.store,
                 settings,
-                now: (self.clock)(),
+                when: (self.clock)(),
             };
             let args = params
                 .get("arguments")
@@ -152,7 +154,7 @@ fn list(settings: &Settings) -> Value {
                 "description": tool.description,
                 "inputSchema": (tool.schema)(),
                 "annotations": {
-                    "readOnlyHint": tool.name != "report_handoff",
+                    "readOnlyHint": tool.read_only,
                     "destructiveHint": false,
                     "openWorldHint": false,
                 },

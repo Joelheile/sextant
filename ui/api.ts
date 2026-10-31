@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type Sources = {
@@ -13,6 +13,7 @@ export type Live = {
   metadata: boolean;
   ocr: boolean;
   copy: boolean;
+  actions: boolean;
   audio: boolean;
   opaque_browsers: boolean;
 };
@@ -25,7 +26,6 @@ export type Settings = {
   onboarded: boolean;
   sources: Sources;
   git_folders: string[];
-  call_apps: string[];
   retention_days: number | null;
 };
 
@@ -36,6 +36,8 @@ export type PermissionName =
   | "screen-recording"
   | "accessibility"
   | "automation";
+/** The permissions that have a system prompt. */
+export type PromptName = "calendar" | "reminders" | "automation";
 export type Permission = {
   name: PermissionName;
   status: "granted" | "undetermined" | "denied";
@@ -82,7 +84,6 @@ export type Category =
 export type StepView = {
   key: string;
   name: string;
-  category: Category;
   gap_s: number | null;
   copies: number;
 };
@@ -165,6 +166,11 @@ export type Turn = { id: number; ts: number; question: string; answer: string };
 
 export type Asked = { turn: Turn; page: SearchPage };
 
+/** What `rewind_ask` streams: the sessions once found, then the answer text so far. */
+export type AskProgress =
+  | { kind: "sessions"; page: SearchPage }
+  | { kind: "answer"; text: string };
+
 export type WeeklyReport = {
   from_ts: number;
   to_ts: number;
@@ -210,7 +216,7 @@ export const api = {
   engineStatus: () => invoke<boolean>("engine_status"),
   getState: () => invoke<Settings>("get_state"),
   permissionStatus: () => invoke<Permission[]>("permission_status"),
-  requestPermission: (name: PermissionName) =>
+  requestPermission: (name: PromptName) =>
     invoke<boolean>("request_permission", { name }),
   openSettingsPane: (pane: SettingsPane, dragHint?: string) =>
     invoke<void>("open_settings_pane", { pane, dragHint }),
@@ -243,7 +249,11 @@ export const api = {
     invoke<string>("write_skill", { id, folder }),
   reportHandoff: (id: number) => invoke<void>("report_handoff", { id }),
   results: () => invoke<Results>("results"),
-  rewindAsk: (question: string) => invoke<Asked>("rewind_ask", { question }),
+  rewindAsk: (question: string, onProgress: (progress: AskProgress) => void) => {
+    const progress = new Channel<AskProgress>();
+    progress.onmessage = onProgress;
+    return invoke<Asked>("rewind_ask", { question, progress });
+  },
   rewindResults: (question: string) =>
     invoke<SearchPage>("rewind_results", { question }),
   rewindHistory: (before: number | null) =>

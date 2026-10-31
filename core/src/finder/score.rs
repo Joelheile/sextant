@@ -1,14 +1,17 @@
 //! §7.8 to §7.10 Scores, kind and action. Every number carries its reason.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use super::commitments::Commitment;
-use super::entities::Case;
 use super::episodes::Episode;
 use super::graph::{Basis, FOLLOW_WINDOW_S, Follow, Workflow};
 use super::judgments::Judgment;
-use super::steps::{Category, Step, text_enum};
+use super::signals::Signals;
+use super::steps::{Category, Step};
+use super::tasks::Task;
 use crate::corrections::Overrides;
+use crate::enjoyment::Enjoyment;
+use crate::text::text_enum;
 use crate::time::DAY;
 
 text_enum!(Kind {
@@ -25,28 +28,6 @@ text_enum!(Action {
     Ignore => "ignore",
     Watch => "watch",
 });
-
-text_enum!(Enjoyment {
-    Hate => "hate",
-    Dislike => "dislike",
-    Neutral => "neutral",
-    Unknown => "unknown",
-    Like => "like",
-    Love => "love",
-});
-
-impl Enjoyment {
-    pub fn desire(self) -> f64 {
-        match self {
-            Self::Hate => 1.0,
-            Self::Dislike => 0.9,
-            Self::Neutral => 0.7,
-            Self::Unknown => 0.6,
-            Self::Like => 0.35,
-            Self::Love => 0.0,
-        }
-    }
-}
 
 pub(crate) struct StepScore {
     pub minutes: f64,
@@ -65,7 +46,8 @@ pub(crate) struct Scored {
     pub kind: Kind,
     pub action: Action,
     pub first_step: String,
-    pub copies: Vec<(usize, usize, usize)>,
+    /// (from step, to step, copy events, retypes)
+    pub copies: Vec<(usize, usize, usize, usize)>,
     pub enjoyment: Enjoyment,
     pub client: bool,
     pub hidden: bool,
@@ -120,8 +102,9 @@ pub(crate) struct Context<'a> {
     pub steps: &'a [Step],
     pub step_scores: &'a [StepScore],
     pub follows: &'a [Follow],
-    pub cases: &'a [Case],
+    pub tasks: &'a [Task],
     pub commitments: &'a [Commitment],
+    pub signals: &'a Signals,
     pub overrides: &'a Overrides,
     pub observed_days: usize,
     pub now: i64,
@@ -142,7 +125,9 @@ pub(crate) fn score_workflow(workflow: &Workflow, cx: &Context) -> Scored {
     ));
 
     let copies = copy_points(workflow, cx);
-    let copy_total: usize = copies.iter().map(|(_, _, n)| n).sum();
+    let copy_total: usize = copies.iter().map(|(_, _, n, _)| n).sum();
+    let retype_total: usize = copies.iter().map(|(_, _, _, n)| n).sum();
+    let by_hand = copy_total + retype_total > 0;
     let switches = workflow
         .episodes
         .iter()
@@ -166,33 +151,48 @@ pub(crate) fn score_workflow(workflow: &Workflow, cx: &Context) -> Scored {
         .map(|(s, m)| cx.step_scores[*s].potential * m)
         .sum::<f64>()
         / minutes.max(f64::EPSILON);
-    let bonus = if copy_total > 0 { 0.1 } else { 0.0 };
+    let bonus = if by_hand { 0.1 } else { 0.0 };
     let mut potential = (weighted + bonus).min(0.95);
     reasons.push(format!(
         "potential {potential:.2}: time-weighted mean {weighted:.2} of {} steps{}",
         minutes_by_step.len(),
-        if copy_total > 0 {
-            ", +0.10 because data is copied by hand"
+        if by_hand {
+            ", +0.10 because data moves between apps by hand"
         } else {
             ""
         },
     ));
-    for (from, to, n) in &copies {
-        reasons.push(format!(
-            "copy: {n} times from {} to {}",
-            cx.steps[*from].name, cx.steps[*to].name
-        ));
+    for (from, to, copied, retyped) in &copies {
+        let (from, to) = (&cx.steps[*from].name, &cx.steps[*to].name);
+        if *copied > 0 {
+            reasons.push(format!("copy: {copied} times from {from} to {to}"));
+        }
+        if *retyped > 0 {
+            reasons.push(format!(
+                "retyped: {retyped} times the same value from {from} showed up in {to} with nothing copied"
+            ));
+        }
     }
     if not_automatable {
         potential = 0.0;
         reasons.push("potential 0.00: you said this cannot be automated".into());
     }
 
-    let desire = enjoyment.desire();
-    reasons.push(format!(
-        "desire {desire:.2}: enjoyment {}",
-        enjoyment.as_str()
-    ));
+    let complaints = complaints(workflow, cx);
+    let desire = if enjoyment == Enjoyment::Unknown && complaints > 0 {
+        reasons.push(format!(
+            "desire {:.2}: enjoyment unknown, but you complained about it {complaints} times",
+            Enjoyment::Dislike.desire()
+        ));
+        Enjoyment::Dislike.desire()
+    } else {
+        reasons.push(format!(
+            "desire {:.2}: enjoyment {}",
+            enjoyment.desire(),
+            enjoyment.as_str()
+        ));
+        enjoyment.desire()
+    };
 
     let top_category = category_minutes(&minutes_by_step, cx.steps);
     let assist = top_category.get(&Category::Meeting).copied().unwrap_or(0.0) * 2.0 >= minutes;
@@ -204,10 +204,11 @@ pub(crate) fn score_workflow(workflow: &Workflow, cx: &Context) -> Scored {
 
     let (procrastination, detail) = procrastination(workflow, cx);
     reasons.push(format!("procrastination {procrastination:.2}: {detail}"));
+    reasons.extend(interruptions(workflow, cx));
 
-    let kind = if copy_total > 0 || switches_per_hour >= 12.0 {
+    let kind = if by_hand || switches_per_hour >= 12.0 {
         reasons.push(format!(
-            "kind friction: {copy_total} hand copies, {switches_per_hour:.1} app switches per hour"
+            "kind friction: {copy_total} hand copies, {retype_total} retypes, {switches_per_hour:.1} app switches per hour"
         ));
         Kind::Friction
     } else if procrastination >= 0.4 {
@@ -326,64 +327,119 @@ fn enjoyment_of(workflow: &Workflow, cx: &Context) -> Enjoyment {
         .unwrap_or(Enjoyment::Unknown)
 }
 
-/// (from, to, copy events) for step pairs that are next to each other in the sequence or in one of its cases.
-fn copy_points(workflow: &Workflow, cx: &Context) -> Vec<(usize, usize, usize)> {
+/// (from, to, copy events, retypes) for step pairs that are next to each other in the sequence or in one of its tasks.
+fn copy_points(workflow: &Workflow, cx: &Context) -> Vec<(usize, usize, usize, usize)> {
     let mut pairs: HashSet<(usize, usize)> =
         workflow.sequence.windows(2).map(|p| (p[0], p[1])).collect();
-    for &c in &workflow.cases {
-        pairs.extend(cx.cases[c].seq.windows(2).map(|p| (p[0], p[1])));
+    for &c in &workflow.tasks {
+        pairs.extend(cx.tasks[c].seq.windows(2).map(|p| (p[0], p[1])));
     }
-    let mut out: Vec<(usize, usize, usize)> = cx
+    let mut out: Vec<(usize, usize, usize, usize)> = cx
         .follows
         .iter()
-        .filter(|f| f.copies > 0 && pairs.contains(&(f.from, f.to)))
-        .map(|f| (f.from, f.to, f.copies))
+        .filter(|f| f.copies + f.retypes > 0 && pairs.contains(&(f.from, f.to)))
+        .map(|f| (f.from, f.to, f.copies, f.retypes))
         .collect();
     out.sort_unstable();
     out
 }
 
-/// Overdue promises x 0.35 + abandoned opens x 0.15 + 0.1 per waiting day over 2, capped at 1.
+fn tasks_of(workflow: &Workflow) -> HashSet<usize> {
+    workflow.tasks.iter().copied().collect()
+}
+
+fn steps_of(workflow: &Workflow) -> BTreeSet<usize> {
+    workflow.sequence.iter().copied().collect()
+}
+
+/// Complaints in my own speech that link to one of the workflow's tasks.
+fn complaints(workflow: &Workflow, cx: &Context) -> usize {
+    let tasks = tasks_of(workflow);
+    cx.signals
+        .complaints
+        .iter()
+        .filter(|c| c.task.is_some_and(|t| tasks.contains(&t)))
+        .count()
+}
+
+/// One line on how often chat or mail cut into the workflow's steps and how long it took to get back.
+fn interruptions(workflow: &Workflow, cx: &Context) -> Option<String> {
+    let steps = steps_of(workflow);
+    let hits: Vec<_> = cx
+        .signals
+        .interruptions
+        .iter()
+        .filter(|i| steps.contains(&i.step))
+        .collect();
+    if hits.is_empty() {
+        return None;
+    }
+    let mut away: Vec<f64> = hits
+        .iter()
+        .filter_map(|i| i.away_s)
+        .map(|s| s as f64)
+        .collect();
+    let dropped = hits.len() - away.len();
+    let by: BTreeSet<&str> = hits
+        .iter()
+        .map(|i| cx.steps[i.by].name.split(": ").next().unwrap_or(""))
+        .collect();
+    Some(format!(
+        "interrupted: {} times by {}, median {:.0} min away, {dropped} not picked up again within 30 min",
+        hits.len(),
+        by.into_iter().collect::<Vec<_>>().join(", "),
+        median(&mut away) / 60.0,
+    ))
+}
+
+/// Overdue promises x 0.35 + abandoned opens x 0.15 + 0.1 per waiting day over 2
+/// + 0.1 per day with a flinch, capped at 1.
 fn procrastination(workflow: &Workflow, cx: &Context) -> (f64, String) {
-    let entities: HashSet<usize> = workflow.cases.iter().map(|&c| cx.cases[c].entity).collect();
+    let tasks = tasks_of(workflow);
     let overdue = cx
         .commitments
         .iter()
-        .filter(|c| c.overdue && c.entity.is_some_and(|e| entities.contains(&e)))
+        .filter(|c| c.overdue && c.task.is_some_and(|t| tasks.contains(&t)))
         .count();
-    let is_basis_cases = matches!(workflow.basis, Basis::Cases);
-    let abandoned = if is_basis_cases {
+    let is_basis_tasks = matches!(workflow.basis, Basis::Tasks);
+    let abandoned = if is_basis_tasks {
         workflow
-            .cases
+            .tasks
             .iter()
             .filter(|&&c| {
-                let seq = &cx.cases[c].seq;
+                let seq = &cx.tasks[c].seq;
                 seq.len() < workflow.sequence.len()
                     && workflow.sequence.starts_with(seq)
-                    && cx.now - cx.cases[c].last > 2 * DAY
+                    && cx.now - cx.tasks[c].last > 2 * DAY
             })
             .count()
     } else {
         0
     };
     let mut waits: Vec<f64> = workflow
-        .cases
+        .tasks
         .iter()
         .map(|&c| {
-            let case = &cx.cases[c];
-            let active: i64 = case
+            let task = &cx.tasks[c];
+            let active: i64 = task
                 .episodes
                 .iter()
                 .map(|&e| cx.episodes[e].seconds())
                 .sum();
-            ((case.last - case.first - active) as f64 / DAY as f64).max(0.0)
+            ((task.last - task.first - active) as f64 / DAY as f64).max(0.0)
         })
         .collect();
     let waiting_days = median(&mut waits);
     let waiting = (waiting_days - 2.0).max(0.0) * 0.1;
-    let score = (overdue as f64 * 0.35 + abandoned as f64 * 0.15 + waiting).min(1.0);
+    let (flinches, flinch_days) = steps_of(workflow)
+        .into_iter()
+        .map(|s| &cx.signals.flinches[s])
+        .fold((0, 0), |(n, d), f| (n + f.count, d + f.days));
+    let score =
+        (overdue as f64 * 0.35 + abandoned as f64 * 0.15 + waiting + flinch_days as f64 * 0.1)
+            .min(1.0);
     let detail = format!(
-        "{overdue} overdue promises x 0.35, {abandoned} abandoned opens x 0.15, {waiting_days:.1} waiting days (0.1 per day over 2)"
+        "{overdue} overdue promises x 0.35, {abandoned} abandoned opens x 0.15, {waiting_days:.1} waiting days (0.1 per day over 2), {flinches} flinches on {flinch_days} days (0.1 per day)"
     );
     (score, detail)
 }

@@ -64,7 +64,8 @@ impl<S: Speech> Transcriber<S> {
         if lifecycle.speech(now_ms) == Action::Load {
             match self.speech.load() {
                 Ok(()) => lifecycle.loaded(now_ms),
-                Err(_) => {
+                Err(err) => {
+                    eprintln!("loading the speech model failed: {err:#}");
                     Stats::add(&self.stats.load_errors);
                     lifecycle.load_failed(now_ms);
                 }
@@ -83,7 +84,8 @@ impl<S: Speech> Transcriber<S> {
         }
         let text = match self.speech.transcribe(&job.audio) {
             Ok(text) => text,
-            Err(_) => {
+            Err(err) => {
+                eprintln!("transcribing failed: {err:#}");
                 Stats::add(&self.stats.asr_errors);
                 return;
             }

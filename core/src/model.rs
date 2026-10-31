@@ -13,6 +13,8 @@ pub enum EventKind {
     Commit,
     File,
     Pause,
+    Press,
+    Edit,
 }
 
 impl EventKind {
@@ -27,6 +29,8 @@ impl EventKind {
             Self::Commit => "commit",
             Self::File => "file",
             Self::Pause => "pause",
+            Self::Press => "press",
+            Self::Edit => "edit",
         }
     }
 }
@@ -53,6 +57,8 @@ impl Source {
 /// - `calendar`: `title`, `end_ts`
 /// - `copy`: `app`
 /// - `reminder`: `title`, `due_ts`, `done`
+/// - `press`: `app`, `role`, `label`
+/// - `edit`: `app`, `role`, `label`, `value`
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub(crate) struct Payload {
@@ -65,6 +71,9 @@ pub(crate) struct Payload {
     pub end_ts: i64,
     pub due_ts: Option<i64>,
     pub done: bool,
+    pub role: String,
+    pub label: String,
+    pub value: String,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +118,14 @@ impl Speaker {
         match self {
             Self::Mic => "mic",
             Self::System => "system",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "mic" => Some(Self::Mic),
+            "system" => Some(Self::System),
+            _ => None,
         }
     }
 }

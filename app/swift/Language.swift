@@ -64,13 +64,32 @@ private func blocking<T>(_ work: @escaping () async throws -> T) -> T? {
     return result
 }
 
-private func respond(_ instructions: String, _ prompt: String, _ schema: GenerationSchema?) -> UnsafeMutablePointer<CChar>? {
+private func respond(_ session: LanguageModelSession, _ prompt: String, _ schema: GenerationSchema?) -> UnsafeMutablePointer<CChar>? {
     guard let schema else { return nil }
     let json = blocking {
-        let session = LanguageModelSession(instructions: instructions)
-        return try await session.respond(to: prompt, schema: schema).content.jsonString
+        try await session.respond(to: prompt, schema: schema).content.jsonString
     }
     return json.map { strdup($0) }
+}
+
+private func planInstructions() -> String {
+    """
+    You turn a question about what the user saw, wrote or heard on their Mac into a search. \
+    Today is \(day.string(from: Date())).
+    """
+}
+
+/// A plan session whose model and instructions are already loaded, taken by the next plan call.
+private var warmPlan: LanguageModelSession?
+private let warmLock = NSLock()
+
+/// Loads the model while the user types, so the first answer skips the cold start.
+@_cdecl("sextant_language_prewarm")
+public func sextantLanguagePrewarm() {
+    guard case .available = SystemLanguageModel.default.availability else { return }
+    let session = LanguageModelSession(instructions: planInstructions())
+    session.prewarm()
+    warmLock.withLock { warmPlan = session }
 }
 
 private let day: DateFormatter = {
@@ -91,17 +110,22 @@ private let stamp: DateFormatter = {
 @_cdecl("sextant_language_plan")
 public func sextantLanguagePlan(_ question: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
     let question = String(cString: question)
-    let today = day.string(from: Date())
-    return respond("""
-        You turn a question about what the user saw, wrote or heard on their Mac into a search. \
-        Today is \(today).
-        """, question, planSchema)
+    let warm = warmLock.withLock {
+        defer { warmPlan = nil }
+        return warmPlan
+    }
+    return respond(warm ?? LanguageModelSession(instructions: planInstructions()), question, planSchema)
 }
 
+/// Called with the answer text so far, each time the model adds to it.
+public typealias TextSink = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>) -> Void
+
 /// Input: `{"question": "...", "notes": [{"app", "title", "ts", "lines"}]}`.
-/// Output: `{"text": "...", "note": n}`, where `note` counts from 1.
+/// Output: `{"text": "...", "note": n}`, where `note` counts from 1. Streams the text to `sink`.
 @_cdecl("sextant_language_answer")
-public func sextantLanguageAnswer(_ input: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
+public func sextantLanguageAnswer(
+    _ input: UnsafePointer<CChar>, _ sink: TextSink, _ context: UnsafeMutableRawPointer?
+) -> UnsafeMutablePointer<CChar>? {
     guard let input = try? JSONDecoder().decode(AnswerInput.self, from: Data(String(cString: input).utf8)) else {
         return nil
     }
@@ -111,11 +135,24 @@ public func sextantLanguageAnswer(_ input: UnsafePointer<CChar>) -> UnsafeMutabl
         return "[\(index + 1)] \(note.app), \"\(note.title)\", \(when)\n\(lines)"
     }.joined(separator: "\n\n")
     let today = day.string(from: Date())
-    return respond("""
+    let session = LanguageModelSession(instructions: """
         You help the user remember what they saw, wrote or heard on their Mac. Today is \(today). \
         Answer only from the numbered notes, which are text read from their screen and calls. \
         Never guess or add facts.
-        """, "Question: \(input.question)\n\nNotes:\n\(notes)", answerSchema)
+        """)
+    guard let schema = answerSchema else { return nil }
+    let prompt = "Question: \(input.question)\n\nNotes:\n\(notes)"
+    let json = blocking {
+        var last: GeneratedContent?
+        for try await snapshot in session.streamResponse(to: prompt, schema: schema) {
+            last = snapshot.content
+            if let text = try? snapshot.content.value(String.self, forProperty: "text") {
+                text.withCString { sink(context, $0) }
+            }
+        }
+        return last?.jsonString
+    }
+    return json.flatMap { $0 }.map { strdup($0) }
 }
 
 /// Input: `{"name", "category", "apps", "objects"}` for one recurring step.
@@ -126,12 +163,12 @@ public func sextantLanguageJudge(_ input: UnsafePointer<CChar>) -> UnsafeMutable
         return nil
     }
     let objects = step.objects.map { "- \($0)" }.joined(separator: "\n")
-    return respond("""
+    return respond(LanguageModelSession(instructions: """
         You judge how much of a recurring computer task a software agent could take over. The agent \
         can read and write in the user's apps but cannot make judgment calls the user would want to \
         make, like approving money, choosing what to say to a person or creative decisions. Judge \
         from the step alone and be sober: most steps need the user for something.
-        """, """
+        """), """
         Step: \(step.name)
         Kind: \(step.category)
         Apps: \(step.apps.joined(separator: ", "))

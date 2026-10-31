@@ -1,6 +1,5 @@
 ---
 source: core/tests/golden.rs
-assertion_line: 51
 expression: "format!(\"{flushed:#?}\\n{stats:#?}\")"
 ---
 Flushed {
@@ -15,7 +14,7 @@ RefreshStats {
     steps: 32,
     entities: 15,
     follows: 49,
-    cases: 8,
+    tasks: 5,
     workflows: 2,
     commitments: 5,
 }

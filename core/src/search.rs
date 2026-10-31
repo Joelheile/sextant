@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use rusqlite::{OptionalExtension, params};
 
 use crate::error::Result;
+use crate::model::Speaker;
 use crate::redact::{Secret, redact};
 use crate::store::Store;
 use crate::text::words;
@@ -74,11 +75,11 @@ const WALK_FRAMES: &str = "
     ORDER BY f.id DESC";
 
 const SPEECH: &str = "
-    SELECT u.ts_start, u.source, u.text
+    SELECT u.start_ts, u.source, u.text
     FROM utterances_fts
     JOIN utterances u ON u.id = utterances_fts.rowid
-    WHERE utterances_fts MATCH ?1 AND u.ts_start BETWEEN ?2 AND ?3
-    ORDER BY u.ts_start DESC
+    WHERE utterances_fts MATCH ?1 AND u.start_ts BETWEEN ?2 AND ?3
+    ORDER BY u.start_ts DESC
     LIMIT ?4";
 
 impl Store {
@@ -250,10 +251,9 @@ impl Store {
             let source: String = row.get(1)?;
             Ok(Hit {
                 ts: row.get(0)?,
-                source: if source == "mic" {
-                    HitSource::Mic
-                } else {
-                    HitSource::System
+                source: match Speaker::parse(&source) {
+                    Some(Speaker::Mic) => HitSource::Mic,
+                    _ => HitSource::System,
                 },
                 app: String::new(),
                 title: String::new(),

@@ -6,7 +6,7 @@ use crate::search::{Hit, HitSource};
 use crate::settings::Settings;
 use crate::store::Store;
 
-const SESSION_GAP_S: i64 = 600;
+pub(crate) const SESSION_GAP_S: i64 = 600;
 /// Most batches read while skipping excluded apps.
 const MAX_BATCHES: usize = 5;
 

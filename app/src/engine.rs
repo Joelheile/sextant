@@ -16,10 +16,9 @@ use serde_json::{Value, json};
 use sextant_core::backfill;
 use sextant_core::{Item, Key, Secret, Settings, Store};
 
-use crate::capture::{Control, Ingest, Pipeline, Sink};
+use crate::capture::{Control, FLUSH_EVERY, Ingest, Pipeline, Sink};
 use crate::{audio, clock, home, models, platform, prefs};
 
-const FLUSH_EVERY: Duration = Duration::from_secs(1);
 const REFRESH_EVERY: Duration = Duration::from_secs(300);
 const RETENTION_EVERY: Duration = Duration::from_secs(3600);
 const PAUSE_STEP_S: i64 = 3600;
@@ -80,9 +79,8 @@ impl Engine {
         emit: impl Fn(&str, Value) + Send + Sync + 'static,
     ) -> Result<Self> {
         create_private_dir(dir)?;
-        let mut store =
+        let store =
             Store::open(&home::db_path(dir), key, &secret()?).context("opening the database")?;
-        store.set_utc_offset(clock::utc_offset(clock::now()));
         let reader = store.reader().context("opening the read connection")?;
         let (inbox, messages) = mpsc::channel();
         let (dir, emit) = (dir.to_path_buf(), Arc::new(emit) as Emit);
@@ -137,9 +135,7 @@ impl Engine {
     ) -> Result<T> {
         self.write(move |store| {
             let out = job(store)?;
-            let now = clock::now();
-            store.set_utc_offset(clock::utc_offset(now));
-            store.refresh(now)?;
+            store.refresh(clock::local())?;
             Ok(out)
         })
     }
@@ -371,6 +367,8 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
     let mut ingest = Ingest::new();
     let mut last_refresh = Instant::now();
     let mut next_retention = Instant::now();
+    // The work graph is derived; rebuild it so it always matches this version's finder.
+    refresh(&mut store, &mut last_refresh);
     loop {
         match messages.recv_timeout(FLUSH_EVERY) {
             Ok(Msg::Backfill) => {
@@ -400,6 +398,9 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
         }
         if Instant::now() >= next_retention {
             enforce_retention(&mut store, dir);
+            if let Err(err) = store.maintain(clock::now()) {
+                eprintln!("maintenance failed: {err}");
+            }
             next_retention = Instant::now() + RETENTION_EVERY;
         }
     }
@@ -415,16 +416,14 @@ fn enforce_retention(store: &mut Store, dir: &Path) {
         })
         .retention_days;
     if let Some(days) = days
-        && let Err(err) = store.retention(clock::now(), days)
+        && let Err(err) = store.retention(clock::local(), days)
     {
         eprintln!("retention failed: {err}");
     }
 }
 
 fn refresh(store: &mut Store, last_refresh: &mut Instant) {
-    let now = clock::now();
-    store.set_utc_offset(clock::utc_offset(now));
-    if let Err(err) = store.refresh(now) {
+    if let Err(err) = store.refresh(clock::local()) {
         eprintln!("refresh failed: {err}");
     }
     *last_refresh = Instant::now();
@@ -437,8 +436,8 @@ fn backfill_and_refresh(
     emit: &Emit,
 ) -> Result<Value> {
     let settings = prefs::load(dir)?;
-    let now = clock::now();
-    store.set_utc_offset(clock::utc_offset(now));
+    let when = clock::local();
+    let now = when.now;
 
     let collected = backfill::collect(
         &platform::System,
@@ -456,7 +455,7 @@ fn backfill_and_refresh(
     ingest.flush(store, now)?;
 
     emit("backfill-progress", json!({"stage": "analyzing"}));
-    store.refresh(now)?;
+    store.refresh(when)?;
     let reports: Vec<Value> = collected
         .reports
         .iter()

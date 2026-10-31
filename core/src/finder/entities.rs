@@ -6,9 +6,9 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::episodes::Episode;
-use crate::text::pattern;
+use crate::text::{pattern, text_enum};
 
-/// Declaration order is case priority: an episode belongs to the case of its strongest entity.
+/// Declaration order sorts entities by kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum EntityKind {
     Invoice,
@@ -43,6 +43,43 @@ static PERSON: LazyLock<Regex> =
     LazyLock::new(|| pattern(r"\b(?:with|mit) (\p{Lu}\p{Ll}+ \p{Lu}\p{Ll}+)\b"));
 static AMOUNT: LazyLock<Regex> =
     LazyLock::new(|| pattern(r"[€$£] ?\d[\d.,]*\d|\d[\d.,]*\d ?(?:€|EUR|USD|GBP|\$|£)"));
+static ADDRESS: LazyLock<Regex> = LazyLock::new(|| pattern(r"^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$"));
+static DATE: LazyLock<Regex> =
+    LazyLock::new(|| pattern(r"^(?:\d{4}-\d{2}-\d{2}|\d{1,2}\.\d{1,2}\.\d{4})$"));
+static NUMBER: LazyLock<Regex> = LazyLock::new(|| pattern(r"^\d[\d.,]*$"));
+
+text_enum!(ValueType {
+    Email => "email",
+    Id => "id",
+    Amount => "amount",
+    Date => "date",
+    Number => "number",
+    ShortText => "short_text",
+    LongText => "long_text",
+});
+
+/// The type of an edit value, from its shape. Text over 80 characters is long, the label limit.
+pub(crate) fn value_type(value: &str) -> ValueType {
+    let whole = |re: &Regex| {
+        re.find(value)
+            .is_some_and(|m| m.range() == (0..value.len()))
+    };
+    if whole(&EMAIL) || whole(&ADDRESS) {
+        ValueType::Email
+    } else if whole(&INVOICE) || whole(&TICKET) {
+        ValueType::Id
+    } else if whole(&AMOUNT) {
+        ValueType::Amount
+    } else if whole(&DATE) {
+        ValueType::Date
+    } else if whole(&NUMBER) {
+        ValueType::Number
+    } else if value.chars().count() > 80 {
+        ValueType::LongText
+    } else {
+        ValueType::ShortText
+    }
+}
 
 /// Entities in a piece of text. Invoice ids are removed before ticket ids are searched, and both before amounts.
 pub(crate) fn find(text: &str) -> Vec<(EntityKind, String)> {
@@ -102,20 +139,9 @@ pub(crate) struct Entity {
     pub episodes: Vec<usize>,
 }
 
-pub(crate) struct Case {
-    /// Index into the entity list.
-    pub entity: usize,
-    pub episodes: Vec<usize>,
-    /// Step indexes in time order, consecutive repeats collapsed.
-    pub seq: Vec<usize>,
-    pub first: i64,
-    pub last: i64,
-    pub workflow: Option<usize>,
-}
-
-/// Entities sorted by (kind, value), and cases: episodes grouped by their strongest entity, 2+ episodes.
-/// Companies and persons need 3+ episodes. Entities in more than a fifth of all episodes are dropped.
-pub(crate) fn build(episodes: &[Episode]) -> (Vec<Entity>, Vec<Case>) {
+/// Entities sorted by (kind, value). Companies and persons need 3+ episodes.
+/// With 20 or more episodes, entities in more than a fifth of them are dropped.
+pub(crate) fn build(episodes: &[Episode]) -> Vec<Entity> {
     let mut seen: BTreeMap<(EntityKind, String), Vec<usize>> = BTreeMap::new();
     for (index, episode) in episodes.iter().enumerate() {
         let mut found = find(&episode.text);
@@ -130,8 +156,7 @@ pub(crate) fn build(episodes: &[Episode]) -> (Vec<Entity>, Vec<Case>) {
         }
     }
     let total = episodes.len();
-    let entities: Vec<Entity> = seen
-        .into_iter()
+    seen.into_iter()
         .filter(|((kind, _), list)| {
             let rare = !matches!(kind, EntityKind::Company | EntityKind::Person) || list.len() >= 3;
             let common = total >= 20 && list.len() * 5 > total;
@@ -142,43 +167,7 @@ pub(crate) fn build(episodes: &[Episode]) -> (Vec<Entity>, Vec<Case>) {
             value,
             episodes,
         })
-        .collect();
-
-    let mut strongest: Vec<Option<usize>> = vec![None; total];
-    for (entity_index, entity) in entities.iter().enumerate().rev() {
-        for &episode in &entity.episodes {
-            strongest[episode] = Some(entity_index);
-        }
-    }
-    let mut grouped: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-    for (episode, entity) in strongest.into_iter().enumerate() {
-        if let Some(entity) = entity {
-            grouped.entry(entity).or_default().push(episode);
-        }
-    }
-    let cases = grouped
-        .into_iter()
-        .filter(|(_, eps)| eps.len() >= 2)
-        .map(|(entity, eps)| {
-            let mut seq: Vec<usize> = Vec::new();
-            for &episode in &eps {
-                if seq.last() != Some(&episodes[episode].step) {
-                    seq.push(episodes[episode].step);
-                }
-            }
-            let first = episodes[eps[0]].start;
-            let last = eps.iter().map(|&e| episodes[e].end).max().unwrap_or(first);
-            Case {
-                entity,
-                episodes: eps,
-                seq,
-                first,
-                last,
-                workflow: None,
-            }
-        })
-        .collect();
-    (entities, cases)
+        .collect()
 }
 
 #[cfg(test)]
@@ -218,5 +207,20 @@ mod tests {
     #[test]
     fn persons_follow_with_or_mit() {
         assert_eq!(find("Call with Anna Keller")[0].1, "Anna Keller");
+    }
+
+    #[test]
+    fn value_types_follow_the_shape_of_the_value() {
+        use ValueType::*;
+        assert_eq!(value_type("anna.keller@acme-gmbh.de"), Email);
+        assert_eq!(value_type("<email:0a1b2c3d4e5f6071>"), Email);
+        assert_eq!(value_type("INV-2026-0412"), Id);
+        assert_eq!(value_type("OPS-41"), Id);
+        assert_eq!(value_type("€1,250.00"), Amount);
+        assert_eq!(value_type("1.980,00 €"), Amount);
+        assert_eq!(value_type("2026-03-15"), Date);
+        assert_eq!(value_type("42"), Number);
+        assert_eq!(value_type("Lunch at noon?"), ShortText);
+        assert_eq!(value_type(&"text ".repeat(20)), LongText);
     }
 }

@@ -30,11 +30,15 @@ pub struct Stats {
     pub skipped: AtomicU64,
     /// Frames that went through OCR.
     pub ocr: AtomicU64,
+    /// Frames read from the Accessibility tree, without a screenshot.
+    pub tree: AtomicU64,
     /// Frames pushed out of the queue by newer ones.
     pub dropped: AtomicU64,
     pub capture_errors: AtomicU64,
     pub ocr_errors: AtomicU64,
     pub copies: AtomicU64,
+    pub presses: AtomicU64,
+    pub edits: AtomicU64,
     blocked: [AtomicU64; BLOCKED.len()],
     ocr_ms: Mutex<VecDeque<f64>>,
 }

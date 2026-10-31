@@ -1,10 +1,21 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use sextant_core::Local;
+
 /// Unix seconds. Core never reads the clock; the app passes it in.
 pub fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64)
+}
+
+/// The clock and its UTC offset, read together for each call so a daylight-saving change applies.
+pub fn local() -> Local {
+    let now = now();
+    Local {
+        now,
+        utc_offset_s: utc_offset(now),
+    }
 }
 
 /// Seconds east of UTC in the local time zone at `ts`.

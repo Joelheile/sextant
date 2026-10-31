@@ -1,5 +1,6 @@
-//! The typed commands the UI calls (plan.md §9). All are `async`, so Tauri runs them off the main
-//! thread. Slow work goes through the engine's worker thread and reports by events.
+//! The typed commands the UI calls (plan.md §9). The async commands run off the main
+//! thread. `relaunch` is sync and quick. Slow work goes through the engine's worker thread and
+//! reports by events.
 
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
@@ -8,10 +9,11 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use serde::Serialize;
 use sextant_core::connect::claude_code_command;
 use sextant_core::{Settings, Sources};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::engine::Engine;
 use crate::keys::KeyVault;
+use crate::platform::{Prompt, SettingsPane};
 use crate::{clock, connect, data, models, platform, prefs};
 
 pub struct AppState {
@@ -63,6 +65,17 @@ impl AppState {
 
 pub(crate) fn msg(err: impl Display) -> String {
     err.to_string()
+}
+
+/// Runs `work` on a blocking thread, so a database call never holds one of the few threads the
+/// async runtime runs every command on.
+pub(crate) async fn blocking<T: Send + 'static>(
+    app: AppHandle,
+    work: impl FnOnce(&AppState) -> Reply<T> + Send + 'static,
+) -> Reply<T> {
+    tauri::async_runtime::spawn_blocking(move || work(&app.state::<AppState>()))
+        .await
+        .map_err(msg)?
 }
 
 pub(crate) const MAX_ROWS: usize = 200;
@@ -132,8 +145,8 @@ pub async fn permission_status(state: State<'_, AppState>) -> Reply<Vec<Permissi
 /// Shows the system prompt for `calendar`, `reminders` or `automation`. Returns whether access is
 /// granted.
 #[tauri::command]
-pub async fn request_permission(name: String) -> Reply<bool> {
-    tauri::async_runtime::spawn_blocking(move || platform::request_permission(&name))
+pub async fn request_permission(name: Prompt) -> Reply<bool> {
+    tauri::async_runtime::spawn_blocking(move || platform::request_permission(name))
         .await
         .map_err(msg)?
         .map_err(msg)
@@ -143,8 +156,8 @@ pub async fn request_permission(name: String) -> Reply<bool> {
 /// `automation` in System Settings. With `drag_hint`, the first three also get the panel that
 /// holds Sextant's icon to drag into the list.
 #[tauri::command]
-pub async fn open_settings_pane(pane: String, drag_hint: Option<String>) -> Reply<()> {
-    platform::open_settings_pane(&pane, drag_hint.as_deref()).map_err(msg)
+pub async fn open_settings_pane(pane: SettingsPane, drag_hint: Option<String>) -> Reply<()> {
+    platform::open_settings_pane(pane, drag_hint.as_deref()).map_err(msg)
 }
 
 /// Quits and opens Sextant again. Screen Recording and Full Disk Access apply only after this.
@@ -202,32 +215,35 @@ pub struct FirstMap {
 
 /// The ranked workflows, one page at a time.
 #[tauri::command]
-pub async fn first_map(state: State<'_, AppState>, offset: usize, limit: usize) -> Reply<FirstMap> {
-    state
-        .engine()?
-        .read(|store| {
-            let all = store.workflows()?;
-            let rows = all
-                .iter()
-                .skip(offset)
-                .take(limit.min(MAX_ROWS))
-                .map(|w| MapRow {
-                    id: w.id,
-                    name: w.name.clone(),
-                    steps: w.steps.iter().map(|s| s.name.clone()).collect(),
-                    hours_week: w.hours_week,
-                    cases: w.case_count,
-                    action: w.action.as_str(),
-                    rough: w.rough,
+pub async fn first_map(app: AppHandle, offset: usize, limit: usize) -> Reply<FirstMap> {
+    blocking(app, move |state| {
+        state
+            .engine()?
+            .read(|store| {
+                let all = store.workflows()?;
+                let rows = all
+                    .iter()
+                    .skip(offset)
+                    .take(limit.min(MAX_ROWS))
+                    .map(|w| MapRow {
+                        id: w.id,
+                        name: w.name.clone(),
+                        steps: w.steps.iter().map(|s| s.name.clone()).collect(),
+                        hours_week: w.hours_week,
+                        cases: w.task_count,
+                        action: w.action.as_str(),
+                        rough: w.rough,
+                    })
+                    .collect();
+                Ok(FirstMap {
+                    hours_back: store.hours_back()?,
+                    total: all.len(),
+                    rows,
                 })
-                .collect();
-            Ok(FirstMap {
-                hours_back: store.hours_back()?,
-                total: all.len(),
-                rows,
             })
-        })
-        .map_err(msg)
+            .map_err(msg)
+    })
+    .await
 }
 
 #[derive(Serialize)]

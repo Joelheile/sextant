@@ -5,7 +5,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { api, onRewindOpen, type SearchPage, type Turn } from "./api";
+import {
+  api,
+  onRewindOpen,
+  type AskProgress,
+  type SearchPage,
+  type Turn,
+} from "./api";
 import { dateTime } from "./format";
 import { Search } from "lucide-react";
 import { t } from "./i18n";
@@ -19,6 +25,9 @@ const HISTORY_PAGE = 20;
 
 type Entry = { turn: Turn; page: SearchPage | null };
 
+/** The id of the question being answered, until the saved turn replaces it. */
+const PENDING_ID = -1;
+
 /** The search panel: past questions scroll up like a chat, the box sits at the bottom. */
 export default function Rewind() {
   const [entries, setEntries] = useState<Entry[] | null>(null);
@@ -28,6 +37,8 @@ export default function Rewind() {
   const [recall, setRecall] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
+  /** The question being answered, filled in as its sessions and answer stream in. */
+  const [pending, setPending] = useState<Entry | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -76,7 +87,7 @@ export default function Rewind() {
       observer.observe(child);
     }
     return () => observer.disconnect();
-  }, [entries]);
+  }, [entries, pending !== null]);
 
   useLayoutEffect(() => {
     const element = log.current;
@@ -84,7 +95,7 @@ export default function Rewind() {
     element.scrollTop =
       element.scrollHeight - element.clientHeight - keepBottom.current;
     keepBottom.current = null;
-  }, [entries]);
+  }, [entries, pending]);
 
   const loadOlder = async () => {
     const first = entries?.[0];
@@ -107,8 +118,20 @@ export default function Rewind() {
 
   const ask = async () => {
     setAsking(true);
+    let done = false;
+    const onProgress = (progress: AskProgress) => {
+      if (done) return;
+      keepBottom.current = 0;
+      setPending((current) => {
+        if (progress.kind === "sessions") {
+          const turn = { id: PENDING_ID, ts: Date.now() / 1000, question: query, answer: "" };
+          return { turn, page: progress.page };
+        }
+        return current && { ...current, turn: { ...current.turn, answer: progress.text } };
+      });
+    };
     try {
-      const asked = await api.rewindAsk(query);
+      const asked = await api.rewindAsk(query, onProgress);
       keepBottom.current = 0;
       setEntries((current) => [...(current ?? []), asked]);
       setQuery("");
@@ -117,6 +140,8 @@ export default function Rewind() {
     } catch (err) {
       setError(String(err));
     } finally {
+      done = true;
+      setPending(null);
       setAsking(false);
     }
   };
@@ -169,7 +194,7 @@ export default function Rewind() {
           if (e.currentTarget.scrollTop === 0) void loadOlder();
         }}
       >
-        {entries?.map(({ turn, page }) => (
+        {[...(entries ?? []), ...(pending ? [pending] : [])].map(({ turn, page }) => (
           <section key={turn.id} className="flex flex-col gap-1.5 py-3">
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-[15px] font-medium">{turn.question}</span>
@@ -215,7 +240,7 @@ export default function Rewind() {
             )}
           </section>
         ))}
-        {asking && <Muted className="py-3">{t("searching")}</Muted>}
+        {asking && !pending && <Muted className="py-3">{t("searching")}</Muted>}
         {error && (
           <div className="py-3">
             <Failed>{error}</Failed>

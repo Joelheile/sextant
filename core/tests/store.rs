@@ -3,6 +3,8 @@ use std::io::Read;
 use sextant_core::fixtures::*;
 use sextant_core::{Error, Frame, HitSource, Item, OcrLine, Store, Window, Writer};
 
+const DAY: i64 = 86_400;
+
 fn loaded(label: &str) -> (TempDb, Store) {
     let db = TempDb::new(label);
     let mut store = db.open().expect("test setup");
@@ -13,7 +15,7 @@ fn loaded(label: &str) -> (TempDb, Store) {
 #[test]
 fn database_is_encrypted_and_versioned() {
     let (db, store) = loaded("encrypted");
-    assert_eq!(store.schema_version().expect("test setup"), 5);
+    assert_eq!(store.schema_version().expect("test setup"), 6);
     drop(store);
     let mut header = [0u8; 16];
     std::fs::File::open(&db.path)
@@ -30,8 +32,51 @@ fn database_is_encrypted_and_versioned() {
             .expect("test setup")
             .schema_version()
             .expect("test setup"),
-        5
+        6
     );
+}
+
+fn raw_connection(db: &TempDb) -> rusqlite::Connection {
+    let conn = rusqlite::Connection::open(&db.path).expect("test setup");
+    let hex: String = TEST_KEY.iter().map(|byte| format!("{byte:02x}")).collect();
+    conn.execute_batch(&format!("PRAGMA key = \"x'{hex}'\";"))
+        .expect("test setup");
+    conn
+}
+
+#[test]
+fn a_v5_database_upgrades_to_v6_with_empty_commitments_keyed_by_task() {
+    let db = TempDb::new("upgrade-v5");
+    let conn = raw_connection(&db);
+    for schema in [
+        include_str!("../src/schema_v1.sql"),
+        include_str!("../src/schema_v2.sql"),
+        include_str!("../src/schema_v3.sql"),
+        include_str!("../src/schema_v4.sql"),
+        include_str!("../src/schema_v5.sql"),
+    ] {
+        conn.execute_batch(schema).expect("test setup");
+    }
+    conn.pragma_update(None, "user_version", 5)
+        .expect("test setup");
+    conn.execute(
+        "INSERT INTO commitments(ts, source, text, due_ts, entity_id, overdue) VALUES (1, 'reminder', 'Send it', NULL, 42, 0)",
+        [],
+    )
+    .expect("test setup");
+    drop(conn);
+
+    let store = Store::open(&db.path, &TEST_KEY, &TEST_SECRET).expect("upgrade");
+    assert_eq!(store.schema_version().expect("test setup"), 6);
+    drop(store);
+
+    let conn = raw_connection(&db);
+    let rows: i64 = conn
+        .query_row("SELECT count(*) FROM commitments", [], |row| row.get(0))
+        .expect("test setup");
+    assert_eq!(rows, 0, "an old entity id would read as a task id");
+    conn.prepare("SELECT task_id FROM commitments")
+        .expect("commitments has task_id");
 }
 
 #[test]
@@ -242,7 +287,7 @@ fn retention_removes_old_rows_and_unreferenced_lines() {
         text: "fresh words".into(),
     }));
     writer.flush(&mut store, later + 10).expect("test setup");
-    let gone = store.retention(later + 10, 30).expect("test setup");
+    let gone = store.retention(local(later + 10), 30).expect("test setup");
     assert!(
         gone.frames > 0 && gone.events > 0 && gone.lines > 0 && gone.windows > 0,
         "{gone:?}"
@@ -262,7 +307,7 @@ fn retention_removes_old_rows_and_unreferenced_lines() {
         1
     );
     assert_eq!(
-        store.retention(later + 10, 30).expect("test setup"),
+        store.retention(local(later + 10), 30).expect("test setup"),
         Default::default()
     );
 }
@@ -289,5 +334,31 @@ fn a_reader_sees_writes_while_the_writer_stays_open() {
             .expect("test setup")
             .len(),
         before + 1
+    );
+}
+
+#[test]
+fn maintenance_vacuums_once_a_week_and_only_while_the_user_is_away() {
+    let (_db, mut store) = loaded("maintain");
+    let (last, _) = store
+        .last_capture()
+        .expect("test setup")
+        .expect("the week has frames");
+    let away = last + 30 * 60;
+    assert!(
+        !store.maintain(last + 60).expect("maintain"),
+        "the user is at the Mac"
+    );
+    assert!(
+        store.maintain(away).expect("maintain"),
+        "the first vacuum is due"
+    );
+    assert!(
+        !store.maintain(away + DAY).expect("maintain"),
+        "vacuumed a day ago"
+    );
+    assert!(
+        store.maintain(away + 8 * DAY).expect("maintain"),
+        "a week has passed"
     );
 }

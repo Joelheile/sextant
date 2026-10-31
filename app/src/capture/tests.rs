@@ -6,8 +6,10 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use serde_json::json;
+use sextant_core::capture::{Element, Field};
 use sextant_core::fixtures::TempDb;
-use sextant_core::{Counts, EventKind, Item, Settings, Store};
+use sextant_core::{Counts, Event, EventKind, Item, Settings, Store};
 
 use super::fake::{Calls, Fake, FakeOcr, Scene};
 use super::ingest::Ingest;
@@ -74,6 +76,8 @@ struct Session {
     control: Arc<Control>,
     stats: Arc<Stats>,
     ingest: Arc<Mutex<Ingest>>,
+    /// Every event the sink received, in order.
+    events: Arc<Mutex<Vec<Event>>>,
     sink: Sink,
     ocr: FakeOcr,
     now_ms: i64,
@@ -87,9 +91,13 @@ impl Session {
         let stats = Arc::new(Stats::default());
         let queue = Arc::new(Queue::new(2));
         let ingest = Arc::new(Mutex::new(Ingest::new()));
+        let events = Arc::new(Mutex::new(Vec::new()));
         let sink: Sink = {
-            let ingest = ingest.clone();
+            let (ingest, events) = (ingest.clone(), events.clone());
             Arc::new(move |item: Item, taken: Instant| {
+                if let (Item::Event(event), Ok(mut events)) = (&item, events.lock()) {
+                    events.push(event.clone());
+                }
                 if let Ok(mut ingest) = ingest.lock() {
                     ingest.push(item, taken);
                 }
@@ -110,6 +118,7 @@ impl Session {
             control,
             stats,
             ingest,
+            events,
             sink,
             ocr: FakeOcr,
             now_ms: 0,
@@ -136,6 +145,17 @@ impl Session {
             ) {}
             self.now_ms += STEP_MS;
         }
+    }
+
+    /// Payloads of the events of `kind`, in order.
+    fn payloads(&self, kind: EventKind) -> Vec<serde_json::Value> {
+        self.events
+            .lock()
+            .expect("events")
+            .iter()
+            .filter(|event| event.kind == kind)
+            .map(|event| event.json.clone())
+            .collect()
     }
 
     fn calls(&self) -> Calls {
@@ -263,6 +283,7 @@ fn gated_cases() -> Vec<Gated> {
                 s.live.metadata = false;
                 s.live.ocr = false;
                 s.live.copy = false;
+                s.live.actions = false;
             }),
             false,
         ),
@@ -310,10 +331,11 @@ fn gated_sources_write_zero_rows_and_never_reach_the_capture_call() {
 
         let calls = run.calls();
         assert!(
-            calls.captured.is_empty(),
-            "{}: capture was called for {:?}",
+            calls.captured.is_empty() && calls.tree == 0,
+            "{}: capture was called for {:?}, the tree read {} times",
             case.name,
-            calls.captured
+            calls.captured,
+            calls.tree
         );
         let (store, _db) = run.database();
         let counts = store.counts().expect("counts");
@@ -575,6 +597,171 @@ fn copy_events_name_the_app_and_respect_the_gates() {
     assert_eq!(store.event_count(EventKind::Copy).expect("count"), 1);
 }
 
+fn control(role: &str, title: &str) -> Element {
+    Element {
+        role: role.into(),
+        title: title.into(),
+        ..Element::default()
+    }
+}
+
+fn text_field(id: u64, label: &str, value: &str) -> Field {
+    Field {
+        id,
+        element: Element {
+            role: "AXTextField".into(),
+            description: label.into(),
+            ..Element::default()
+        },
+        value: Some(value.into()),
+    }
+}
+
+impl Scene {
+    fn typing(mut self, field: Field) -> Self {
+        self.field = Some(field);
+        self
+    }
+
+    fn pressing(mut self, chain: Vec<Element>) -> Self {
+        self.click = Some(chain);
+        self
+    }
+}
+
+/// Subject, then To, then Send. The last characters of the subject land right before Tab, between
+/// two polls.
+fn compose(at_ms: i64) -> Vec<Scene> {
+    let send = vec![
+        Element {
+            role: "AXStaticText".into(),
+            value: "Send".into(),
+            ..Element::default()
+        },
+        control("AXButton", ""),
+    ];
+    vec![
+        working(at_ms).typing(text_field(1, "Subject", "")),
+        working(at_ms + 2_000).typing(text_field(1, "Subject", "Invoice")),
+        working(at_ms + 2_100).typing(text_field(1, "Subject", "Invoice 4711")),
+        working(at_ms + 2_200).typing(text_field(2, "To", "")),
+        working(at_ms + 4_000).typing(text_field(2, "To", "tax@adviser.de")),
+        working(at_ms + 6_000)
+            .typing(text_field(2, "To", "tax@adviser.de"))
+            .pressing(send),
+        working(at_ms + 6_500),
+    ]
+}
+
+#[test]
+fn filling_a_form_records_each_field_and_the_press_in_order() {
+    let mut run = session(compose(0));
+    run.run(10_000);
+    let steps: Vec<(EventKind, serde_json::Value)> = run
+        .events
+        .lock()
+        .expect("events")
+        .iter()
+        .filter(|e| matches!(e.kind, EventKind::Edit | EventKind::Press))
+        .map(|e| (e.kind, e.json.clone()))
+        .collect();
+    assert_eq!(
+        steps,
+        [
+            (
+                EventKind::Edit,
+                json!({"app": "Mail", "role": "AXTextField", "label": "Subject", "value": "Invoice 4711"})
+            ),
+            (
+                EventKind::Edit,
+                json!({"app": "Mail", "role": "AXTextField", "label": "To", "value": "tax@adviser.de"})
+            ),
+            (
+                EventKind::Press,
+                json!({"app": "Mail", "role": "AXButton", "label": "Send"})
+            ),
+        ]
+    );
+    assert_eq!(
+        (Stats::get(&run.stats.edits), Stats::get(&run.stats.presses)),
+        (2, 1)
+    );
+    let (store, _db) = run.database();
+    assert_eq!(store.event_count(EventKind::Edit).expect("count"), 2);
+    assert_eq!(store.event_count(EventKind::Press).expect("count"), 1);
+}
+
+#[test]
+fn presses_and_fields_in_a_gated_window_are_never_read() {
+    let in_app = |app: App, title: &str| {
+        compose(0)
+            .into_iter()
+            .map(|scene| scene.in_app(app.clone(), title))
+            .collect::<Vec<_>>()
+    };
+    let vault = in_app(app("1Password 8", "com.1password.1password", 300), "Vault");
+    // A normal Chrome window, then a private one of the same app: the switch alone must not let
+    // the private window be read before its gate runs.
+    let mut private = vec![
+        working(0)
+            .in_app(chrome(), "News")
+            .tab("https://a.example", false),
+    ];
+    private.extend(compose(5_000).into_iter().map(|scene| {
+        let mut scene = scene
+            .in_app(chrome(), "News")
+            .tab("https://b.example", true);
+        scene.window = 2;
+        scene
+    }));
+    let secure = compose(0)
+        .into_iter()
+        .map(|mut scene| {
+            scene.secure_input = true;
+            scene
+        })
+        .collect();
+    let idle = compose(0)
+        .into_iter()
+        .map(|mut scene| {
+            scene.idle_s = 120.0;
+            scene
+        })
+        .collect();
+    let mut off = Settings::default();
+    off.live.actions = false;
+    let cases = [
+        ("excluded app", vault, Settings::default(), false),
+        (
+            "private window of the same app",
+            private,
+            Settings::default(),
+            false,
+        ),
+        ("secure input", secure, Settings::default(), false),
+        ("idle", idle, Settings::default(), false),
+        ("actions off", compose(0), off, false),
+        ("paused", compose(0), Settings::default(), true),
+    ];
+    for (name, script, settings, paused) in cases {
+        let mut run = Session::new(script, settings);
+        if paused {
+            run.control.pause_until(START_S + 3600);
+        }
+        run.run(15_000);
+        let calls = run.calls();
+        assert_eq!(
+            calls.element_chain + calls.reread,
+            0,
+            "{name}: read an element or a field value"
+        );
+        assert!(
+            run.payloads(EventKind::Edit).is_empty() && run.payloads(EventKind::Press).is_empty(),
+            "{name}"
+        );
+    }
+}
+
 #[test]
 fn the_queue_keeps_the_newest_frames_when_ocr_falls_behind() {
     let script: Vec<Scene> = (0..5)
@@ -611,6 +798,46 @@ fn nearly_equal_frames_skip_ocr() {
     assert!(Stats::get(&run.stats.skipped) >= 5);
     let (store, _db) = run.database();
     assert_eq!(store.counts().expect("counts").frames, 1);
+}
+
+#[test]
+fn a_window_whose_tree_has_its_text_is_never_screenshotted() {
+    let mut scene = working(0);
+    scene.tree = vec![
+        "Invoice 4711 attached · Acme GmbH · due 14 November".into(),
+        "[ ] Send the quarterly report to the tax adviser before Friday".into(),
+    ];
+    let mut run = session(vec![scene]);
+    run.run(65_000);
+    assert!(run.calls().captured.is_empty(), "no screenshot");
+    assert_eq!(Stats::get(&run.stats.ocr), 0);
+    assert_eq!(
+        Stats::get(&run.stats.tree),
+        1,
+        "unchanged text makes one frame"
+    );
+    assert!(Stats::get(&run.stats.skipped) >= 5);
+    let (store, _db) = run.database();
+    let counts = store.counts().expect("counts");
+    assert_eq!((counts.frames, counts.lines), (1, 2), "{counts:?}");
+    let hits = store
+        .search("quarterly report", None, None, None, 10, 0)
+        .expect("search");
+    assert_eq!(hits.len(), 1);
+}
+
+#[test]
+fn a_window_whose_tree_says_too_little_falls_back_to_ocr() {
+    let mut scene = working(0);
+    scene.tree = vec!["Inbox".into()];
+    let mut run = session(vec![scene]);
+    run.run(35_000);
+    assert_eq!(
+        run.calls().captured.first().map(String::as_str),
+        Some("Mail")
+    );
+    assert_eq!(Stats::get(&run.stats.ocr), 1);
+    assert_eq!(Stats::get(&run.stats.tree), 0);
 }
 
 #[test]
@@ -683,8 +910,29 @@ fn a_failed_capture_is_counted_and_nothing_is_written() {
         ) -> anyhow::Result<Tab> {
             self.0.browser_tab(app, browser)
         }
+        fn window_lines(&mut self, app: &App) -> Vec<sextant_core::OcrLine> {
+            self.0.window_lines(app)
+        }
         fn capture(&mut self, _app: &App) -> anyhow::Result<Shot<Vec<String>>> {
             anyhow::bail!("no screen recording permission")
+        }
+        fn window_id(&mut self, app: &App) -> u64 {
+            self.0.window_id(app)
+        }
+        fn clicks(&mut self) -> Vec<[f64; 2]> {
+            self.0.clicks()
+        }
+        fn wake_on_click(&mut self, thread: std::thread::Thread) {
+            self.0.wake_on_click(thread)
+        }
+        fn element_chain(&mut self, app: &App, point: [f64; 2]) -> Vec<Element> {
+            self.0.element_chain(app, point)
+        }
+        fn focused_field(&mut self, app: &App) -> Option<Field> {
+            self.0.focused_field(app)
+        }
+        fn reread(&mut self, id: u64) -> Option<String> {
+            self.0.reread(id)
         }
     }
     let clock = Arc::new(AtomicI64::new(0));

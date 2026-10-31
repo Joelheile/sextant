@@ -107,7 +107,7 @@ fn refresh_over_90_days_stays_under_2_s() {
     let mut times = Vec::new();
     for _ in 0..5 {
         let start = Instant::now();
-        let stats = store.refresh(now).expect("test setup");
+        let stats = store.refresh(local(now)).expect("test setup");
         times.push(start.elapsed());
         println!("refresh: {:?} {stats:?}", times.last().expect("test setup"));
     }
@@ -115,8 +115,8 @@ fn refresh_over_90_days_stays_under_2_s() {
     println!("refresh over 90 days: worst of 5 = {worst:?} (budget {REFRESH:?})");
     let top = &store.workflows().expect("test setup")[0];
     assert_eq!(
-        (top.basis.as_str(), top.case_count),
-        ("cases", 65),
+        (top.basis.as_str(), top.task_count),
+        ("tasks", 65),
         "{top:#?}"
     );
     assert!(

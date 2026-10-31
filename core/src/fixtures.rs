@@ -10,10 +10,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use serde_json::{Value, json};
 
 use crate::error::Result;
+use crate::finder::Workflow;
 use crate::model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
 use crate::redact::Secret;
 use crate::store::{Key, Store};
-use crate::time::DAY;
+use crate::time::{DAY, Local};
 use crate::writer::{Flushed, Writer};
 
 /// UTC+01:00.
@@ -24,6 +25,14 @@ pub const WEEK_START: i64 = 1_772_406_000;
 pub const WEEK_NOW: i64 = WEEK_START + 5 * DAY + 8 * 3600;
 pub const TEST_KEY: Key = [7; 32];
 pub const TEST_SECRET: Secret = [5; 16];
+
+/// `now` at the fixtures' UTC offset.
+pub fn local(now: i64) -> Local {
+    Local {
+        now,
+        utc_offset_s: UTC_OFFSET_S,
+    }
+}
 
 pub const INVOICE_IDS: [&str; 5] = [
     "INV-2026-0412",
@@ -90,6 +99,161 @@ pub fn generate(spec: &Spec) -> Fixture {
     fixture
 }
 
+/// The invoice week with actions (plan.md T1, T2). Every invoice visit gets the fields it fills in
+/// and the button it presses. A weekly report (ticket OPS-41) runs on Tuesday and Thursday. The
+/// noise adds a skipped field, a corrected amount and a chat with no identifiers. Generated noise
+/// is off, since it would cut the report windows. Returns the fixture and the task of each planned
+/// episode by start time. Routines, meetings and the chat are not listed.
+pub fn actions_week() -> (Fixture, Vec<(i64, String)>) {
+    let mut fixture = generate(&Spec {
+        first_monday: WEEK_START,
+        weeks: 1,
+        noise_per_day: 0,
+        frames: false,
+    });
+    let mut truth = Vec::new();
+    for (index, (number, german, visits)) in INVOICES.iter().enumerate() {
+        let id = format!("{}-2026-{number:04}", if *german { "RE" } else { "INV" });
+        let (_, amount) = CLIENTS[index];
+        for &(day, hour, minute, part, seconds, _) in *visits {
+            let start = at(WEEK_START + day * DAY, hour, minute);
+            truth.push((start, id.clone()));
+            visit_actions(
+                &mut fixture,
+                start,
+                seconds,
+                part,
+                (*number, *german),
+                &id,
+                amount,
+            );
+        }
+    }
+    let mut planned = Vec::new();
+    for (day, hour, minute, seconds) in [(1, 13, 0, 900), (3, 10, 0, 600)] {
+        let start = at(WEEK_START + day * DAY, hour, minute);
+        truth.push((start, "OPS-41 report".into()));
+        episode(
+            &mut fixture,
+            &mut planned,
+            start,
+            seconds,
+            window(
+                "Google Chrome",
+                "Weekly report OPS-41 - Google Docs",
+                "",
+                "https://docs.google.com/document/d/ops41/edit",
+            ),
+            "",
+            Vec::new(),
+            false,
+        );
+        act(
+            &mut fixture,
+            start + 30,
+            "Google Chrome",
+            "Insert chart",
+            None,
+        );
+        act(
+            &mut fixture,
+            start + 60,
+            "Google Chrome",
+            "Summary",
+            Some("Five invoices sent, two open"),
+        );
+        act(
+            &mut fixture,
+            start + seconds - 5,
+            "Google Chrome",
+            "Save",
+            None,
+        );
+    }
+    let start = at(WEEK_START + DAY, 15, 20);
+    episode(
+        &mut fixture,
+        &mut planned,
+        start,
+        90,
+        window("Slack", "Slack | #lunch", "", ""),
+        "",
+        Vec::new(),
+        false,
+    );
+    act(
+        &mut fixture,
+        start + 40,
+        "Slack",
+        "Message #lunch",
+        Some("Lunch at noon?"),
+    );
+    act(&mut fixture, start + 80, "Slack", "Send", None);
+    fixture.events.sort_by_key(|e| e.ts);
+    (fixture, truth)
+}
+
+/// The actions one invoice visit leaves behind. Mail fills in the recipient and the subject, Excel
+/// and Lexoffice the amount. Invoice 415 is corrected once and invoice 418 skips a checkbox.
+fn visit_actions(
+    f: &mut Fixture,
+    start: i64,
+    seconds: i64,
+    part: Part,
+    (number, german): (u32, bool),
+    id: &str,
+    amount: &str,
+) {
+    let end = start + seconds;
+    match part {
+        Part::Mail => {
+            let (to, subject) = if german {
+                (
+                    "j.mueller@mueller-ag.de",
+                    format!("Rechnung {id} angehängt"),
+                )
+            } else {
+                ("anna.keller@acme-gmbh.de", format!("Invoice {id} attached"))
+            };
+            act(f, start + 10, "Mail", "To", Some(to));
+            act(f, start + 20, "Mail", "Subject", Some(&subject));
+            act(f, end - 5, "Mail", "Send", None);
+        }
+        Part::Excel => {
+            act(f, start + 30, "Microsoft Excel", "Amount", Some(amount));
+            act(f, end - 5, "Microsoft Excel", "Save", None);
+        }
+        Part::Lex => {
+            act(f, start + 25, "Google Chrome", "Betrag", Some(amount));
+            if number == 415 {
+                act(f, start + 50, "Google Chrome", "Betrag", Some("1.980,00 €"));
+            }
+            if number == 418 {
+                act(f, start + 40, "Google Chrome", "Skonto", None);
+            }
+            act(f, end - 5, "Google Chrome", "Speichern", None);
+        }
+    }
+}
+
+/// A press on a button, or an edit of a text field when there is a value. Roles follow the capture.
+fn act(f: &mut Fixture, ts: i64, app: &str, label: &str, value: Option<&str>) {
+    let (kind, role) = match value {
+        Some(_) => (EventKind::Edit, "AXTextField"),
+        None => (EventKind::Press, "AXButton"),
+    };
+    let mut json = json!({"app": app, "role": role, "label": label});
+    if let Some(value) = value {
+        json["value"] = Value::String(value.into());
+    }
+    f.events.push(Event {
+        ts,
+        kind,
+        source: Source::Live,
+        json,
+    });
+}
+
 /// Pushes everything through a `Writer`, in the order a live session would, and flushes once.
 pub fn load(store: &mut Store, fixture: &Fixture, now: i64) -> Result<Flushed> {
     let mut writer = Writer::new();
@@ -103,6 +267,25 @@ pub fn load(store: &mut Store, fixture: &Fixture, now: i64) -> Result<Flushed> {
         writer.push(Item::Utterance(utterance.clone()));
     }
     writer.flush(store, now)
+}
+
+/// The standard week, loaded and refreshed, in a fresh database. Panics on failure, for tests.
+pub fn refreshed(label: &str) -> (TempDb, Store) {
+    let db = TempDb::new(label);
+    let mut store = db.open().expect("test setup");
+    load(&mut store, &week(), WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
+    (db, store)
+}
+
+/// The workflow built from the invoice tasks. Panics when there is none, for tests.
+pub fn invoice(store: &Store) -> Workflow {
+    store
+        .workflows()
+        .expect("test setup")
+        .into_iter()
+        .find(|w| w.basis == "tasks")
+        .expect("test setup")
 }
 
 /// A unique temp database path that cleans up after itself.
@@ -124,9 +307,7 @@ impl TempDb {
     }
 
     pub fn open(&self) -> Result<Store> {
-        let mut store = Store::open(&self.path, &TEST_KEY, &TEST_SECRET)?;
-        store.set_utc_offset(UTC_OFFSET_S);
-        Ok(store)
+        Store::open(&self.path, &TEST_KEY, &TEST_SECRET)
     }
 }
 

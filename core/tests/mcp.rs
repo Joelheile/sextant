@@ -26,7 +26,7 @@ impl Client {
         let settings = Rc::new(RefCell::new(Settings::default()));
         let shared = Rc::clone(&settings);
         Self {
-            server: Server::new(reader, move || shared.borrow().clone(), || WEEK_NOW),
+            server: Server::new(reader, move || shared.borrow().clone(), || local(WEEK_NOW)),
             settings,
             next_id: 0,
         }
@@ -72,7 +72,7 @@ fn fixture_client(label: &str) -> (TempDb, Client) {
     let db = TempDb::new(label);
     let mut store = db.open().expect("test setup");
     load(&mut store, &week(), WEEK_NOW).expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     let reader = store.reader().expect("test setup");
     (db, Client::new(reader))
 }
@@ -136,7 +136,7 @@ fn the_timeline_lists_upcoming_meetings_at_their_real_time() {
         json: json!({"title": "Planning soon", "end_ts": start + 3600}),
     }));
     writer.flush(&mut store, WEEK_NOW).expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     let mut client = Client::new(store.reader().expect("test setup"));
 
     let ahead = client
@@ -337,6 +337,52 @@ fn every_tool_answers_from_the_fixture_week() {
 }
 
 #[test]
+fn only_report_handoff_is_not_read_only() {
+    let (_db, mut client) = fixture_client("mcp-read-only");
+    let reply = client.request("tools/list", json!({}));
+    let writers: Vec<&str> = reply["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .filter(|tool| tool["annotations"]["readOnlyHint"] == false)
+        .map(|tool| tool["name"].as_str().expect("name"))
+        .collect();
+    assert_eq!(writers, ["report_handoff"]);
+}
+
+#[test]
+fn numbers_must_be_whole_numbers() {
+    let (_db, mut client) = fixture_client("mcp-strict-ints");
+    let id = first_workflow_id(&mut client);
+    for (name, arguments) in [
+        ("list_workflows", json!({"limit": 2.5})),
+        ("list_workflows", json!({"limit": "2"})),
+        ("list_workflows", json!({"limit": 0})),
+        ("list_workflows", json!({"offset": -1})),
+        ("list_workflows", json!({"offset": "1"})),
+        ("get_workflow", json!({"id": id as f64 + 0.5})),
+        ("get_workflow", json!({"id": id.to_string()})),
+        (
+            "context_at",
+            json!({"time": "2026-03-02T09:40", "window": "60"}),
+        ),
+    ] {
+        let error = client.tool(name, arguments.clone()).expect_err("rejected");
+        assert!(error.contains("must"), "{name} {arguments}: {error}");
+    }
+    assert!(
+        client
+            .tool("list_workflows", json!({"limit": 2, "offset": 0}))
+            .is_ok()
+    );
+    assert!(
+        client
+            .tool("list_workflows", json!({"limit": null}))
+            .is_ok()
+    );
+}
+
+#[test]
 fn results_are_capped_and_paginated() {
     let (_db, mut client) = fixture_client("mcp-pages");
 
@@ -497,7 +543,7 @@ fn every_tool_stays_under_200_ms_p95() {
     };
     let now = WEEK_START + 90 * DAY;
     load(&mut store, &generate(&spec), now).expect("test setup");
-    store.refresh(now).expect("test setup");
+    store.refresh(local(now)).expect("test setup");
     let mut client = Client::new(store.reader().expect("test setup"));
     let id = first_workflow_id(&mut client);
 

@@ -3,23 +3,6 @@
 use sextant_core::fixtures::*;
 use sextant_core::{Action, Enjoyment, Kind, Store, Target, Workflow};
 
-fn refreshed(label: &str) -> (TempDb, Store) {
-    let db = TempDb::new(label);
-    let mut store = db.open().expect("test setup");
-    load(&mut store, &week(), WEEK_NOW).expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
-    (db, store)
-}
-
-fn invoice(store: &Store) -> Workflow {
-    store
-        .workflows()
-        .expect("test setup")
-        .into_iter()
-        .find(|w| w.basis == "cases")
-        .expect("test setup")
-}
-
 /// The invoice workflow after one correction phrase and a refresh, with the workflow before it.
 fn corrected(label: &str, phrase: &str) -> (Workflow, Workflow, Store) {
     let (_db, mut store) = refreshed(label);
@@ -27,7 +10,7 @@ fn corrected(label: &str, phrase: &str) -> (Workflow, Workflow, Store) {
     store
         .correct(WEEK_NOW, phrase, &[Target::Workflow(before.id)])
         .expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     let after = store
         .workflow(before.id)
         .expect("test setup")
@@ -148,7 +131,7 @@ fn the_enjoyment_answer_is_stored_like_a_correction() {
     store
         .answer_enjoyment(WEEK_NOW, Target::Workflow(before.id), Enjoyment::Hate)
         .expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     let after = invoice(&store);
     assert_eq!((after.enjoyment, after.desire), (Enjoyment::Hate, 1.0));
     assert!(
@@ -180,11 +163,11 @@ fn belonging_together_merges_steps_and_not_one_workflow_splits_cases() {
                 ],
             )
             .expect("test setup");
-        store.refresh(WEEK_NOW).expect("test setup");
+        store.refresh(local(WEEK_NOW)).expect("test setup");
         let merged = invoice(&store);
         assert_eq!(merged.steps.len(), 2, "{phrase}");
         assert!(
-            merged.hours_week > 0.0 && merged.case_count == 5,
+            merged.hours_week > 0.0 && merged.task_count == 5,
             "{phrase}"
         );
     }
@@ -195,7 +178,7 @@ fn belonging_together_merges_steps_and_not_one_workflow_splits_cases() {
             .workflows()
             .expect("test setup")
             .iter()
-            .all(|w| w.basis != "cases" || w.case_count < before.case_count),
+            .all(|w| w.basis != "tasks" || w.task_count < before.task_count),
         "no workflow keeps all five cases together"
     );
 }

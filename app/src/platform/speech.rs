@@ -108,6 +108,7 @@ pub struct Silero {
     session: Session,
     state: Vec<f32>,
     context: Vec<f32>,
+    failing: bool,
 }
 
 /// Makes a Silero session per stream. The model file is small and ONNX Runtime shares the rest.
@@ -124,13 +125,26 @@ pub fn silero(models: &Path) -> impl FnMut() -> Result<Silero> + Send + 'static 
             session,
             state: vec![0.0; STATE],
             context: vec![0.0; CONTEXT],
+            failing: false,
         })
     }
 }
 
 impl Vad for Silero {
     fn probability(&mut self, frame: &[f32]) -> f32 {
-        self.run(frame).unwrap_or(0.0)
+        match self.run(frame) {
+            Ok(probability) => {
+                self.failing = false;
+                probability
+            }
+            Err(err) => {
+                if !self.failing {
+                    eprintln!("voice detection failed: {err:#}");
+                }
+                self.failing = true;
+                0.0
+            }
+        }
     }
 }
 

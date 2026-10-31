@@ -2,15 +2,7 @@ use std::fmt::Write;
 
 use insta::assert_snapshot;
 use sextant_core::fixtures::*;
-use sextant_core::{Store, Workflow, parse_correction, redact};
-
-fn refreshed(label: &str) -> (TempDb, Store) {
-    let db = TempDb::new(label);
-    let mut store = db.open().expect("test setup");
-    load(&mut store, &week(), WEEK_NOW).expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
-    (db, store)
-}
+use sextant_core::{Workflow, parse_correction, redact};
 
 fn show(w: &Workflow) -> String {
     let mut out = String::new();
@@ -19,7 +11,7 @@ fn show(w: &Workflow) -> String {
     let _ = writeln!(
         out,
         "cases={} hours/week={:.3} potential={:.3} desire={:.3} benefit={:.3} procrastination={:.3}",
-        w.case_count, w.hours_week, w.potential, w.desire, w.benefit, w.procrastination
+        w.task_count, w.hours_week, w.potential, w.desire, w.benefit, w.procrastination
     );
     let _ = writeln!(
         out,
@@ -63,7 +55,7 @@ fn week_workflows() {
 fn invoice_skill_md() {
     let (_db, store) = refreshed("golden-skill");
     let id = store.workflows().expect("test setup")[0].id;
-    assert_snapshot!(store.skill_md(id).expect("test setup"));
+    assert_snapshot!(store.skill_md(id, UTC_OFFSET_S).expect("test setup"));
 }
 
 #[test]
@@ -71,7 +63,7 @@ fn week_load_and_refresh_counts() {
     let db = TempDb::new("golden-counts");
     let mut store = db.open().expect("test setup");
     let flushed = load(&mut store, &week(), WEEK_NOW).expect("test setup");
-    let stats = store.refresh(WEEK_NOW).expect("test setup");
+    let stats = store.refresh(local(WEEK_NOW)).expect("test setup");
     assert_snapshot!(format!("{flushed:#?}\n{stats:#?}"));
 }
 

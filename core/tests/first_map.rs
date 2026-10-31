@@ -38,7 +38,7 @@ fn first_map(store: &mut Store, weeks: u32, sources: &Sources, calendar_denied: 
         writer.push(Item::Event(event));
     }
     writer.flush(store, now).expect("test setup");
-    store.refresh(now).expect("test setup");
+    store.refresh(local(now)).expect("test setup");
     let workflows = store.workflows().expect("test setup");
     Map {
         workflows,
@@ -71,7 +71,7 @@ fn a_backfill_only_map_finds_the_invoice_routine_and_calls_it_rough() {
                 .any(|s| s.name.to_lowercase().contains("lexoffice"))
         })
         .unwrap_or_else(|| panic!("no invoice workflow in {:#?}", map.workflows));
-    assert!(invoices.case_count >= 15, "{invoices:#?}");
+    assert!(invoices.task_count >= 15, "{invoices:#?}");
     assert!(store.hours_back().expect("test setup") > 0.0);
 }
 
@@ -246,7 +246,7 @@ fn upcoming_events_are_not_worked_time() {
             writer.push(Item::Event(event));
         }
         writer.flush(&mut store, now).expect("test setup");
-        let stats = store.refresh(now).expect("test setup");
+        let stats = store.refresh(local(now)).expect("test setup");
         (stats, store.hours_back().expect("test setup"))
     };
     let (with, hours) = run(true);

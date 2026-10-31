@@ -66,12 +66,14 @@ export default function Permissions() {
       ) {
         await api.openSettingsPane("automation");
       }
-    } else if (permission.status === "undetermined") {
-      await api.requestPermission(permission.name);
-    } else {
-      await api.openSettingsPane(
-        permission.name === "calendar" ? "calendars" : "reminders",
-      );
+    } else if (permission.name === "calendar" || permission.name === "reminders") {
+      if (permission.status === "undetermined") {
+        await api.requestPermission(permission.name);
+      } else {
+        await api.openSettingsPane(
+          permission.name === "calendar" ? "calendars" : "reminders",
+        );
+      }
     }
     await refresh();
   }, [refresh]);

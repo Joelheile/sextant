@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, listenDownload, type Models } from "./api";
+import { MB } from "./format";
 import { t } from "./i18n";
 import { Failed, List, Muted, SwitchRow } from "./layout";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
-const MB = 1024 * 1024;
 
 /** Download consent and the on/off switch for call transcription (plan.md §4). */
 export default function CallAudio() {

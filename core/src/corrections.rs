@@ -6,8 +6,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::enjoyment::Enjoyment;
 use crate::error::{Error, Result};
-use crate::finder::Enjoyment;
 use crate::redact::redact;
 use crate::store::Store;
 use crate::text::pattern;

@@ -1,33 +1,48 @@
-//! The automation finder (plan.md §7): events to episodes, steps, entities, follows, cases,
+//! The automation finder (plan.md §7): events to episodes, steps, entities, follows, tasks,
 //! workflows, commitments and scores. `refresh(now)` rebuilds everything from the last 90 days.
 
+mod actions;
 mod commitments;
 mod entities;
 mod episodes;
 mod graph;
 mod judgments;
 mod score;
+mod signals;
 mod steps;
+mod tasks;
 
 use std::collections::{BTreeSet, HashMap};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+pub use self::entities::ValueType;
 use self::episodes::EventRow;
 use self::judgments::Judgment;
-pub use self::judgments::StepSample;
-pub use self::score::{Action, Enjoyment, Kind};
+pub use self::score::{Action, Kind};
 pub use self::steps::Category;
 use crate::backfill::UPCOMING_DAYS;
 use crate::corrections::Overrides;
+use crate::enjoyment::Enjoyment;
 use crate::error::Result;
-use crate::model::Payload;
+use crate::model::{EventKind, Payload};
 use crate::store::Store;
 use crate::text::fnv1a;
-use crate::time::{DAY, day};
+use crate::time::{DAY, Local, day};
 
 const WINDOW_DAYS: i64 = 90;
-const KNOWN_KINDS: &str = "'focus', 'idle', 'pause', 'visit', 'calendar', 'copy', 'reminder'";
+/// Commit and file events stay out on purpose: they feed the MCP timeline, not the map.
+const MAP_KINDS: [EventKind; 9] = [
+    EventKind::Focus,
+    EventKind::Idle,
+    EventKind::Pause,
+    EventKind::Visit,
+    EventKind::Calendar,
+    EventKind::Copy,
+    EventKind::Reminder,
+    EventKind::Press,
+    EventKind::Edit,
+];
 
 /// Row counts of one refresh, for logs. Never text.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -36,7 +51,7 @@ pub struct RefreshStats {
     pub steps: usize,
     pub entities: usize,
     pub follows: usize,
-    pub cases: usize,
+    pub tasks: usize,
     pub workflows: usize,
     pub commitments: usize,
 }
@@ -58,10 +73,10 @@ pub struct Workflow {
     pub name: String,
     /// Step keys joined with " > ". Corrections attach to it.
     pub variant: String,
-    /// `cases` (one entity, many cases) or `chain` (routine without a shared entity).
+    /// `tasks` (one step sequence, many tasks) or `chain` (routine without a shared entity).
     pub basis: String,
     pub steps: Vec<StepInfo>,
-    pub case_count: usize,
+    pub task_count: usize,
     pub hours_week: f64,
     pub potential: f64,
     pub desire: f64,
@@ -81,6 +96,8 @@ pub struct CopyPoint {
     pub from: String,
     pub to: String,
     pub copies: usize,
+    /// Times a value from `from` showed up in `to` with nothing copied.
+    pub retypes: usize,
 }
 
 /// How one step follows the next in a workflow.
@@ -88,6 +105,8 @@ pub struct CopyPoint {
 pub struct StepLink {
     pub from: String,
     pub to: String,
+    pub from_key: String,
+    pub to_key: String,
     pub count: usize,
     pub median_gap_s: i64,
     pub copies: usize,
@@ -127,7 +146,7 @@ struct Analysis {
     step_scores: Vec<score::StepScore>,
     entities: Vec<entities::Entity>,
     follows: Vec<graph::Follow>,
-    cases: Vec<entities::Case>,
+    tasks: Vec<tasks::Task>,
     workflows: Vec<(graph::Workflow, score::Scored)>,
     commitments: Vec<commitments::Commitment>,
 }
@@ -148,14 +167,27 @@ fn analyze(
         &overrides.field("name"),
     );
     let step_scores = score::score_steps(&steps, &episodes, judged, utc_offset_s);
-    let (entities, mut cases) = entities::build(&episodes);
+    let entities = entities::build(&episodes);
+    let acts = episode_actions(past, &episodes);
+    let mut tasks = tasks::build(&episodes, &entities, &acts);
+    let observed_days = episodes
+        .iter()
+        .map(|e| day(e.start, utc_offset_s))
+        .collect::<BTreeSet<_>>()
+        .len();
     let copies: Vec<(i64, &str)> = past
         .iter()
         .filter(|e| e.kind == "copy")
         .map(|e| (e.ts, e.payload.app.as_str()))
         .collect();
-    let follows = graph::follows(&episodes, &copies, utc_offset_s);
-    let mut workflows = graph::from_cases(&mut cases, &steps, &overrides.keys_with("split"));
+    let mut by_episode: Vec<Vec<usize>> = vec![Vec::new(); episodes.len()];
+    for (index, entity) in entities.iter().enumerate() {
+        for &episode in &entity.episodes {
+            by_episode[episode].push(index);
+        }
+    }
+    let follows = graph::follows(&episodes, &copies, &by_episode, utc_offset_s);
+    let mut workflows = graph::from_tasks(&mut tasks, &steps, &overrides.keys_with("split"));
     let routines = graph::from_chains(
         graph::chains(&follows),
         &follows,
@@ -164,19 +196,17 @@ fn analyze(
         &workflows,
     );
     workflows.extend(routines);
-    let commitments = commitments::build(events, spoken, &entities, &cases, &episodes, now);
-    let observed_days = episodes
-        .iter()
-        .map(|e| day(e.start, utc_offset_s))
-        .collect::<BTreeSet<_>>()
-        .len();
+    let linker = commitments::Linker::new(&tasks, &episodes);
+    let commitments = commitments::build(events, spoken, &linker, now);
+    let signals = signals::build(&episodes, &steps, spoken, &linker, utc_offset_s);
     let cx = score::Context {
         episodes: &episodes,
         steps: &steps,
         step_scores: &step_scores,
         follows: &follows,
-        cases: &cases,
+        tasks: &tasks,
         commitments: &commitments,
+        signals: &signals,
         overrides,
         observed_days,
         now,
@@ -194,15 +224,35 @@ fn analyze(
         step_scores,
         entities,
         follows,
-        cases,
+        tasks,
         workflows,
         commitments,
     }
 }
 
+/// The presses and edits of each episode, oldest first. Each belongs to the episode that spans its time.
+fn episode_actions(past: &[EventRow], episodes: &[episodes::Episode]) -> Vec<Vec<actions::Act>> {
+    let presses: Vec<&EventRow> = past
+        .iter()
+        .filter(|e| e.kind == "press" || e.kind == "edit")
+        .collect();
+    let spans: Vec<(i64, i64)> = episodes.iter().map(|e| (e.start, e.end)).collect();
+    let times: Vec<i64> = presses.iter().map(|e| e.ts).collect();
+    let mut out: Vec<Vec<actions::Act>> = (0..episodes.len()).map(|_| Vec::new()).collect();
+    for (press, episode) in presses.iter().zip(actions::attach(&spans, &times)) {
+        if let Some(episode) = episode {
+            out[episode].push(actions::act(&press.payload));
+        }
+    }
+    out
+}
+
 fn load_events(conn: &Connection, from: i64, to: i64) -> Result<Vec<EventRow>> {
+    let kinds = MAP_KINDS
+        .map(|kind| format!("'{}'", kind.as_str()))
+        .join(", ");
     let mut statement = conn.prepare_cached(&format!(
-        "SELECT ts, kind, source, json FROM events WHERE ts BETWEEN ?1 AND ?2 AND kind IN ({KNOWN_KINDS}) ORDER BY ts, id"
+        "SELECT ts, kind, source, json FROM events WHERE ts BETWEEN ?1 AND ?2 AND kind IN ({kinds}) ORDER BY ts, id"
     ))?;
     let rows = statement.query_map(params![from, to], |row| {
         let json: String = row.get(3)?;
@@ -218,7 +268,7 @@ fn load_events(conn: &Connection, from: i64, to: i64) -> Result<Vec<EventRow>> {
 
 fn load_spoken(conn: &Connection, from: i64, to: i64) -> Result<Vec<(i64, String)>> {
     let mut statement =
-        conn.prepare_cached("SELECT ts_start, text FROM utterances WHERE source = 'mic' AND ts_start BETWEEN ?1 AND ?2 ORDER BY ts_start")?;
+        conn.prepare_cached("SELECT start_ts, text FROM utterances WHERE source = 'mic' AND start_ts BETWEEN ?1 AND ?2 ORDER BY start_ts")?;
     let rows = statement.query_map(params![from, to], |row| Ok((row.get(0)?, row.get(1)?)))?;
     Ok(rows.collect::<std::result::Result<_, _>>()?)
 }
@@ -236,6 +286,15 @@ fn stable_id(variant: &str) -> i64 {
     (fnv1a(variant) >> 16) as i64
 }
 
+/// Root of `index` in a union-find forest, halving the path on the way.
+fn find(parent: &mut [usize], mut index: usize) -> usize {
+    while parent[index] != index {
+        parent[index] = parent[parent[index]];
+        index = parent[index];
+    }
+    index
+}
+
 fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
     let tx = conn.transaction()?;
     for table in [
@@ -244,7 +303,8 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
         "entities",
         "mentions",
         "follows",
-        "cases",
+        "tasks",
+        "task_episodes",
         "workflows",
         "commitments",
     ] {
@@ -263,7 +323,7 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 e.live
             ])?;
         }
-        let mut insert = tx.prepare("INSERT INTO steps(id, key, name, category, episodes, minutes, days, potential, reasons) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")?;
+        let mut insert = tx.prepare("INSERT INTO steps(id, key, name, category, episode_count, minutes, days, potential, reasons) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")?;
         for (i, (s, score)) in analysis.steps.iter().zip(&analysis.step_scores).enumerate() {
             let reasons = serde_json::to_string(&score.reasons)?;
             insert.execute(params![
@@ -278,8 +338,9 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 reasons
             ])?;
         }
-        let mut insert =
-            tx.prepare("INSERT INTO entities(id, kind, value, episodes) VALUES (?1, ?2, ?3, ?4)")?;
+        let mut insert = tx.prepare(
+            "INSERT INTO entities(id, kind, value, episode_count) VALUES (?1, ?2, ?3, ?4)",
+        )?;
         let mut mention =
             tx.prepare("INSERT INTO mentions(entity_id, episode_id) VALUES (?1, ?2)")?;
         for (i, e) in analysis.entities.iter().enumerate() {
@@ -293,7 +354,7 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 mention.execute(params![id(i), id(*episode)])?;
             }
         }
-        let mut insert = tx.prepare("INSERT INTO follows(from_step, to_step, count, median_gap_s, copies, days) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
+        let mut insert = tx.prepare("INSERT INTO follows(from_step_id, to_step_id, count, median_gap_s, copies, days) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
         for f in &analysis.follows {
             insert.execute(params![
                 id(f.from),
@@ -305,14 +366,28 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
             ])?;
         }
         let mut insert = tx.prepare(
-            "INSERT INTO cases(entity_id, first_ts, last_ts, variant) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO tasks(id, label, workflow_id, first_ts, last_ts, active_s) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )?;
-        for c in &analysis.cases {
-            let variant = c.workflow.map(|w| analysis.workflows[w].0.variant.as_str());
-            insert.execute(params![id(c.entity), c.first, c.last, variant])?;
+        let mut episode_link =
+            tx.prepare("INSERT INTO task_episodes(task_id, episode_id) VALUES (?1, ?2)")?;
+        for (i, t) in analysis.tasks.iter().enumerate() {
+            let workflow = t
+                .workflow
+                .map(|w| stable_id(&analysis.workflows[w].0.variant));
+            insert.execute(params![
+                id(i),
+                t.label(),
+                workflow,
+                t.first,
+                t.last,
+                t.active_s
+            ])?;
+            for &episode in &t.episodes {
+                episode_link.execute(params![id(i), id(episode)])?;
+            }
         }
         let mut insert = tx.prepare(
-            "INSERT OR IGNORE INTO workflows(id, variant, basis, name, sequence, case_count, hours_week, potential, desire, benefit, procrastination, kind, action, first_step, copies, enjoyment, client, hidden, rough, reasons)
+            "INSERT OR IGNORE INTO workflows(id, variant, basis, name, sequence, task_count, hours_week, potential, desire, benefit, procrastination, kind, action, first_step, copies, enjoyment, client, hidden, rough, reasons)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         )?;
         for (w, s) in &analysis.workflows {
@@ -321,22 +396,23 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 .iter()
                 .map(|&i| analysis.steps[i].key.as_str())
                 .collect();
-            let copies: Vec<(&str, &str, usize)> = s
+            let copies: Vec<(&str, &str, usize, usize)> = s
                 .copies
                 .iter()
-                .map(|&(a, b, n)| {
+                .map(|&(a, b, copied, retyped)| {
                     (
                         analysis.steps[a].key.as_str(),
                         analysis.steps[b].key.as_str(),
-                        n,
+                        copied,
+                        retyped,
                     )
                 })
                 .collect();
             insert.execute(params![
                 stable_id(&w.variant),
                 w.variant,
-                if matches!(w.basis, graph::Basis::Cases) {
-                    "cases"
+                if matches!(w.basis, graph::Basis::Tasks) {
+                    "tasks"
                 } else {
                     "chain"
                 },
@@ -359,14 +435,14 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 serde_json::to_string(&s.reasons)?,
             ])?;
         }
-        let mut insert = tx.prepare("INSERT INTO commitments(ts, source, text, due_ts, entity_id, overdue) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
+        let mut insert = tx.prepare("INSERT INTO commitments(ts, source, text, due_ts, task_id, overdue) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
         for c in &analysis.commitments {
             insert.execute(params![
                 c.ts,
                 c.source,
                 c.text,
                 c.due,
-                c.entity.map(id),
+                c.task.map(id),
                 c.overdue
             ])?;
         }
@@ -376,40 +452,34 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
 }
 
 impl Store {
-    /// Rebuilds episodes, steps, entities, follows, cases, workflows, commitments and scores
-    /// from the last 90 days, or the retention window if that is shorter. Only events up to `now`
-    /// make episodes; upcoming reminders (next 14 days) still become commitments. Corrections
-    /// apply here.
-    pub fn refresh(&mut self, now: i64) -> Result<RefreshStats> {
-        let from = now - WINDOW_DAYS.min(i64::from(self.retention_days)) * DAY;
+    /// Rebuilds episodes, steps, entities, follows, tasks, workflows, commitments and scores
+    /// from the last 90 days. Only events up to `when.now` make episodes; upcoming reminders (next
+    /// 14 days) still become commitments. Corrections apply here.
+    pub fn refresh(&mut self, when: Local) -> Result<RefreshStats> {
+        let Local { now, utc_offset_s } = when;
+        let from = now - WINDOW_DAYS * DAY;
         let events = load_events(&self.conn, from, now + UPCOMING_DAYS * DAY)?;
         let spoken = load_spoken(&self.conn, from, now)?;
         let overrides = Overrides::load(&self.conn)?;
         let judged = judgments::load(&self.conn)?;
-        let analysis = analyze(
-            &events,
-            &spoken,
-            &overrides,
-            &judged,
-            now,
-            self.utc_offset_s,
-        );
+        let analysis = analyze(&events, &spoken, &overrides, &judged, now, utc_offset_s);
         persist(&mut self.conn, &analysis)?;
         Ok(RefreshStats {
             episodes: analysis.episodes.len(),
             steps: analysis.steps.len(),
             entities: analysis.entities.len(),
             follows: analysis.follows.len(),
-            cases: analysis.cases.len(),
+            tasks: analysis.tasks.len(),
             workflows: analysis.workflows.len(),
             commitments: analysis.commitments.len(),
         })
     }
 
-    /// Visible workflows, best estimated benefit first.
+    /// Visible workflows, best estimated benefit first. Procrastination raises the rank: work that
+    /// is put off or fled from costs more than its hours.
     pub fn workflows(&self) -> Result<Vec<Workflow>> {
         self.read_workflows(
-            "WHERE hidden = 0 ORDER BY benefit DESC, hours_week DESC, id",
+            "WHERE hidden = 0 ORDER BY benefit * (1 + procrastination) DESC, hours_week DESC, id",
             params![],
         )
     }
@@ -442,7 +512,7 @@ impl Store {
     fn read_workflows(&self, clause: &str, args: impl rusqlite::Params) -> Result<Vec<Workflow>> {
         let steps = self.step_infos()?;
         let mut statement = self.conn.prepare(&format!(
-            "SELECT id, name, variant, basis, sequence, case_count, hours_week, potential, desire, benefit, procrastination,
+            "SELECT id, name, variant, basis, sequence, task_count, hours_week, potential, desire, benefit, procrastination,
                     kind, action, first_step, enjoyment, client, rough, reasons FROM workflows {clause}"
         ))?;
         let rows = statement.query_map(args, |row| {
@@ -454,7 +524,7 @@ impl Store {
                     variant: text(2)?,
                     basis: text(3)?,
                     steps: Vec::new(),
-                    case_count: row.get::<_, i64>(5)? as usize,
+                    task_count: row.get::<_, i64>(5)? as usize,
                     hours_week: row.get(6)?,
                     potential: row.get(7)?,
                     desire: row.get(8)?,
@@ -508,7 +578,7 @@ impl Store {
     pub fn step_links(&self, workflow: &Workflow) -> Result<Vec<StepLink>> {
         let mut statement = self.conn.prepare_cached(
             "SELECT f.count, f.median_gap_s, f.copies, f.days FROM follows f
-             JOIN steps a ON a.id = f.from_step JOIN steps b ON b.id = f.to_step
+             JOIN steps a ON a.id = f.from_step_id JOIN steps b ON b.id = f.to_step_id
              WHERE a.key = ?1 AND b.key = ?2",
         )?;
         let mut links = Vec::new();
@@ -518,6 +588,8 @@ impl Store {
                     Ok(StepLink {
                         from: pair[0].name.clone(),
                         to: pair[1].name.clone(),
+                        from_key: pair[0].key.clone(),
+                        to_key: pair[1].key.clone(),
                         count: row.get::<_, i64>(0)? as usize,
                         median_gap_s: row.get(1)?,
                         copies: row.get::<_, i64>(2)? as usize,
@@ -546,26 +618,27 @@ impl Store {
             params![id],
             |row| row.get(0),
         )?;
-        let copies: Vec<(String, String, usize)> = serde_json::from_str(&copies)?;
+        let copies: Vec<(String, String, usize, usize)> = serde_json::from_str(&copies)?;
         let copy_points = copies
             .iter()
-            .map(|(a, b, n)| CopyPoint {
+            .map(|(a, b, copied, retyped)| CopyPoint {
                 from: name(a),
                 to: name(b),
-                copies: *n,
+                copies: *copied,
+                retypes: *retyped,
             })
             .collect();
 
         let mut examples = Vec::new();
-        let mut cases = self.conn.prepare(
-            "SELECT c.entity_id, e.value, c.first_ts, c.last_ts FROM cases c JOIN entities e ON e.id = c.entity_id
-             WHERE c.variant = ?1 ORDER BY c.first_ts, c.entity_id LIMIT 3",
+        let mut tasks = self.conn.prepare(
+            "SELECT t.id, t.label, t.first_ts, t.last_ts FROM tasks t
+             WHERE t.workflow_id = ?1 ORDER BY t.first_ts, t.id LIMIT 3",
         )?;
         let mut path = self.conn.prepare(
-            "SELECT s.name FROM mentions m JOIN episodes ep ON ep.id = m.episode_id JOIN steps s ON s.id = ep.step_id
-             WHERE m.entity_id = ?1 ORDER BY ep.start_ts, ep.id",
+            "SELECT s.name FROM task_episodes te JOIN episodes ep ON ep.id = te.episode_id JOIN steps s ON s.id = ep.step_id
+             WHERE te.task_id = ?1 ORDER BY ep.start_ts, ep.id",
         )?;
-        let rows = cases.query_map(params![workflow.variant], |row| {
+        let rows = tasks.query_map(params![id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -574,13 +647,13 @@ impl Store {
             ))
         })?;
         for row in rows {
-            let (entity_id, entity, first_ts, last_ts) = row?;
+            let (task_id, label, first_ts, last_ts) = row?;
             let mut names: Vec<String> = path
-                .query_map(params![entity_id], |r| r.get(0))?
+                .query_map(params![task_id], |r| r.get(0))?
                 .collect::<std::result::Result<_, _>>()?;
             names.dedup();
             examples.push(CaseExample {
-                entity,
+                entity: label,
                 first_ts,
                 last_ts,
                 path: names,
@@ -588,11 +661,11 @@ impl Store {
         }
 
         let mut statement = self.conn.prepare(
-            "SELECT m.ts, m.source, m.text, m.due_ts, m.overdue FROM commitments m JOIN cases c ON c.entity_id = m.entity_id
-             WHERE c.variant = ?1 ORDER BY m.ts, m.id",
+            "SELECT m.ts, m.source, m.text, m.due_ts, m.overdue FROM commitments m JOIN tasks t ON t.id = m.task_id
+             WHERE t.workflow_id = ?1 ORDER BY m.ts, m.id",
         )?;
         let commitments = statement
-            .query_map(params![workflow.variant], |row| {
+            .query_map(params![id], |row| {
                 Ok(OpenCommitment {
                     ts: row.get(0)?,
                     source: row.get(1)?,

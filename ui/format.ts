@@ -1,5 +1,7 @@
 import { t } from "./i18n";
 
+export const MB = 1024 * 1024;
+
 export function hours(value: number): string {
   return value.toFixed(1);
 }

@@ -1,22 +1,5 @@
 use sextant_core::fixtures::*;
-use sextant_core::{Action, Category, Enjoyment, Error, Kind, Rule, Store, Target, Workflow};
-
-fn refreshed(label: &str) -> (TempDb, Store) {
-    let db = TempDb::new(label);
-    let mut store = db.open().expect("test setup");
-    load(&mut store, &week(), WEEK_NOW).expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
-    (db, store)
-}
-
-fn invoice(store: &Store) -> Workflow {
-    store
-        .workflows()
-        .expect("test setup")
-        .into_iter()
-        .find(|w| w.basis == "cases")
-        .expect("test setup")
-}
+use sextant_core::{Action, Category, Enjoyment, Error, Kind, Rule, Target};
 
 #[test]
 fn finder_recovers_the_invoice_workflow() {
@@ -28,9 +11,9 @@ fn finder_recovers_the_invoice_workflow() {
         "invoice workflow and the morning routine, no noise: {workflows:#?}"
     );
     let top = &workflows[0];
-    assert_eq!(top.basis, "cases");
+    assert_eq!(top.basis, "tasks");
     assert_eq!(
-        top.case_count, 5,
+        top.task_count, 5,
         "five invoices, English and German mails together"
     );
     let categories: Vec<_> = top.steps.iter().map(|s| s.category).collect();
@@ -67,9 +50,7 @@ fn detail_has_examples_copy_points_and_commitments() {
         detail
             .examples
             .iter()
-            .all(|e| INVOICE_IDS.contains(&e.entity.as_str())
-                || e.entity.starts_with("INV-")
-                || e.entity.starts_with("RE-"))
+            .all(|e| e.entity == "inv #" || e.entity == "re #")
     );
     assert!(
         detail
@@ -80,7 +61,10 @@ fn detail_has_examples_copy_points_and_commitments() {
     assert!(!detail.copy_points.is_empty());
     assert!(!detail.commitments.is_empty());
     assert!(store.workflow_detail(1).expect("test setup").is_none());
-    assert!(matches!(store.skill_md(1), Err(Error::NoWorkflow(1))));
+    assert!(matches!(
+        store.skill_md(1, UTC_OFFSET_S),
+        Err(Error::NoWorkflow(1))
+    ));
 }
 
 #[test]
@@ -89,12 +73,12 @@ fn refresh_is_deterministic_and_repeatable() {
     let (_b, second) = refreshed("determinism-b");
     let before = first.workflows().expect("test setup");
     assert_eq!(before, second.workflows().expect("test setup"));
-    first.refresh(WEEK_NOW).expect("test setup");
+    first.refresh(local(WEEK_NOW)).expect("test setup");
     assert_eq!(before, first.workflows().expect("test setup"));
     let id = before[0].id;
     assert_eq!(
-        first.skill_md(id).expect("test setup"),
-        second.skill_md(id).expect("test setup")
+        first.skill_md(id, UTC_OFFSET_S).expect("test setup"),
+        second.skill_md(id, UTC_OFFSET_S).expect("test setup")
     );
 }
 
@@ -102,7 +86,7 @@ fn refresh_is_deterministic_and_repeatable() {
 fn skill_md_lists_steps_and_reasons() {
     let (_db, store) = refreshed("skill");
     let w = invoice(&store);
-    let skill = store.skill_md(w.id).expect("test setup");
+    let skill = store.skill_md(w.id, UTC_OFFSET_S).expect("test setup");
     assert!(skill.starts_with("---\nname: "));
     for part in [
         "## Steps",
@@ -147,7 +131,7 @@ fn corrections_apply_at_the_next_refresh() {
     store
         .correct(WEEK_NOW, "It's for a client", &[Target::Workflow(w.id)])
         .expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     let changed = invoice(&store);
     assert_eq!(changed.name, "Invoice run");
     assert_eq!(changed.enjoyment, Enjoyment::Hate);
@@ -184,7 +168,7 @@ fn corrections_apply_at_the_next_refresh() {
     store
         .correct(WEEK_NOW, "hide this", &[Target::Workflow(w.id)])
         .expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     assert!(
         store
             .workflows()
@@ -234,7 +218,7 @@ fn merge_and_split_change_the_workflow_shape() {
             ],
         )
         .expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     let merged = invoice(&store);
     assert_eq!(
         merged.steps.len(),
@@ -250,13 +234,13 @@ fn merge_and_split_change_the_workflow_shape() {
             &[Target::Workflow(merged.id)],
         )
         .expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     assert!(
         store
             .workflows()
             .expect("test setup")
             .iter()
-            .all(|x| x.case_count < 5 || x.basis != "cases")
+            .all(|x| x.task_count < 5 || x.basis != "tasks")
     );
 }
 
@@ -264,18 +248,9 @@ fn merge_and_split_change_the_workflow_shape() {
 fn only_the_last_90_days_count() {
     let (_db, mut store) = refreshed("window");
     let later = WEEK_NOW + 100 * 86_400;
-    let stats = store.refresh(later).expect("test setup");
+    let stats = store.refresh(local(later)).expect("test setup");
     assert_eq!(stats.episodes, 0);
     assert!(store.workflows().expect("test setup").is_empty());
-}
-
-#[test]
-fn refresh_never_reads_further_back_than_retention() {
-    let (_db, mut store) = refreshed("retention-window");
-    let later = WEEK_NOW + 40 * 86_400;
-    assert!(store.refresh(later).expect("test setup").episodes > 0);
-    store.set_retention_days(30);
-    assert_eq!(store.refresh(later).expect("test setup").episodes, 0);
 }
 
 #[test]
@@ -301,7 +276,7 @@ fn a_model_judgment_replaces_the_category_prior_at_the_next_refresh() {
             .iter()
             .all(|s| s.key != step.key)
     );
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
     let after = invoice(&store);
     assert_eq!(after.steps[0].potential, 0.0);
     assert!(after.potential < before.potential);

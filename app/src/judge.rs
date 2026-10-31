@@ -12,6 +12,7 @@ use crate::clock;
 use crate::commands::AppState;
 use crate::engine::Engine;
 use crate::platform::language::{self, Step};
+use crate::rewind;
 
 const EVERY: Duration = Duration::from_secs(5 * 60);
 /// Steps judged per round; each takes the model a few seconds.
@@ -24,7 +25,7 @@ pub fn spawn(app: AppHandle) -> Result<()> {
             loop {
                 thread::sleep(EVERY);
                 if let Ok(engine) = app.state::<AppState>().engine()
-                    && let Err(err) = round(engine)
+                    && let Err(err) = round(&app, engine)
                 {
                     eprintln!("judging steps failed: {err:#}");
                 }
@@ -34,10 +35,13 @@ pub fn spawn(app: AppHandle) -> Result<()> {
     Ok(())
 }
 
-fn round(engine: &Engine) -> Result<()> {
+/// Judges up to [`PER_ROUND`] steps, stopping early while the rewind panel is open so its answer
+/// does not queue behind a judgment.
+fn round(app: &AppHandle, engine: &Engine) -> Result<()> {
     let steps = engine.read(|store| store.unjudged_steps(PER_ROUND))?;
     let judged: Vec<(String, f64, String)> = steps
         .iter()
+        .take_while(|_| !rewind::is_open(app))
         .filter_map(|step| {
             let (share, reason) = language::judge(&Step {
                 name: &step.name,

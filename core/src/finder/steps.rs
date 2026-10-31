@@ -3,26 +3,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::episodes::Episode;
-use crate::text::jaccard;
-
-macro_rules! text_enum {
-    ($(#[$meta:meta])* $name:ident { $($variant:ident => $text:literal),+ $(,)? }) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-        pub enum $name { $($variant),+ }
-
-        impl $name {
-            pub fn as_str(self) -> &'static str {
-                match self { $(Self::$variant => $text),+ }
-            }
-
-            pub fn parse(text: &str) -> Option<Self> {
-                match text { $($text => Some(Self::$variant),)+ _ => None }
-            }
-        }
-    };
-}
-pub(crate) use text_enum;
+use super::find;
+use crate::text::{jaccard, text_enum};
 
 text_enum!(Category {
     Meeting => "meeting",
@@ -269,14 +251,6 @@ pub(crate) fn build(
         }
     }
     steps
-}
-
-fn find(parent: &mut [usize], mut i: usize) -> usize {
-    while parent[i] != i {
-        parent[i] = parent[parent[i]];
-        i = parent[i];
-    }
-    i
 }
 
 /// Name and key from the tokens shared by at least half of the group's episodes.

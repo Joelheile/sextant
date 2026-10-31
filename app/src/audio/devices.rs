@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use crossbeam_queue::ArrayQueue;
 use sextant_core::audio::MicUser;
+use sextant_core::capture::Browser;
 
 /// A block of interleaved samples as the OS delivered it. Never printed: only its length is.
 pub struct Chunk {
@@ -29,6 +30,9 @@ pub trait Devices: Send + 'static {
 
     /// The processes that have mic input running right now.
     fn mic_users(&mut self) -> Vec<MicUser>;
+    /// Whether the front window of a browser is private. `None` when it did not say, which counts
+    /// as private.
+    fn front_window_private(&mut self, bundle_id: &str, browser: Browser) -> Option<bool>;
     fn open_mic(&mut self, into: Inbox) -> Result<Self::Stream>;
     /// The sound the given processes play.
     fn open_system(&mut self, pids: &[i32], into: Inbox) -> Result<Self::Stream>;

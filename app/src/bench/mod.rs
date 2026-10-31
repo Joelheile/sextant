@@ -103,7 +103,6 @@ fn live_in(dir: &Path, seconds: u64) -> Result<()> {
     getrandom::fill(&mut key).map_err(|err| anyhow::anyhow!("no random numbers: {err}"))?;
     getrandom::fill(&mut secret).map_err(|err| anyhow::anyhow!("no random numbers: {err}"))?;
     let mut store = Store::open(&db, &key, &secret).context("opening the scratch database")?;
-    store.set_utc_offset(clock::utc_offset(clock::now()));
 
     let (record, records) = mpsc::channel::<(Item, Instant)>();
     let sink: Sink = Arc::new(move |item, taken| {
@@ -210,6 +209,8 @@ fn report(
         }
     );
     println!("copies seen            {}", Stats::get(&stats.copies));
+    println!("presses seen           {}", Stats::get(&stats.presses));
+    println!("field edits seen       {}", Stats::get(&stats.edits));
     if Stats::get(&stats.captured) == 0 && Stats::get(&stats.capture_errors) > 0 {
         println!(
             "no frame was captured: grant Screen Recording to the app that runs this command \

@@ -2,13 +2,22 @@
 //! thread until the model answers, and returns `None` when Apple Intelligence is off, the model
 //! refuses or the output does not parse. The caller then falls back to rules.
 
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, c_char, c_void};
 
 use serde::{Deserialize, Serialize};
 
+/// Receives the answer text so far; `context` is the `TextSink` passed to the call.
+type Forward = unsafe extern "C" fn(context: *mut c_void, text: *const c_char);
+type TextSink<'a> = &'a mut (dyn FnMut(&str) + Send);
+
 unsafe extern "C" {
+    fn sextant_language_prewarm();
     fn sextant_language_plan(question: *const c_char) -> *mut c_char;
-    fn sextant_language_answer(input: *const c_char) -> *mut c_char;
+    fn sextant_language_answer(
+        input: *const c_char,
+        forward: Forward,
+        context: *mut c_void,
+    ) -> *mut c_char;
     fn sextant_language_judge(input: *const c_char) -> *mut c_char;
     fn sextant_language_free(pointer: *mut c_char);
 }
@@ -58,7 +67,7 @@ struct AnswerInput<'a> {
 
 /// Calls `function` with `input` and parses the JSON it returns.
 fn call<T: for<'de> Deserialize<'de>>(
-    function: unsafe extern "C" fn(*const c_char) -> *mut c_char,
+    function: impl FnOnce(*const c_char) -> *mut c_char,
     input: &str,
 ) -> Option<T> {
     let input = CString::new(input).ok()?;
@@ -75,21 +84,51 @@ fn call<T: for<'de> Deserialize<'de>>(
     }
 }
 
-/// Turns a question into search terms and a time span.
-pub fn plan(question: &str) -> Option<Plan> {
-    call(sextant_language_plan, question)
+/// Loads the model in the background, so the next [`plan`] starts warm. Returns at once.
+pub fn prewarm() {
+    // SAFETY: takes no arguments and only starts loading the model.
+    unsafe { sextant_language_prewarm() }
 }
 
-/// A short answer to `question` from `notes`, citing one of them.
-pub fn answer(question: &str, notes: &[Note]) -> Option<Answer> {
+/// Turns a question into search terms and a time span.
+pub fn plan(question: &str) -> Option<Plan> {
+    // SAFETY: `call` passes a valid C string.
+    call(|input| unsafe { sextant_language_plan(input) }, question)
+}
+
+/// A short answer to `question` from `notes`, citing one of them. `on_text` gets the answer text
+/// so far each time the model adds to it.
+pub fn answer(
+    question: &str,
+    notes: &[Note],
+    mut on_text: impl FnMut(&str) + Send,
+) -> Option<Answer> {
     let input = serde_json::to_string(&AnswerInput { question, notes }).ok()?;
-    call(sextant_language_answer, &input)
+    let mut sink: TextSink = &mut on_text;
+    let context = (&raw mut sink).cast::<c_void>();
+    // SAFETY: `call` passes a valid C string. `context` points at `sink`, which lives until the
+    // call returns, and the model calls `forward` only before then.
+    call(
+        |input| unsafe { sextant_language_answer(input, forward, context) },
+        &input,
+    )
+}
+
+/// Hands streamed text from Swift to the `TextSink` behind `context`.
+unsafe extern "C" fn forward(context: *mut c_void, text: *const c_char) {
+    // SAFETY: `context` is the `TextSink` from `answer`, and `text` a C string Swift keeps alive
+    // for this call.
+    let (sink, text) = unsafe { (&mut *context.cast::<TextSink>(), CStr::from_ptr(text)) };
+    if let Ok(text) = text.to_str() {
+        sink(text);
+    }
 }
 
 /// The share of `step` an agent could do, 0.1 to 0.9, and why.
 pub fn judge(step: &Step) -> Option<(f64, String)> {
     let input = serde_json::to_string(step).ok()?;
-    let judgment: Judgment = call(sextant_language_judge, &input)?;
+    // SAFETY: `call` passes a valid C string.
+    let judgment: Judgment = call(|input| unsafe { sextant_language_judge(input) }, &input)?;
     let share = match judgment.share.as_str() {
         "not at all" => 0.1,
         "a little" => 0.3,
@@ -136,7 +175,15 @@ mod tests {
                 ],
             },
         ];
-        let answer = answer("What did I tell Anna about pricing?", &notes).expect("answer");
+        let mut streamed = String::new();
+        let answer = answer("What did I tell Anna about pricing?", &notes, |text| {
+            streamed = text.to_string();
+        })
+        .expect("answer");
+        assert_eq!(
+            streamed, answer.text,
+            "the last streamed text is the answer"
+        );
         println!("{answer:?}");
         assert_eq!(answer.note, 2);
         assert!(answer.text.contains("40"));

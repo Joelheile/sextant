@@ -3,6 +3,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use objc2_app_kit::NSWorkspace;
@@ -20,8 +21,10 @@ use super::automation;
 use super::drag_panel;
 use super::eventkit::{self, Kind};
 use super::live::Mac;
+use super::process;
 use super::speech::{self, Parakeet};
 use super::vision::{CHOSEN, Recognizer, Timing, fixture_timings};
+use super::{Prompt, SettingsPane};
 use crate::audio;
 use crate::capture::{Control, Pipeline, Sink};
 use crate::clock;
@@ -35,6 +38,11 @@ const CHROMIUM: [(&str, &str); 4] = [
 ];
 const REPO_DEPTH: u32 = 3;
 const MAX_FILES: usize = 5000;
+const GIT_TIMEOUT: Duration = Duration::from_secs(30);
+const SPOTLIGHT_TIMEOUT: Duration = Duration::from_secs(30);
+const OPEN_TIMEOUT: Duration = Duration::from_secs(5);
+/// The folder dialog waits for a person.
+const DIALOG_TIMEOUT: Duration = Duration::from_secs(600);
 
 pub struct System;
 
@@ -100,13 +108,15 @@ impl Platform for System {
 
     fn git_log(&self, repo: &str, since: i64) -> CoreResult<String> {
         let age = (clock::now() - since).max(0);
-        let output = Command::new("git")
-            .args(["-C", repo, "log", "--all"])
-            .arg(format!("--since={age} seconds ago"))
-            .arg("--format=%H%x09%at%x09%s")
-            .env("GIT_OPTIONAL_LOCKS", "0")
-            .output()
-            .map_err(|err| platform_error("running git", err))?;
+        let output = process::output(
+            Command::new("git")
+                .args(["-C", repo, "log", "--all"])
+                .arg(format!("--since={age} seconds ago"))
+                .arg("--format=%H%x09%at%x09%s")
+                .env("GIT_OPTIONAL_LOCKS", "0"),
+            GIT_TIMEOUT,
+        )
+        .map_err(|err| platform_error("running git", err))?;
         if !output.status.success() {
             return Err(Error::Platform("git log failed".into()));
         }
@@ -115,13 +125,15 @@ impl Platform for System {
 
     fn recent_files(&self, since: i64) -> CoreResult<Vec<FileRecord>> {
         let age = (clock::now() - since).max(0);
-        let output = Command::new("mdfind")
-            .arg("-onlyin")
-            .arg(home())
-            .args(["-attr", "kMDItemLastUsedDate"])
-            .arg(format!("kMDItemLastUsedDate >= $time.now(-{age})"))
-            .output()
-            .map_err(|err| platform_error("running mdfind", err))?;
+        let output = process::output(
+            Command::new("mdfind")
+                .arg("-onlyin")
+                .arg(home())
+                .args(["-attr", "kMDItemLastUsedDate"])
+                .arg(format!("kMDItemLastUsedDate >= $time.now(-{age})")),
+            SPOTLIGHT_TIMEOUT,
+        )
+        .map_err(|err| platform_error("running mdfind", err))?;
         let mut files = parse_spotlight(&String::from_utf8_lossy(&output.stdout));
         files.sort_by_key(|f| std::cmp::Reverse(f.last_used));
         files.truncate(MAX_FILES);
@@ -244,14 +256,13 @@ fn request_automation() -> bool {
     !answers.is_empty() && answers.iter().all(|answer| *answer == Some(true))
 }
 
-/// Shows the system prompt for `calendar`, `reminders` or `automation`. Calendar and reminders
-/// block until the user answers; automation returns whether access is granted right now.
-pub fn request_permission(name: &str) -> Result<bool> {
-    let kind = match name {
-        "calendar" => Kind::Events,
-        "reminders" => Kind::Reminders,
-        "automation" => return Ok(request_automation()),
-        _ => bail!("{name} has no system prompt"),
+/// Shows the system prompt. Calendar and reminders block until the user answers; automation
+/// returns whether access is granted right now.
+pub fn request_permission(prompt: Prompt) -> Result<bool> {
+    let kind = match prompt {
+        Prompt::Calendar => Kind::Events,
+        Prompt::Reminders => Kind::Reminders,
+        Prompt::Automation => return Ok(request_automation()),
     };
     eventkit::request(kind).context("asking for permission")
 }
@@ -279,54 +290,51 @@ pub fn start_audio(control: Arc<Control>, sink: Sink, models: &Path) -> Result<a
     audio::Pipeline::start(MacAudio, speech::silero(models), speech, control, sink)
 }
 
-const PANES: [(&str, &str); 6] = [
-    ("full-disk-access", "Privacy_AllFiles"),
-    ("calendars", "Privacy_Calendars"),
-    ("reminders", "Privacy_Reminders"),
-    ("screen-recording", "Privacy_ScreenCapture"),
-    ("accessibility", "Privacy_Accessibility"),
-    ("automation", "Privacy_Automation"),
-];
+/// The `Privacy_*` anchor of a pane in the Privacy & Security settings.
+fn anchor(pane: SettingsPane) -> &'static str {
+    match pane {
+        SettingsPane::FullDiskAccess => "Privacy_AllFiles",
+        SettingsPane::Calendars => "Privacy_Calendars",
+        SettingsPane::Reminders => "Privacy_Reminders",
+        SettingsPane::ScreenRecording => "Privacy_ScreenCapture",
+        SettingsPane::Accessibility => "Privacy_Accessibility",
+        SettingsPane::Automation => "Privacy_Automation",
+    }
+}
 
-/// Tells whether a permission is granted.
-type Granted = fn() -> bool;
-
-/// The panes whose list takes an app dragged in, with the check that tells when it is allowed.
-const DRAG_PANES: [(&str, Granted); 3] = [
-    ("full-disk-access", || safari_status() == "granted"),
-    ("screen-recording", || {
-        screen_recording_status() == "granted"
-    }),
-    ("accessibility", || accessibility_status() == "granted"),
-];
+/// For the panes whose list takes an app dragged in, the check that tells when it is allowed.
+fn drag_check(pane: SettingsPane) -> Option<fn() -> bool> {
+    match pane {
+        SettingsPane::FullDiskAccess => Some(|| safari_status() == "granted"),
+        SettingsPane::ScreenRecording => Some(|| screen_recording_status() == "granted"),
+        SettingsPane::Accessibility => Some(|| accessibility_status() == "granted"),
+        _ => None,
+    }
+}
 
 /// Opens `pane` in System Settings. For a pane that takes a dragged app, `hint` also opens the
 /// drag panel with that text.
-pub fn open_settings_pane(pane: &str, hint: Option<&str>) -> Result<()> {
-    let (_, anchor) = PANES
-        .iter()
-        .find(|(name, _)| *name == pane)
-        .with_context(|| format!("unknown settings pane {pane}"))?;
-    let status = Command::new("open")
-        .arg(format!(
-            "x-apple.systempreferences:com.apple.preference.security?{anchor}"
-        ))
-        .status()
-        .context("running open")?;
-    if !status.success() {
+pub fn open_settings_pane(pane: SettingsPane, hint: Option<&str>) -> Result<()> {
+    let output = process::output(
+        Command::new("open").arg(format!(
+            "x-apple.systempreferences:com.apple.preference.security?{}",
+            anchor(pane)
+        )),
+        OPEN_TIMEOUT,
+    )?;
+    if !output.status.success() {
         bail!("System Settings did not open");
     }
-    let drag = DRAG_PANES.iter().find(|(name, _)| *name == pane);
-    if let (Some((_, granted)), Some(hint)) = (drag, hint) {
-        drag_panel::show(hint.to_string(), *granted);
+    if let (Some(granted), Some(hint)) = (drag_check(pane), hint) {
+        drag_panel::show(hint.to_string(), granted);
     }
     Ok(())
 }
 
 /// The macOS folder dialog. `None` when the user cancels.
 pub fn pick_folder(prompt: &str) -> Result<Option<String>> {
-    let output = Command::new("osascript")
-        .args([
+    let output = process::output(
+        Command::new("osascript").args([
             "-e",
             "on run argv",
             "-e",
@@ -334,9 +342,9 @@ pub fn pick_folder(prompt: &str) -> Result<Option<String>> {
             "-e",
             "end run",
             prompt,
-        ])
-        .output()
-        .context("running osascript")?;
+        ]),
+        DIALOG_TIMEOUT,
+    )?;
     if !output.status.success() {
         return Ok(None);
     }

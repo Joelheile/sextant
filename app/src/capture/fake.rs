@@ -2,11 +2,14 @@
 //! bench run without any permission. Pictures are stand-ins: a seed that decides the thumbnail
 //! and the lines the "OCR" returns.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread::Thread;
 
 use anyhow::{Result, bail};
-use sextant_core::capture::{Browser, RawLine, Thumb};
+use sextant_core::OcrLine;
+use sextant_core::capture::{Browser, Element, Field, RawLine, Thumb};
 
 use super::sensors::{App, Ocr, Presence, Sensors, Shot, Tab, WindowText};
 
@@ -25,7 +28,14 @@ pub struct Scene {
     /// Same seed, same picture: the diff gate sees no change.
     pub picture: u64,
     pub lines: Vec<String>,
+    /// What the Accessibility tree says, one line per row.
+    pub tree: Vec<String>,
     pub clipboard: i64,
+    pub window: u64,
+    /// The focused element and its value.
+    pub field: Option<Field>,
+    /// A press when the scene starts: the element under the pointer and its parents.
+    pub click: Option<Vec<Element>>,
 }
 
 impl Scene {
@@ -44,7 +54,11 @@ impl Scene {
             }),
             picture: 0,
             lines: Vec::new(),
+            tree: Vec::new(),
             clipboard: 0,
+            window: 0,
+            field: None,
+            click: None,
         }
     }
 }
@@ -58,8 +72,14 @@ pub struct Calls {
     pub secure_input: u32,
     pub window_text: u32,
     pub browser_tab: u32,
+    /// Accessibility tree reads.
+    pub tree: u32,
     /// App name of every capture call.
     pub captured: Vec<String>,
+    pub window_id: u32,
+    pub element_chain: u32,
+    pub focused_field: u32,
+    pub reread: u32,
 }
 
 impl Calls {
@@ -69,6 +89,10 @@ impl Calls {
             + self.secure_input
             + self.window_text
             + self.browser_tab
+            + self.tree
+            + self.element_chain
+            + self.focused_field
+            + self.reread
             + self.captured.len() as u32
     }
 }
@@ -77,6 +101,8 @@ pub struct Fake {
     script: Vec<Scene>,
     clock: Arc<AtomicI64>,
     calls: Arc<Mutex<Calls>>,
+    /// Scenes whose press was handed out.
+    clicked: HashSet<usize>,
 }
 
 impl Fake {
@@ -87,17 +113,22 @@ impl Fake {
             script,
             clock,
             calls: calls.clone(),
+            clicked: HashSet::new(),
         };
         (fake, calls)
     }
 
-    fn scene(&self) -> Scene {
+    fn index(&self) -> usize {
         let now = self.clock.load(Ordering::Relaxed);
         self.script
             .iter()
-            .rev()
-            .find(|scene| scene.at_ms <= now)
-            .or(self.script.first())
+            .rposition(|scene| scene.at_ms <= now)
+            .unwrap_or(0)
+    }
+
+    fn scene(&self) -> Scene {
+        self.script
+            .get(self.index())
             .cloned()
             .unwrap_or_else(|| Scene::new(0))
     }
@@ -132,6 +163,11 @@ impl Sensors for Fake {
         self.scene().app
     }
 
+    fn window_id(&mut self, _app: &App) -> u64 {
+        self.log(|calls| calls.window_id += 1);
+        self.scene().window
+    }
+
     fn secure_input(&mut self) -> bool {
         self.log(|calls| calls.secure_input += 1);
         self.scene().secure_input
@@ -150,6 +186,19 @@ impl Sensors for Fake {
         }
     }
 
+    fn window_lines(&mut self, _app: &App) -> Vec<OcrLine> {
+        self.log(|calls| calls.tree += 1);
+        self.scene()
+            .tree
+            .into_iter()
+            .enumerate()
+            .map(|(row, text)| OcrLine {
+                text,
+                bbox: [10, 10 + row as u8 * 8, 150, 5],
+            })
+            .collect()
+    }
+
     fn capture(&mut self, app: &App) -> Result<Shot<Vec<String>>> {
         self.log(|calls| calls.captured.push(app.name.clone()));
         let scene = self.scene();
@@ -157,6 +206,43 @@ impl Sensors for Fake {
             thumb: picture(scene.picture),
             image: scene.lines,
         })
+    }
+
+    fn clicks(&mut self) -> Vec<[f64; 2]> {
+        let index = self.index();
+        let pending = self.script.get(index).is_some_and(|s| s.click.is_some());
+        if pending && self.clicked.insert(index) {
+            vec![[index as f64, 0.0]]
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn wake_on_click(&mut self, _thread: Thread) {}
+
+    fn element_chain(&mut self, _app: &App, point: [f64; 2]) -> Vec<Element> {
+        self.log(|calls| calls.element_chain += 1);
+        self.script
+            .get(point[0] as usize)
+            .and_then(|scene| scene.click.clone())
+            .unwrap_or_default()
+    }
+
+    fn focused_field(&mut self, _app: &App) -> Option<Field> {
+        self.log(|calls| calls.focused_field += 1);
+        self.scene().field
+    }
+
+    /// The value the field has in the newest scene that shows it, as if read right now.
+    fn reread(&mut self, id: u64) -> Option<String> {
+        self.log(|calls| calls.reread += 1);
+        self.script
+            .iter()
+            .take(self.index() + 1)
+            .rev()
+            .filter_map(|scene| scene.field.as_ref())
+            .find(|field| field.id == id)
+            .and_then(|field| field.value.clone())
     }
 }
 

@@ -8,7 +8,7 @@ use rusqlite::params;
 
 use crate::error::Result;
 use crate::store::Store;
-use crate::time::{DAY, day};
+use crate::time::{DAY, Local, day};
 
 /// Days with data needed on each side of a handoff.
 pub const MIN_DAYS: usize = 3;
@@ -78,18 +78,19 @@ fn side<'a>(
 }
 
 impl Store {
-    /// Every reported handoff, newest first, measured as of `now`.
-    pub fn results(&self, now: i64) -> Result<Vec<Measurement>> {
+    /// Every reported handoff, newest first, measured as of `when.now`.
+    pub fn results(&self, when: Local) -> Result<Vec<Measurement>> {
+        let Local { now, utc_offset_s } = when;
         let handoffs = self.handoffs()?;
         let Some(first) = handoffs.iter().map(|h| h.ts).min() else {
             return Ok(Vec::new());
         };
-        let days = self.episode_days(first - LOOKBACK_DAYS * DAY, now)?;
-        let today = day(now, self.utc_offset_s);
+        let days = self.episode_days(first - LOOKBACK_DAYS * DAY, now, utc_offset_s)?;
+        let today = day(now, utc_offset_s);
         Ok(handoffs
             .into_iter()
             .map(|h| {
-                let cut = day(h.ts, self.utc_offset_s);
+                let cut = day(h.ts, utc_offset_s);
                 let (days_before, hours_before) =
                     side(days.range(..cut).rev().map(|(_, s)| s), &h.sequence);
                 let (days_after, hours_after) =
@@ -151,7 +152,7 @@ impl Store {
         Ok(by_workflow)
     }
 
-    fn episode_days(&self, from: i64, to: i64) -> Result<Days> {
+    fn episode_days(&self, from: i64, to: i64, utc_offset_s: i32) -> Result<Days> {
         let mut statement = self.conn.prepare(
             "SELECT e.start_ts, e.end_ts, s.key FROM episodes e JOIN steps s ON s.id = e.step_id
              WHERE e.start_ts BETWEEN ?1 AND ?2",
@@ -161,7 +162,7 @@ impl Store {
         while let Some(row) = rows.next()? {
             let (start, end): (i64, i64) = (row.get(0)?, row.get(1)?);
             *days
-                .entry(day(start, self.utc_offset_s))
+                .entry(day(start, utc_offset_s))
                 .or_default()
                 .entry(row.get(2)?)
                 .or_default() += end - start;

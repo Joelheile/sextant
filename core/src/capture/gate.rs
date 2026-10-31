@@ -2,7 +2,7 @@
 //! [`session`] before any OS call, [`app`] before the window is read, [`secure_input`] and [`tab`]
 //! before a frame exists. A failed gate means no capture call is made at all.
 
-use super::browser::Browser;
+use super::browser::{Browser, classify};
 use crate::settings::Settings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +73,23 @@ pub fn tab(private: Option<bool>) -> Result<(), Blocked> {
     }
 }
 
+/// Call audio goes through the same gates as the screen (plan.md §4): no stream for an excluded
+/// app, and none for a browser unless its front window reports that it is not private.
+/// `front_window_private` is only called once the app gate has passed.
+pub fn call(
+    settings: &Settings,
+    name: &str,
+    bundle_id: &str,
+    front_window_private: impl FnOnce(Browser) -> Option<bool>,
+) -> Result<(), Blocked> {
+    let browser = classify(bundle_id);
+    app(settings, name, browser)?;
+    match browser {
+        Some(browser) => tab(front_window_private(browser)),
+        None => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,6 +102,7 @@ mod tests {
         settings.live.metadata = false;
         settings.live.ocr = false;
         settings.live.copy = false;
+        settings.live.actions = false;
         assert_eq!(session(&settings, false), Err(Blocked::SourceOff));
 
         let settings = Settings::default();
@@ -110,5 +128,48 @@ mod tests {
         let mut settings = Settings::default();
         settings.live.opaque_browsers = true;
         assert_eq!(app(&settings, "Safari", Some(Browser::Opaque)), Ok(()));
+    }
+
+    #[test]
+    fn call_audio_obeys_the_screen_gates() {
+        let settings = Settings::default();
+        let never = |_| panic!("no browser, no window to ask");
+        assert_eq!(call(&settings, "zoom.us", "us.zoom.xos", never), Ok(()));
+        assert_eq!(
+            call(
+                &settings,
+                "Signal",
+                "org.whispersystems.signal-desktop",
+                never
+            ),
+            Err(Blocked::ExcludedApp)
+        );
+
+        let chrome = "com.google.Chrome";
+        assert_eq!(
+            call(&settings, "Google Chrome", chrome, |_| Some(false)),
+            Ok(())
+        );
+        assert_eq!(
+            call(&settings, "Google Chrome", chrome, |_| Some(true)),
+            Err(Blocked::PrivateWindow)
+        );
+        assert_eq!(
+            call(&settings, "Google Chrome", chrome, |_| None),
+            Err(Blocked::TabUnknown)
+        );
+        assert_eq!(
+            call(&settings, "Safari", "com.apple.Safari", never),
+            Err(Blocked::OpaqueBrowser)
+        );
+
+        let excluded = Settings {
+            excluded_apps: vec!["Google Chrome".into()],
+            ..Settings::default()
+        };
+        assert_eq!(
+            call(&excluded, "Google Chrome", chrome, never),
+            Err(Blocked::ExcludedApp)
+        );
     }
 }

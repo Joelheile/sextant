@@ -63,7 +63,7 @@ mod tests {
     use std::path::PathBuf;
 
     use sextant_core::Store;
-    use sextant_core::fixtures::{TEST_KEY, TEST_SECRET, WEEK_NOW, load, week};
+    use sextant_core::fixtures::{TEST_KEY, TEST_SECRET, WEEK_NOW, load, local, week};
 
     use super::*;
     use crate::{home, prefs};
@@ -90,7 +90,7 @@ mod tests {
         let mut store =
             Store::open(&home::db_path(&dir), &TEST_KEY, &TEST_SECRET).expect("test setup");
         load(&mut store, &week(), WEEK_NOW).expect("test setup");
-        store.refresh(WEEK_NOW).expect("test setup");
+        store.refresh(local(WEEK_NOW)).expect("test setup");
         drop(store);
         prefs::update(&dir, |s| s.onboarded = true).expect("test setup");
         fs::create_dir_all(dir.join("models")).expect("test setup");
@@ -105,10 +105,11 @@ mod tests {
         let dir = populated("delete");
         let engine = Engine::start(&dir, &TEST_KEY, |_, _| {}).expect("test setup");
         assert!(
-            !engine
-                .read(|store| store.workflows())
+            engine
+                .read(|store| store.counts())
                 .expect("test setup")
-                .is_empty()
+                .events
+                > 0
         );
         assert!(storage_used(&dir) > 4096);
         let vault = FakeVault(Cell::new(true));

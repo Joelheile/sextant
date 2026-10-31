@@ -4,7 +4,7 @@
 
 use crate::error::Result;
 use crate::redact::redact;
-use crate::sessions::Session;
+use crate::sessions::{SESSION_GAP_S, Session};
 use crate::settings::Settings;
 use crate::store::Store;
 use crate::text::words;
@@ -187,8 +187,8 @@ impl Store {
                         && s.app == found.app
                         && s.title == found.title
                         && s.url == found.url
-                        && s.start <= found.end
-                        && found.start <= s.end
+                        && s.start <= found.end + SESSION_GAP_S
+                        && found.start <= s.end + SESSION_GAP_S
                 });
                 match same {
                     Some(session) => {

@@ -1,5 +1,5 @@
 //! Call detection (plan.md §3): a call is on when another process, not Sextant, has mic input
-//! running and it is a known call app or one the user marked. Browsers count as Meet, Teams and
+//! running and it is a known call app. Browsers count as Meet, Teams and
 //! Webex in a tab, because a process cannot tell which tab holds the mic.
 
 /// Bundle ids of the known call apps. A helper process (`<id>.helper`) belongs to its app.
@@ -47,9 +47,8 @@ pub fn belongs(app_id: &str, bundle_id: &str) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
 }
 
-/// The call among the processes using the mic. `marked` holds the bundle ids the user marked as
-/// call apps. Sextant's own pid never counts.
-pub fn detect(users: &[MicUser], own_pid: i32, marked: &[String]) -> Option<Call> {
+/// The call among the processes using the mic. Sextant's own pid never counts.
+pub fn detect(users: &[MicUser], own_pid: i32) -> Option<Call> {
     users
         .iter()
         .filter(|user| user.pid != own_pid)
@@ -57,7 +56,6 @@ pub fn detect(users: &[MicUser], own_pid: i32, marked: &[String]) -> Option<Call
             let known = CALL_APPS
                 .iter()
                 .copied()
-                .chain(marked.iter().map(String::as_str))
                 .find(|app| belongs(app, &user.bundle_id))?;
             let pids = users
                 .iter()
@@ -156,9 +154,9 @@ mod tests {
 
     #[test]
     fn a_known_call_app_using_the_mic_is_a_call() {
-        let call = detect(&[user(10, "us.zoom.xos")], 1, &[]).expect("zoom");
+        let call = detect(&[user(10, "us.zoom.xos")], 1).expect("zoom");
         assert_eq!(call.app_id, "us.zoom.xos");
-        let helper = detect(&[user(11, "com.google.Chrome.helper")], 1, &[]).expect("chrome");
+        let helper = detect(&[user(11, "com.google.Chrome.helper")], 1).expect("chrome");
         assert_eq!(helper.app_id, "com.google.Chrome");
     }
 
@@ -170,33 +168,25 @@ mod tests {
             user(12, "com.google.Chrome.helper.Renderer"),
             user(1, "com.google.Chrome"),
         ];
-        assert_eq!(detect(&users, 1, &[]).expect("chrome").pids, [10, 12]);
+        assert_eq!(detect(&users, 1).expect("chrome").pids, [10, 12]);
     }
 
     #[test]
     fn unknown_apps_and_lookalike_ids_are_not_calls() {
-        assert!(detect(&[user(10, "com.example.Dictation")], 1, &[]).is_none());
-        assert!(detect(&[user(10, "us.zoom.xos2")], 1, &[]).is_none());
-        assert!(detect(&[], 1, &[]).is_none());
+        assert!(detect(&[user(10, "com.example.Dictation")], 1).is_none());
+        assert!(detect(&[user(10, "us.zoom.xos2")], 1).is_none());
+        assert!(detect(&[], 1).is_none());
     }
 
     #[test]
-    fn sextant_itself_never_counts_even_when_marked() {
-        let marked = ["com.sextant.app".to_string()];
-        assert!(detect(&[user(7, "com.sextant.app")], 7, &marked).is_none());
-    }
-
-    #[test]
-    fn a_marked_app_is_a_call() {
-        let marked = ["com.example.Dictation".to_string()];
-        let call = detect(&[user(10, "com.example.Dictation")], 1, &marked).expect("marked");
-        assert_eq!(call.app_id, "com.example.Dictation");
+    fn sextant_itself_never_counts() {
+        assert!(detect(&[user(7, "us.zoom.xos")], 7).is_none());
     }
 
     #[test]
     fn the_first_call_app_wins_when_several_use_the_mic() {
         let users = [user(10, "com.example.Other"), user(11, "us.zoom.xos")];
-        assert_eq!(detect(&users, 1, &[]).expect("zoom").app_id, "us.zoom.xos");
+        assert_eq!(detect(&users, 1).expect("zoom").app_id, "us.zoom.xos");
     }
 
     fn zoom() -> Call {

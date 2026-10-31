@@ -1,7 +1,7 @@
 //! Done when: a reported handoff shows hours before and after (plan.md §9, §13 M5).
 
 use sextant_core::fixtures::*;
-use sextant_core::{Event, EventKind, MIN_DAYS, Store, Workflow};
+use sextant_core::{Event, EventKind, MIN_DAYS, Store};
 
 const DAY: i64 = 86_400;
 const INVOICE_APPS: [&str; 2] = ["Mail", "Microsoft Excel"];
@@ -29,15 +29,6 @@ fn handed_off_fixture() -> (Vec<Event>, Vec<Event>) {
         .partition(|e| e.ts < HANDOFF_TS)
 }
 
-fn invoice(store: &Store) -> Workflow {
-    store
-        .workflows()
-        .expect("test setup")
-        .into_iter()
-        .find(|w| w.basis == "cases")
-        .expect("test setup")
-}
-
 fn handed_off(label: &str) -> (TempDb, Store, i64, Vec<Event>) {
     let db = TempDb::new(label);
     let mut store = db.open().expect("test setup");
@@ -51,7 +42,7 @@ fn handed_off(label: &str) -> (TempDb, Store, i64, Vec<Event>) {
         HANDOFF_TS,
     )
     .expect("test setup");
-    store.refresh(HANDOFF_TS).expect("test setup");
+    store.refresh(local(HANDOFF_TS)).expect("test setup");
     let id = invoice(&store).id;
     store
         .record_handoff(id, HANDOFF_TS, "started", "Claude takes over the invoices")
@@ -65,8 +56,8 @@ fn measured(store: &mut Store, after: &[Event], now: i64) -> sextant_core::Measu
         ..Fixture::default()
     };
     load(store, &fixture, now).expect("test setup");
-    store.refresh(now).expect("test setup");
-    let mut results = store.results(now).expect("test setup");
+    store.refresh(local(now)).expect("test setup");
+    let mut results = store.results(local(now)).expect("test setup");
     assert_eq!(results.len(), 1);
     results.remove(0)
 }
@@ -105,7 +96,9 @@ fn reporting_twice_counts_one_handoff_with_the_latest_status() {
     store
         .record_handoff(id, HANDOFF_TS + 3600, "done", "All five ran")
         .expect("test setup");
-    let results = store.results(HANDOFF_TS + 2 * DAY).expect("test setup");
+    let results = store
+        .results(local(HANDOFF_TS + 2 * DAY))
+        .expect("test setup");
     assert_eq!(results.len(), 1);
     assert_eq!(
         (
@@ -124,9 +117,9 @@ fn the_report_holds_no_entity_title_or_url() {
     let mut store = db.open().expect("test setup");
     let fixture = week();
     load(&mut store, &fixture, WEEK_NOW).expect("test setup");
-    store.refresh(WEEK_NOW).expect("test setup");
+    store.refresh(local(WEEK_NOW)).expect("test setup");
 
-    let report = store.weekly_report(WEEK_NOW).expect("test setup");
+    let report = store.weekly_report(local(WEEK_NOW)).expect("test setup");
     assert!(!report.top.is_empty() && report.hours_back > 0.0);
     let shown = format!("{report:?}");
 

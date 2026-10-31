@@ -1,7 +1,6 @@
 ---
 source: core/tests/golden.rs
-assertion_line: 42
-expression: store.skill_md(id).unwrap()
+expression: "store.skill_md(id, UTC_OFFSET_S).expect(\"test setup\")"
 ---
 ---
 name: mail-microsoft-excel-app-lexoffice-de
@@ -27,9 +26,9 @@ Start with: app.lexoffice.de: bearbeiten lexoffice rechnung vouchers.
 
 ## Example cases
 
-- INV-2026-0412: Mon 2026-03-02 to Tue 2026-03-03, Mail: attached inv invoice > Microsoft Excel: invoices xlsx > app.lexoffice.de: bearbeiten lexoffice rechnung vouchers
-- RE-2026-0415: Mon 2026-03-02 to Wed 2026-03-04, Mail: angehängt re rechnung > Microsoft Excel: invoices xlsx > app.lexoffice.de: bearbeiten lexoffice rechnung vouchers
-- INV-2026-0418: Tue 2026-03-03 to Thu 2026-03-05, Mail: attached inv invoice > Microsoft Excel: invoices xlsx > app.lexoffice.de: bearbeiten lexoffice rechnung vouchers
+- inv #: Mon 2026-03-02 to Tue 2026-03-03, Mail: attached inv invoice > Microsoft Excel: invoices xlsx > app.lexoffice.de: bearbeiten lexoffice rechnung vouchers
+- re #: Mon 2026-03-02 to Wed 2026-03-04, Mail: angehängt re rechnung > Microsoft Excel: invoices xlsx > app.lexoffice.de: bearbeiten lexoffice rechnung vouchers
+- inv #: Tue 2026-03-03 to Thu 2026-03-05, Mail: attached inv invoice > Microsoft Excel: invoices xlsx > app.lexoffice.de: bearbeiten lexoffice rechnung vouchers
 
 ## Open promises
 
@@ -45,12 +44,12 @@ Start with: app.lexoffice.de: bearbeiten lexoffice rechnung vouchers.
 ## Why Sextant picked it
 
 - hours_week 1.51: 90 min over 5 observed days, scaled to a 5-day week
-- potential 0.73: time-weighted mean 0.63 of 4 steps, +0.10 because data is copied by hand
+- potential 0.73: time-weighted mean 0.63 of 4 steps, +0.10 because data moves between apps by hand
 - copy: 2 times from Mail: attached inv invoice to Microsoft Excel: invoices xlsx
 - copy: 2 times from Microsoft Excel: invoices xlsx to app.lexoffice.de: bearbeiten lexoffice rechnung vouchers
 - desire 0.60: enjoyment unknown
 - benefit 0.66 = 1.51 h x 0.73 x 0.60
-- procrastination 0.70: 2 overdue promises x 0.35, 0 abandoned opens x 0.15, 1.7 waiting days (0.1 per day over 2)
-- kind friction: 4 hand copies, 2.7 app switches per hour
+- procrastination 0.70: 2 overdue promises x 0.35, 0 abandoned opens x 0.15, 1.7 waiting days (0.1 per day over 2), 0 flinches on 0 days (0.1 per day)
+- kind friction: 4 hand copies, 0 retypes, 2.7 app switches per hour
 - action automate: potential 0.60 or more and 0.5 h per week or more
 - first step: app.lexoffice.de: bearbeiten lexoffice rechnung vouchers has the highest potential x time

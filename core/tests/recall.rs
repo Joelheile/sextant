@@ -101,3 +101,29 @@ fn recall_skips_excluded_apps_and_respects_the_time_window() {
         .expect("recall");
     assert!(found.is_empty(), "{found:?}");
 }
+
+#[test]
+fn hits_five_minutes_apart_form_one_session_in_search_and_recall() {
+    let (_db, store) = store_with(
+        "recall-gap",
+        vec![
+            frame(WEEK_NOW - 3600, "Mail", "Offer", &["pricing draft"]),
+            frame(WEEK_NOW - 3300, "Mail", "Offer", &["anna draft"]),
+        ],
+    );
+    let settings = Settings::default();
+    let searched = store
+        .search_sessions(&settings, "draft", (None, None), None, 10, 0)
+        .expect("search");
+    assert_eq!(searched.sessions.len(), 1, "{:?}", searched.sessions);
+    let recalled = store
+        .recall(
+            &settings,
+            &["pricing".to_string(), "anna".to_string()],
+            (None, None),
+            5,
+        )
+        .expect("recall");
+    assert_eq!(recalled.len(), 1, "{recalled:?}");
+    assert_eq!(recalled[0].lines.len(), 2);
+}

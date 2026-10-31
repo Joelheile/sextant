@@ -40,6 +40,8 @@ pub struct Live {
     pub ocr: bool,
     /// Which app copied, never what.
     pub copy: bool,
+    /// Presses on labelled controls and the values left in text fields, never keystrokes.
+    pub actions: bool,
     /// Mic and system audio transcripts during calls.
     pub audio: bool,
     /// Safari, Firefox and other browsers that cannot report a private window. Off: their
@@ -53,6 +55,7 @@ impl Default for Live {
             metadata: true,
             ocr: true,
             copy: true,
+            actions: true,
             audio: false,
             opaque_browsers: false,
         }
@@ -62,7 +65,7 @@ impl Default for Live {
 impl Live {
     /// The screen sources. Audio has its own switch and its own pipeline.
     pub fn any(&self) -> bool {
-        self.metadata || self.ocr || self.copy
+        self.metadata || self.ocr || self.copy || self.actions
     }
 }
 
@@ -81,8 +84,6 @@ pub struct Settings {
     pub live: Live,
     /// Folders the user picked for git backfill.
     pub git_folders: Vec<String>,
-    /// Bundle ids of apps the user marked as call apps, on top of the known ones.
-    pub call_apps: Vec<String>,
     /// How long raw data stays (plan.md §3): 30, 90 or 365 days, `None` for forever.
     pub retention_days: Option<u32>,
 }
@@ -96,6 +97,7 @@ impl Default for Settings {
                 "Dashlane",
                 "LastPass",
                 "KeePassXC",
+                "Passwords",
                 "Keychain Access",
                 "Health",
                 "Messages",
@@ -111,7 +113,6 @@ impl Default for Settings {
             sources: Sources::default(),
             live: Live::default(),
             git_folders: Vec::new(),
-            call_apps: Vec::new(),
             retention_days: Some(90),
         }
     }
@@ -157,6 +158,7 @@ mod tests {
     fn exclusion_ignores_case_and_version_suffixes() {
         let settings = Settings::default();
         assert!(settings.is_excluded("1password 8"));
+        assert!(settings.is_excluded("Passwords"));
         assert!(settings.is_excluded("Messages"));
         assert!(!settings.is_excluded("Mail"));
         assert!(!settings.is_excluded(""));

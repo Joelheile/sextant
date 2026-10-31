@@ -3,13 +3,13 @@
 //! the system prompt: only onboarding asks.
 
 use std::ffi::c_void;
-use std::process::{Command, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, anyhow, bail};
 use sextant_core::capture::Browser;
 
+use super::process;
 use crate::capture::Tab;
 
 const TIMEOUT: Duration = Duration::from_secs(2);
@@ -96,29 +96,11 @@ pub fn tab(bundle_id: &str, browser: Browser) -> Result<Tab> {
         bail!("Automation is not granted");
     }
     let script = script(bundle_id, browser)?;
-    let mut child = Command::new("osascript")
-        .args(["-e", &script])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .context("running osascript")?;
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().context("waiting for osascript")? {
-            break status;
-        }
-        if started.elapsed() >= TIMEOUT {
-            let _ = child.kill();
-            let _ = child.wait();
-            bail!("the browser did not answer in time");
-        }
-        thread::sleep(Duration::from_millis(10));
-    };
-    if !status.success() {
+    let output = process::output(Command::new("osascript").args(["-e", &script]), TIMEOUT)
+        .map_err(|err| anyhow!("the browser did not answer: {err}"))?;
+    if !output.status.success() {
         bail!("the browser refused");
     }
-    let output = child.wait_with_output().context("reading osascript")?;
     parse(&String::from_utf8_lossy(&output.stdout), browser)
 }
 

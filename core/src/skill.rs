@@ -25,7 +25,7 @@ pub fn build(detail: &WorkflowDetail, utc_offset_s: i32) -> String {
     let _ = writeln!(
         out,
         "Sextant saw this {} times. It takes about {:.1} hours a week. Automation potential is {:.2} and the suggested action is {}.{}\n",
-        w.case_count,
+        w.task_count,
         w.hours_week,
         w.potential,
         w.action.as_str(),
@@ -52,10 +52,19 @@ pub fn build(detail: &WorkflowDetail, utc_offset_s: i32) -> String {
     if !detail.copy_points.is_empty() {
         let _ = writeln!(out, "## Data copied by hand\n");
         for point in &detail.copy_points {
+            let mut moved = Vec::new();
+            if point.copies > 0 {
+                moved.push(format!("{} copy events", point.copies));
+            }
+            if point.retypes > 0 {
+                moved.push(format!("typed again {} times", point.retypes));
+            }
             let _ = writeln!(
                 out,
-                "- {} to {}: {} copy events. Read the value from the source and write it to the target.",
-                point.from, point.to, point.copies
+                "- {} to {}: {}. Read the value from the source and write it to the target.",
+                point.from,
+                point.to,
+                moved.join(", ")
             );
         }
         out.push('\n');
@@ -126,8 +135,8 @@ pub fn prompt(workflow: &Workflow, skill_path: &str) -> String {
 
 impl Store {
     /// The `SKILL.md` for a workflow id.
-    pub fn skill_md(&self, id: i64) -> Result<String> {
+    pub fn skill_md(&self, id: i64, utc_offset_s: i32) -> Result<String> {
         let detail = self.workflow_detail(id)?.ok_or(Error::NoWorkflow(id))?;
-        Ok(build(&detail, self.utc_offset_s))
+        Ok(build(&detail, utc_offset_s))
     }
 }
