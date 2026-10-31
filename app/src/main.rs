@@ -1,3 +1,4 @@
+mod agent;
 mod audio;
 mod bench;
 mod capture;
@@ -119,6 +120,9 @@ fn main() -> anyhow::Result<()> {
             popover::menu_status,
             popover::insights,
             popover::menu_action,
+            agent::agent_status,
+            agent::set_agent,
+            agent::run_agent,
         ])
         .setup(move |app| {
             app.manage(AppState::new(dir));
@@ -132,6 +136,7 @@ fn main() -> anyhow::Result<()> {
                 .spawn(move || start_engine(&handle))
                 .context("starting the start-up thread")?;
             judge::spawn(app.handle().clone())?;
+            agent::spawn_weekly(app.handle().clone())?;
             Ok(())
         })
         .build(tauri::generate_context!())

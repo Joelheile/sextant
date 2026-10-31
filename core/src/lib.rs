@@ -1,5 +1,6 @@
 //! Sextant logic without OS APIs: storage, work graph, finder. See plan.md §7.
 
+pub mod agent;
 mod analytics;
 pub mod audio;
 pub mod backfill;

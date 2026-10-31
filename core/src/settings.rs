@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::agent::AgentName;
 use crate::error::Result;
 
 /// Backfill sources the user can untick in onboarding (plan.md §3).
@@ -86,6 +87,10 @@ pub struct Settings {
     pub git_folders: Vec<String>,
     /// How long raw data stays (plan.md §3): 30, 90 or 365 days, `None` for forever.
     pub retention_days: Option<u32>,
+    /// The agent CLI the bridge runs: `claude`, `codex`, or `None` while the bridge is off.
+    pub agent: Option<AgentName>,
+    /// Runs the agent once a week on its own.
+    pub agent_weekly: bool,
 }
 
 impl Default for Settings {
@@ -114,6 +119,8 @@ impl Default for Settings {
             live: Live::default(),
             git_folders: Vec::new(),
             retention_days: Some(90),
+            agent: None,
+            agent_weekly: false,
         }
     }
 }
@@ -152,6 +159,13 @@ mod tests {
         assert_eq!(Settings::from_json("").expect("empty"), Settings::default());
         let round = Settings::from_json(&settings.to_json().expect("json")).expect("round trip");
         assert_eq!(round, settings);
+    }
+
+    #[test]
+    fn the_agent_is_claude_or_codex() {
+        let settings = Settings::from_json(r#"{"agent": "codex"}"#).expect("parses");
+        assert_eq!(settings.agent, Some(AgentName::Codex));
+        assert!(Settings::from_json(r#"{"agent": "gemini"}"#).is_err());
     }
 
     #[test]

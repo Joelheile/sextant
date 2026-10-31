@@ -27,7 +27,11 @@ export type Settings = {
   sources: Sources;
   git_folders: string[];
   retention_days: number | null;
+  agent: AgentName | null;
+  agent_weekly: boolean;
 };
+
+export type AgentName = "claude" | "codex";
 
 export type MenuStatus = {
   capture: "off" | "capturing" | "paused";
@@ -52,6 +56,25 @@ export type Insights = {
   automatable_hours: number;
   automatable_hours_last_week: number;
   hours_back: number;
+};
+
+export type Idea = {
+  workflow_id: number;
+  workflow: string;
+  title: string;
+  how: string;
+  hours_week: number;
+  confidence: number;
+};
+
+export type AgentStatus = {
+  installed: AgentName[];
+  chosen: AgentName | null;
+  weekly: boolean;
+  running: boolean;
+  last_run: number | null;
+  last_agent: AgentName | null;
+  ideas: Idea[];
 };
 
 export type MenuAction = "pause" | "search" | "open" | "quit" | "hide";
@@ -298,6 +321,10 @@ export const api = {
   menuStatus: () => invoke<MenuStatus>("menu_status"),
   insights: () => invoke<Insights>("insights"),
   menuAction: (action: MenuAction) => invoke<void>("menu_action", { action }),
+  agentStatus: () => invoke<AgentStatus>("agent_status"),
+  setAgent: (agent: AgentName | null, weekly: boolean) =>
+    invoke<Settings>("set_agent", { agent, weekly }),
+  runAgent: () => invoke<AgentStatus>("run_agent"),
 };
 
 /** Calls `handler` when the engine has started or failed to. Resolves once attached. */

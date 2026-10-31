@@ -231,6 +231,7 @@ const en = {
   deleteYes: "Yes, delete everything",
   deleteWorking: "Deleting",
   tabToday: "Today",
+  tabIdeas: "Ideas",
   tabSettings: "Settings",
   search: "Search",
   openWindow: "Open Sextant",
@@ -262,6 +263,21 @@ const en = {
   couldGetBack: "you could get back",
   automatableWeek: "{hours} h in these workflows this week",
   automatableTrend: "{hours} h in these workflows this week, {change}% on last week",
+  ideasTitle: "Ideas from your agent",
+  ideasFrom: "From {agent}, {time}",
+  ideasNone: "Your agent reads the shape of your workflows and suggests what to hand over.",
+  analyzeWith: "Analyze with {agent}",
+  analyzing: "Analyzing, this takes a minute or two",
+  pickAgent: "Pick Claude Code or Codex in Settings to get ideas.",
+  bridgeTitle: "Agent",
+  bridgeBody:
+    "Sextant runs your own Claude Code or Codex, signed in with your own plan. Sextant opens no connection itself: the agent does, only when it runs.",
+  bridgeAgent: "Agent",
+  bridgeOff: "Off",
+  notInstalled: "{agent} (not installed)",
+  bridgeWeekly: "Analyze once a week",
+  bridgeSent:
+    "It gets your workflows as numbered steps: the app or website, category, minutes and how steps follow each other. It gets no window titles, screen text or transcripts. Claude runs with no tools. Codex has no such mode, so it runs read-only and offline in an empty folder, without your config, plugins or web search.",
 } as const;
 
 export type Key = keyof typeof en;
@@ -499,6 +515,7 @@ const de: Record<Key, string> = {
   deleteYes: "Ja, alles löschen",
   deleteWorking: "Wird gelöscht",
   tabToday: "Heute",
+  tabIdeas: "Ideen",
   tabSettings: "Einstellungen",
   search: "Suchen",
   openWindow: "Sextant öffnen",
@@ -530,6 +547,21 @@ const de: Record<Key, string> = {
   couldGetBack: "könntest du zurückbekommen",
   automatableWeek: "{hours} Std. in diesen Abläufen diese Woche",
   automatableTrend: "{hours} Std. in diesen Abläufen diese Woche, {change} % zur Vorwoche",
+  ideasTitle: "Ideen von deinem Agenten",
+  ideasFrom: "Von {agent}, {time}",
+  ideasNone: "Dein Agent liest die Form deiner Abläufe und schlägt vor, was du abgeben kannst.",
+  analyzeWith: "Mit {agent} analysieren",
+  analyzing: "Analysiert, das dauert ein, zwei Minuten",
+  pickAgent: "Wähle in den Einstellungen Claude Code oder Codex, um Ideen zu bekommen.",
+  bridgeTitle: "Agent",
+  bridgeBody:
+    "Sextant startet dein eigenes Claude Code oder Codex, angemeldet mit deinem eigenen Abo. Sextant selbst baut keine Verbindung auf: Das tut der Agent, nur während er läuft.",
+  bridgeAgent: "Agent",
+  bridgeOff: "Aus",
+  notInstalled: "{agent} (nicht installiert)",
+  bridgeWeekly: "Einmal pro Woche analysieren",
+  bridgeSent:
+    "Er bekommt deine Abläufe als nummerierte Schritte: App oder Website, Kategorie, Minuten und wie Schritte aufeinander folgen. Er bekommt keine Fenstertitel, keinen Bildschirmtext und keine Mitschriften. Claude läuft ohne Werkzeuge. Codex kennt diesen Modus nicht und läuft deshalb nur lesend und offline in einem leeren Ordner, ohne deine Konfiguration, Plugins oder Websuche.",
 };
 
 const strings: Record<Key, string> = navigator.language.toLowerCase().startsWith("de") ? de : en;

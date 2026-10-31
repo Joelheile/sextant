@@ -10,6 +10,7 @@ import { duration } from "./format";
 import { Pause, Play, Search, AppWindow, Power } from "lucide-react";
 import { t, type Key } from "./i18n";
 import { Failed } from "./layout";
+import Ideas, { AgentBridge } from "./Ideas";
 import Privacy from "./Privacy";
 import Today from "./Today";
 import { Button } from "@/components/ui/button";
@@ -170,7 +171,7 @@ function Header({
   );
 }
 
-/** The menu bar popover: what Sextant captures now, your day and settings. */
+/** The menu bar popover: what Sextant captures now, your day, automation ideas and settings. */
 export default function Popover() {
   const [status, setStatus] = useState<MenuStatus | null>(null);
   const [opened, setOpened] = useState(0);
@@ -221,6 +222,9 @@ export default function Popover() {
           <TabsTrigger value="today" className="px-2">
             {t("tabToday")}
           </TabsTrigger>
+          <TabsTrigger value="ideas" className="px-2">
+            {t("tabIdeas")}
+          </TabsTrigger>
           <TabsTrigger value="settings" className="px-2">
             {t("tabSettings")}
           </TabsTrigger>
@@ -229,7 +233,11 @@ export default function Popover() {
           <TabsContent value="today" className="flex flex-col gap-5">
             <Today opened={opened} />
           </TabsContent>
+          <TabsContent value="ideas" className="flex flex-col gap-5">
+            <Ideas opened={opened} />
+          </TabsContent>
           <TabsContent value="settings" className="flex flex-col gap-6">
+            <AgentBridge />
             <Privacy />
           </TabsContent>
         </div>

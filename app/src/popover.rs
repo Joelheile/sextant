@@ -1,5 +1,5 @@
 //! The menu bar popover: a click on the tray icon opens it under the icon. It shows what Sextant
-//! captures right now, your day and the settings. It hides when it loses
+//! captures right now, your day, the automation ideas and the settings. It hides when it loses
 //! focus, like the rewind panel. Right-click keeps the native menu.
 
 use serde::Serialize;
