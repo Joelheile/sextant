@@ -29,6 +29,33 @@ export type Settings = {
   retention_days: number | null;
 };
 
+export type MenuStatus = {
+  capture: "off" | "capturing" | "paused";
+  paused_until: number | null;
+  audio: "off" | "waiting" | "transcribing";
+  last_capture: number | null;
+  last_app: string | null;
+  blocked_by: PermissionName[];
+  live: Live;
+  now: number;
+};
+
+export type Insights = {
+  active_minutes: number;
+  days: number[];
+  apps: { app: string; minutes: number }[];
+  switches: number;
+  switches_per_hour: number | null;
+  longest_focus_minutes: number;
+  lines: number;
+  call_minutes: number;
+  automatable_hours: number;
+  automatable_hours_last_week: number;
+  hours_back: number;
+};
+
+export type MenuAction = "pause" | "search" | "open" | "quit" | "hide";
+
 export type PermissionName =
   | "calendar"
   | "reminders"
@@ -268,6 +295,9 @@ export const api = {
   setLive: (live: Live) => invoke<Settings>("set_live", { live }),
   setRetention: (days: number | null) => invoke<Settings>("set_retention", { days }),
   deleteEverything: () => invoke<void>("delete_everything"),
+  menuStatus: () => invoke<MenuStatus>("menu_status"),
+  insights: () => invoke<Insights>("insights"),
+  menuAction: (action: MenuAction) => invoke<void>("menu_action", { action }),
 };
 
 /** Calls `handler` when the engine has started or failed to. Resolves once attached. */
@@ -277,6 +307,10 @@ export const onReady = (handler: () => void): Promise<UnlistenFn> =>
 /** Calls `handler` each time the shortcut or the menu bar shows the search panel. */
 export const onRewindOpen = (handler: () => void): Promise<UnlistenFn> =>
   listen("rewind-open", handler);
+
+/** Calls `handler` each time the menu bar popover opens. */
+export const onPopoverOpen = (handler: () => void): Promise<UnlistenFn> =>
+  listen("popover-open", handler);
 
 export type BackfillHandlers = {
   progress: (stage: Stage) => void;

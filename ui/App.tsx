@@ -3,7 +3,6 @@ import { api, onReady, type Settings } from "./api";
 import { t, type Key } from "./i18n";
 import { Failed, Muted, Page } from "./layout";
 import Onboarding from "./Onboarding";
-import Privacy from "./Privacy";
 import Results from "./Results";
 import Workflows from "./Workflows";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,7 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const TABS = [
   { id: "workflows", label: "tabWorkflows", screen: Workflows },
   { id: "results", label: "tabResults", screen: Results },
-  { id: "privacy", label: "tabPrivacy", screen: Privacy },
 ] as const satisfies readonly { id: string; label: Key; screen: () => React.ReactNode }[];
 
 export default function App() {

@@ -1,19 +1,78 @@
-//! The menu bar icon (plan.md §9): filled while capturing, outline while paused, and a menu with
-//! the status line, "Pause 1 h", "Stop audio", Search, Open and Quit. A dot shows in the icon while a call
-//! is transcribed. The status refreshes every few seconds.
+//! The menu bar icon (plan.md §9): filled while capturing, outline while paused, a dot while a call
+//! is transcribed and an exclamation mark when capture is on but macOS blocks it. A click opens the
+//! popover; a right-click opens a menu with the status line, "Pause 1 h", "Stop audio", Search,
+//! Open and Quit. The status refreshes every few seconds.
 
 use std::thread;
 use std::time::Duration;
 
+use serde::Deserialize;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIcon, TrayIconBuilder};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 
 use crate::commands::AppState;
 use crate::engine::{AudioState, CaptureState};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
+
+/// What a menu entry or a popover button does. `Hide` closes the popover and only the popover
+/// sends it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MenuAction {
+    Pause,
+    StopAudio,
+    Search,
+    Open,
+    Quit,
+    Hide,
+}
+
+impl MenuAction {
+    const MENU: [Self; 5] = [
+        Self::Pause,
+        Self::StopAudio,
+        Self::Search,
+        Self::Open,
+        Self::Quit,
+    ];
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Pause => "pause",
+            Self::StopAudio => "stop-audio",
+            Self::Search => "search",
+            Self::Open => "open",
+            Self::Quit => "quit",
+            Self::Hide => "hide",
+        }
+    }
+
+    fn from_id(id: &str) -> Option<Self> {
+        Self::MENU.into_iter().find(|action| action.id() == id)
+    }
+}
+
+/// Runs the action for both the native menu and the popover.
+pub fn perform(app: &AppHandle, action: MenuAction) -> tauri::Result<()> {
+    match action {
+        MenuAction::Pause => {
+            toggle_pause(app);
+            refresh(app);
+        }
+        MenuAction::StopAudio => {
+            turn_audio_off(app);
+            refresh(app);
+        }
+        MenuAction::Search => crate::rewind::show(app)?,
+        MenuAction::Open => open_window(app)?,
+        MenuAction::Quit => app.exit(0),
+        MenuAction::Hide => crate::popover::hide(app)?,
+    }
+    Ok(())
+}
 
 /// The handles to change after the menu is built.
 pub struct Tray {
@@ -25,38 +84,66 @@ pub struct Tray {
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let status = MenuItem::with_id(app, "status", "Starting", false, None::<&str>)?;
-    let pause = MenuItem::with_id(app, "pause", "Pause 1 h", false, None::<&str>)?;
-    let stop_audio = MenuItem::with_id(app, "stop-audio", "Stop audio", false, None::<&str>)?;
-    let search = MenuItem::with_id(app, "search", "Search", true, Some(crate::rewind::SHORTCUT))?;
-    let open = MenuItem::with_id(app, "open", "Open Sextant", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Sextant", true, None::<&str>)?;
+    let pause = MenuItem::with_id(
+        app,
+        MenuAction::Pause.id(),
+        "Pause 1 h",
+        false,
+        None::<&str>,
+    )?;
+    let stop_audio = MenuItem::with_id(
+        app,
+        MenuAction::StopAudio.id(),
+        "Stop audio",
+        false,
+        None::<&str>,
+    )?;
+    let search = MenuItem::with_id(
+        app,
+        MenuAction::Search.id(),
+        "Search",
+        true,
+        Some(crate::rewind::SHORTCUT),
+    )?;
+    let open = MenuItem::with_id(
+        app,
+        MenuAction::Open.id(),
+        "Open Sextant",
+        true,
+        None::<&str>,
+    )?;
+    let quit = MenuItem::with_id(
+        app,
+        MenuAction::Quit.id(),
+        "Quit Sextant",
+        true,
+        None::<&str>,
+    )?;
     let menu = Menu::with_items(app, &[&status, &pause, &stop_audio, &search, &open, &quit])?;
     let icon = TrayIconBuilder::new()
         .icon(tauri::include_image!("icons/tray-paused.png"))
         .icon_as_template(true)
         .tooltip("Sextant")
         .menu(&menu)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "open" => {
-                if let Err(err) = open_window(app) {
-                    eprintln!("opening the window failed: {err}");
-                }
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|icon, event| {
+            if let TrayIconEvent::Click {
+                rect,
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+                && let Err(err) = crate::popover::toggle(icon.app_handle(), rect)
+            {
+                eprintln!("opening the popover failed: {err}");
             }
-            "search" => {
-                if let Err(err) = crate::rewind::show(app) {
-                    eprintln!("opening search failed: {err}");
-                }
+        })
+        .on_menu_event(|app, event| {
+            if let Some(action) = MenuAction::from_id(event.id().as_ref())
+                && let Err(err) = perform(app, action)
+            {
+                eprintln!("menu action {action:?} failed: {err}");
             }
-            "pause" => {
-                toggle_pause(app);
-                refresh(app);
-            }
-            "stop-audio" => {
-                turn_audio_off(app);
-                refresh(app);
-            }
-            "quit" => app.exit(0),
-            _ => {}
         })
         .build(app)?;
     app.manage(Tray {
@@ -143,6 +230,16 @@ fn refresh(app: &AppHandle) {
             "Resume",
             tauri::include_image!("icons/tray-paused.png"),
         ),
+    };
+    let blocked = state == CaptureState::Capturing
+        && !crate::commands::capture_blockers(&app.state::<AppState>().dir).is_empty();
+    let (text, icon) = if blocked {
+        (
+            "Capture is blocked: allow access in Sextant".into(),
+            tauri::include_image!("icons/tray-alert.png"),
+        )
+    } else {
+        (text, icon)
     };
     let audio = audio_state(app);
     let (text, icon) = match audio {

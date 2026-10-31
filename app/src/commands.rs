@@ -142,6 +142,21 @@ pub async fn permission_status(state: State<'_, AppState>) -> Reply<Vec<Permissi
     Ok(needed)
 }
 
+/// The permissions live capture needs that macOS has not granted.
+pub(crate) fn capture_blockers(dir: &Path) -> Vec<&'static str> {
+    let Ok(settings) = prefs::load(dir) else {
+        return Vec::new();
+    };
+    let mut missing = Vec::new();
+    if settings.live.ocr && platform::screen_recording_status() != "granted" {
+        missing.push("screen-recording");
+    }
+    if settings.live.metadata && platform::accessibility_status() != "granted" {
+        missing.push("accessibility");
+    }
+    missing
+}
+
 /// Shows the system prompt for `calendar`, `reminders` or `automation`. Returns whether access is
 /// granted.
 #[tauri::command]

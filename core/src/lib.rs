@@ -1,5 +1,6 @@
 //! Sextant logic without OS APIs: storage, work graph, finder. See plan.md §7.
 
+mod analytics;
 pub mod audio;
 pub mod backfill;
 pub mod capture;
@@ -26,6 +27,7 @@ mod text;
 mod time;
 mod writer;
 
+pub use analytics::Insights;
 pub use corrections::{Rule, Target, parse as parse_correction};
 pub use enjoyment::Enjoyment;
 pub use error::{Error, Result};

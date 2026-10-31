@@ -13,6 +13,7 @@ mod mcp;
 mod models;
 mod panel;
 mod platform;
+mod popover;
 mod prefs;
 mod rewind;
 mod screens;
@@ -115,12 +116,16 @@ fn main() -> anyhow::Result<()> {
             screens::set_live,
             screens::set_retention,
             screens::delete_everything,
+            popover::menu_status,
+            popover::insights,
+            popover::menu_action,
         ])
         .setup(move |app| {
             app.manage(AppState::new(dir));
             tray::build(app.handle())?;
             tray::open_window(app.handle())?;
             rewind::build(app.handle())?;
+            popover::build(app.handle())?;
             let handle = app.handle().clone();
             thread::Builder::new()
                 .name("sextant-start".into())
