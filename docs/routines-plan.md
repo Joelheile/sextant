@@ -1,6 +1,6 @@
 # Task graph and LLM layer plan
 
-Status: T1 and T2 are built. T3 is deferred: nothing reads task types yet, and `from_tasks` in `core/src/finder/graph.rs` is the one grouping engine for now, so the MinHash and alignment code is deleted. T4 onward is not started. The plan builds on actions v1 (`press` and `edit` events, plan.md §4).
+Status: T1 and T2 are built. T3 is deferred: nothing reads task types yet, and `from_tasks` in `core/src/finder/graph.rs` is the one grouping engine for now, so the MinHash and alignment code is deleted. T4 onward is not started. The plan builds on actions v1 (`press` and `edit` events, plan.md §4). The engine section below replaces workflows as the way Sextant finds automation.
 
 ## The goal
 
@@ -158,29 +158,136 @@ Rule: the LLM judges, code computes (CLAUDE.md, code rule 9). It sees one compac
   - `get_task_type(id)`: steps, input classes, sources, minutes
 - **Skill writing:** the agent bridge (`core/src/agent.rs`) sends one task type to your `claude -p` or `codex exec` and gets back a `SKILL.md`. That is the same format Record & Replay and Record a skill produce, so a skill Sextant finds plugs into either.
 - **Grounding check:** every step in the answer cites a step index of the task type. Code rejects answers with unknown or missing citations, because models are known to invent steps ([WONDERBREAD](https://arxiv.org/abs/2406.13264)).
-- **What models see:**
-  - Sent: app, control label templates, input classes, value types, sources, minutes.
-  - Never sent: values, screen text, transcripts or entities, unless you turn on "Show example values" for one task type.
+- **What models see:** see the engine below.
 
 ### L3. Evaluation
 
 - **Labels from the person:** the Workflows screen asks "Is this one task?" and "Is this name right?". Answers are corrections (§7.12) and also labels for measuring T2 and T3 on real data.
 - **Fixtures:** 10 task types with hand-written skills. An ignored test runs the bridge and scores step precision and recall.
 
+## Engine: a memory your agent can read
+
+Status: decided 2026-11-01. E1 is built. It replaces the agent bridge's brief and answer in `core/src/agent.rs`, and the earlier plan of a one-shot task digest. Today the brief holds app, category and minutes per step of the workflows the rules found. That is too little for an agent to judge, and it hides every routine the rules miss.
+
+Code builds the graph and the day pages, local models label and embed, your Claude Code or Codex reasons over them through MCP tools, and code checks every claim. The model proposes, code measures.
+
+### What the research says
+
+- **Compile, don't summarize.** [Activity Frames](https://arxiv.org/html/2608.05784) compiles a day of screen activity with rules. Sonnet 4.5 and Opus 4.5 answered 98.4 % of questions right from that page, against 66.1 % and 80.4 % from a model-written day summary. The summaries got durations wrong by 25 to 136 %, the compiled page by 7.3 %, and the page was 86 times smaller than the raw rows.
+- **Search beats graphs alone.** In [AgentMemBench](https://arxiv.org/pdf/2608.00009), dense retrieval was the key ingredient of long-term agent memory. Graph and summary strategies scored below it, and graph retrieval suffered from noisy entity extraction.
+- **Keep provenance.** [Graphiti](https://vectorize.io/articles/zep-vs-cognee) ties every fact to its source and marks outdated facts invalid instead of deleting them.
+- **Segmentation is the open problem** in robotic process mining ([Leno et al.](https://link.springer.com/article/10.1007/s12599-020-00641-4)). Sextant's identifier anchors are its answer.
+
+So day pages are compiled by code, graph edges come only from exact anchors (ids, emails, amounts, copied values, time order), and embeddings add search and "similar" edges.
+
+### Layers
+
+```
+ L0 raw = rewind   events, screen lines, transcripts          exists, encrypted
+       │  code: split into activities, pull out anchors
+       ▼
+ L1 graph          action ─in─▶ activity ─part of─▶ task
+                   activity ─next (gap, value copied)─▶ activity
+                   activity ─mentions─▶ entity (person, email, id, amount, document)
+                   activity ─similar─▶ activity                 (local embeddings)
+       │  code compiles
+       ▼
+ L2 pages          day and week: time per task, entities touched, values
+                   moved between apps, open promises, capture gaps
+       │  Claude Code or Codex through MCP tools
+       ▼
+ L3 routines       the agent proposes and cites ids, code checks them
+                   ─▶ SKILL.md ─▶ Claude Cowork, Codex
+```
+
+Names, smallest first: an **action** is one press or edit, an **activity** is one focus span on one object (today's episode), a **task** is activities joined by a shared anchor, and a **routine** is tasks that repeat.
+
+### Who does what
+
+| Job                                       | Who                                                  | Why                                                            |
+| ----------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------- |
+| Split, link, count, compile pages, verify | Code                                                 | Exact, testable, fast                                          |
+| Short labels for activities and tasks     | Apple Foundation Models (`app/swift/Language.swift`) | Free and private. One activity fits its 4,096-token window.    |
+| Search and "similar" edges                | Qwen3-Embedding-0.6B on the bundled ONNX Runtime     | Dense retrieval was the strongest single part in AgentMemBench |
+| Find routines across weeks, write skills  | Your Claude Code or Codex                            | Needs reasoning over many days                                 |
+
+A local chat model such as Qwen 4B is not planned: it is a 4 GB download, and the Apple model covers labels.
+
+### What the agent can read and write
+
+One MCP server is the whole engine interface. The bridge, Claude Code, Claude Desktop, Cowork and Codex all call the same tools, so a routine found in any of them lands in the same list. There is no separate brief to keep in sync.
+
+| Tool                   | Returns                                                                                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `week(start)`          | Per day: active minutes and top tasks. Across the week: task kinds and activity labels that repeat on 2 or more days, with minutes and days     |
+| `day(date)`            | Activities in time order (id, time, minutes, app, label, task), and tasks with their minutes                                                    |
+| `task(id)`             | Its activities, its actions run-length compressed with value types, and redacted values when screen text is on                                  |
+| `search`, `context_at` | Exist today: full-text search, and the screen text and speech around a moment (rewind)                                                          |
+| `save_routine(...)`    | The one new write. Code checks the cited ids, measures hours a week and stores the routine with the time spans it cites. An error says what to fix |
+| `routines()`           | Saved routines with their hours and evidence                                                                                                    |
+
+- Ids survive refreshes: an activity's id comes from its start time and object, and a task's id is its first activity's. A routine stores the time spans it cites, so it outlives the 90-day window.
+- The two existing switches stay. "Screen text" (`mcp_rewind`) gates `search`, `context_at` and the values in `task`. "Work patterns" (`mcp_workflows`) gates the rest. Excluded apps never appear, the page tools hold no transcripts, and every result goes through `redact.rs`.
+- MCP prompts `find_routines` and `write_skill` hold the instructions, so `/mcp__sextant__find_routines` in Claude Code and a bridge run use the same text.
+
+### E1. Read the graph
+
+- Stable ids. `core/src/pages.rs` compiles `week`, `day` and `task`, and the MCP server lists them in the work patterns group. Their output says activity.
+- Done when tests show the fixture week lists the invoice task kind on every day it ran, a day page of the 90-day fixture stays under 8,000 bytes (about 2,000 tokens) and builds in under 100 ms, ids survive a refresh whose window moved, excluded apps are absent, and values are gone with screen text off.
+- It ships value alone: a user asks their Claude Code "what should I hand over?" and it reads Sextant's pages.
+
+### E2. Save routines
+
+- `save_routine({title, task_ids, repeats, how, trigger, approval, why})`, `routines()` and the `find_routines` prompt. `repeats` cites work outside tasks as an app and label with the dates it ran, because `day` folds those activities without ids. `approval` names the action to stop before. The model gives no hours and no confidence.
+- Code checks: every cited task and repeat exists, the citations hold 3 or more activities on 2 or more days, and the routine shares at most half its time with a saved one. Hours a week are the cited active minutes divided by the weeks of data.
+- `schema_v7.sql` adds `routines` and `routine_spans(routine_id, start_ts, end_ts)`.
+- Done when a call with an unknown id gets an error naming it, an inflated routine comes back measured, and a duplicate is refused with the id of the saved one.
+
+### E3. The bridge runs your agent on the tools
+
+- `claude -p` runs with `--mcp-config` (Sextant only), `--strict-mcp-config` and `--allowedTools` limited to Sextant's tools. `codex exec` runs with `--ignore-user-config` and `-c mcp_servers.sextant.command=...`. Both run in an empty temp folder with the `find_routines` prompt, and stop after 15 minutes.
+- The agent screen lists routines in place of ideas. plan.md §10, the privacy principle in `AGENTS.md` and the README say the agent now reads pages through tools.
+- Done when ignored tests run real Claude and real Codex on the fixture and both save the invoice routine.
+
+### D1. Debug report
+
+"Copy debug report" in Settings, for users to paste into a GitHub issue. No network code. It holds the app and macOS versions, permissions, which sources are on, row counts per table and event kind, the last capture time, refresh and capture timings, and the last 20 errors as kinds without text. Done when a test proves the report holds none of the fixture's text.
+
+### E4. Skills, then remove the old path
+
+- Opening a routine gives a one-line prompt for your agent. The `write_skill` prompt has the agent read the routine's evidence through `task` and write a `SKILL.md` where it loads skills. Every step cites a task id and an action symbol.
+- Then delete workflows, steps, `score.rs`, follows, step categories, the brief, `agent_ideas`, `list_workflows`, `get_workflow` and `get_skill`. Rename episodes to activities in code and in `schema_v8.sql` after the removal, when fewer files mention them.
+- Done when a fixture routine yields a skill whose citations all resolve, and every test passes after the removal.
+
+### E5. Search with local embeddings
+
+- `models.rs` downloads Qwen3-Embedding-0.6B like the speech models. Check that an ONNX export exists and pick the smallest vector size that keeps recall.
+- Vectors live in a BLOB column. Search scans them in Rust and merges the result with FTS5. No sqlite-vec: it is pre-v1, and [an open issue](https://github.com/asg017/sqlite-vec/issues/12) reports it failing with SQLCipher.
+- Activities above a similarity threshold get a `similar` edge.
+- Done when search finds the fixture's paraphrased queries that FTS5 alone misses, the search budget in plan.md §11 holds, and `scripts/check-network.sh` passes.
+
 ## Order
 
-| Step | Delivers                                                           | Done when                                                    |
-| ---- | ------------------------------------------------------------------ | ------------------------------------------------------------ |
-| T1   | Activities with actions and identifiers                            | The fixture shows actions per episode                        |
-| T2   | Tasks, "where time goes"                                           | Pair agreement ≥ 0.9 on the interleaved fixture              |
-| T3   | Task types and procedures (deferred)                               | The invoice type found with its steps and for-each           |
-| T4   | Input classes, automatability in scores                            | Snapshots updated, transfers found                           |
-| T5   | Incremental refresh                                                | Equals full rebuild, under 50 ms                             |
-| L2   | MCP tools, Connect to ChatGPT, `.mcpb`, `SKILL.md` from task types | **(user)** Claude Desktop and ChatGPT desktop list the tools |
-| L1   | On-device labels                                                   | Labels on the fixture without network                        |
+E1 first: it is the smallest step that lets an early adopter's own agent read the graph. D1 comes next, before the public launch. Then E2 to E5. Each step leaves Sextant working, and the old workflow path stays live until E4. T4 and T5 follow, and T4's input classes then join `task`.
+
+| Step | Delivers                                                  | Done when                                                    |
+| ---- | --------------------------------------------------------- | ------------------------------------------------------------ |
+| E1   | Stable ids, `week`, `day` and `task` tools                | See E1                                                       |
+| D1   | Debug report, no network                                  | See D1                                                       |
+| E2   | `save_routine`: the agent proposes, code checks           | See E2                                                       |
+| E3   | The bridge runs Claude Code or Codex on the tools         | See E3                                                       |
+| E4   | Skills, old workflow path removed, episodes renamed       | See E4                                                       |
+| E5   | Local embeddings, hybrid search, similar edges            | See E5                                                       |
+| L1   | On-device labels for activities and tasks                 | Labels on the fixture without network                        |
+| T1   | Activities with actions and identifiers                   | The fixture shows actions per activity                       |
+| T2   | Tasks, "where time goes"                                  | Pair agreement ≥ 0.9 on the interleaved fixture              |
+| T3   | Task types and procedures (deferred)                      | The invoice type found with its steps and for-each           |
+| T4   | Input classes                                             | Transfers found on the fixture                               |
+| T5   | Incremental refresh                                       | Equals full rebuild, under 50 ms                             |
+| L2   | Connect to ChatGPT, `.mcpb`                               | **(user)** Claude Desktop and ChatGPT desktop list the tools |
 
 ## Open decisions
 
 1. **Swift helper for Apple's on-device model (L1):** decided, and shipped. `app/swift/Language.swift` is compiled by `app/build.rs` and called from `app/src/platform/language.rs`. Without Apple Intelligence it returns nothing and the caller falls back to rules.
 2. **Keyboard monitor** for Enter, Tab, Escape and modifier shortcuts only. Without it, "send with Enter" and shortcut-only steps are missing from procedures. It changes the "never keyboard hooks" rule in §4 and needs Input Monitoring permission.
-3. **"Show example values" per task type**, or values never leave the Mac in any form.
+3. **What the agent reads:** decided. The page tools in "What the agent can read and write" return labels, action symbols, value types and redacted identifiers. Field values, `search` and `context_at` follow the screen text switch in Settings.

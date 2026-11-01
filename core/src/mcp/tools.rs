@@ -14,7 +14,7 @@ use crate::search::HitSource;
 use crate::settings::Settings;
 use crate::store::Store;
 use crate::text::round2;
-use crate::time::{self, Local, iso};
+use crate::time::{self, DAY, Local, WEEK_DAYS, iso};
 use crate::writer::unpack;
 
 pub const DEFAULT_LIMIT: usize = 50;
@@ -91,7 +91,7 @@ pub const TOOLS: &[Tool] = &[
         name: "timeline",
         group: Group::Rewind,
         description: concat!(
-            "What the user worked on in a time range: episodes per app, meetings, reminders, commits and files, oldest first. Episodes are rebuilt every few minutes, so the last minutes can be missing. ",
+            "What the user worked on in a time range: activities per app, meetings, reminders, commits and files, oldest first. Activities are rebuilt every few minutes, so the last minutes can be missing. ",
             time_note!()
         ),
         read_only: true,
@@ -103,6 +103,45 @@ pub const TOOLS: &[Tool] = &[
                 }),
                 &["from", "to"],
             )
+        },
+    },
+    Tool {
+        name: "week",
+        group: Group::Workflows,
+        description: concat!(
+            "Where the user's time went over 7 days, compiled by Sextant from what they did on their Mac: active minutes and top tasks per day, task kinds that repeat (numbers become #, so \"inv #\" is invoices) and activities that repeat on 2 or more days. Start here to find work an agent could take over, then open a day or a task. Without start you get the 7 days ending today. ",
+            time_note!()
+        ),
+        read_only: true,
+        schema: || {
+            json!({"type": "object", "properties": {
+                "start": {"type": "string", "description": "First day, such as 2026-03-02."},
+            }})
+        },
+    },
+    Tool {
+        name: "day",
+        group: Group::Workflows,
+        description: concat!(
+            "One day. An activity is one focus span on one window, document or page. Lists the day's tasks by minutes, then their activities in time order (id, start time, minutes, app, label, task, clicks and edits), then all other activities folded by app and label with the first time, count and minutes. date defaults to today. ",
+            time_note!()
+        ),
+        read_only: true,
+        schema: || {
+            json!({"type": "object", "properties": {
+                "date": {"type": "string", "description": "The day, such as 2026-03-02."},
+            }})
+        },
+    },
+    Tool {
+        name: "task",
+        group: Group::Workflows,
+        description: "One task: activities joined by a shared identifier such as an invoice or ticket number, across apps and days. Lists its activities and its actions in order (app · control role · label), repeats folded, with the kind of value typed (email, id, amount, date, text). The typed values show only when screen text is switched on.",
+        read_only: true,
+        schema: || {
+            json!({"type": "object", "required": ["id"], "properties": {
+                "id": {"type": "integer", "description": "Task id from week or day."},
+            }})
         },
     },
     Tool {
@@ -161,6 +200,18 @@ pub fn call(ctx: &Ctx, name: &str, args: &Value) -> std::result::Result<String, 
         "search" => search(ctx, args),
         "context_at" => context_at(ctx, args),
         "timeline" => timeline(ctx, args),
+        "week" => week(ctx, args),
+        "day" => time_arg(ctx, args, "date", false).and_then(|at| {
+            ctx.store.day_page(
+                ctx.settings,
+                at.unwrap_or(ctx.when.now),
+                ctx.when.utc_offset_s,
+            )
+        }),
+        "task" => int(args, "id").and_then(|id| {
+            let id = id.ok_or_else(|| bad("id is required"))?;
+            ctx.store.task_page(ctx.settings, id, ctx.when.utc_offset_s)
+        }),
         "list_workflows" => list_workflows(ctx, args),
         "get_workflow" => get_workflow(ctx, args),
         "get_skill" => return get_skill(ctx, args).map_err(|e| e.to_string()),
@@ -346,6 +397,13 @@ fn context_at(ctx: &Ctx, args: &Value) -> Result<Value> {
     }))
 }
 
+fn week(ctx: &Ctx, args: &Value) -> Result<Value> {
+    let last_week = ctx.when.now - (WEEK_DAYS - 1) * DAY;
+    let start = time_arg(ctx, args, "start", false)?.unwrap_or(last_week);
+    ctx.store
+        .week_page(ctx.settings, start, ctx.when.utc_offset_s)
+}
+
 struct Item {
     start: i64,
     end: i64,
@@ -361,16 +419,16 @@ fn timeline(ctx: &Ctx, args: &Value) -> Result<Value> {
     let want = (limit + offset) as i64;
 
     let mut items: Vec<Item> = Vec::new();
-    let mut episodes = ctx.store.conn.prepare_cached(
+    let mut activities = ctx.store.conn.prepare_cached(
         "SELECT e.start_ts, e.end_ts, e.app, s.name FROM episodes e JOIN steps s ON s.id = e.step_id
          WHERE e.start_ts BETWEEN ?1 AND ?2 AND e.object_key NOT LIKE 'meeting|%'
          ORDER BY e.start_ts, e.id LIMIT ?3",
     )?;
-    for row in episodes.query_map(params![from, to, want], |row| {
+    for row in activities.query_map(params![from, to, want], |row| {
         Ok(Item {
             start: row.get(0)?,
             end: row.get(1)?,
-            kind: "episode",
+            kind: "activity",
             app: row.get(2)?,
             what: row.get(3)?,
         })

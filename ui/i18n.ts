@@ -73,7 +73,7 @@ const en = {
   cloudNote:
     "Whatever the agent reads runs where its model runs. With a cloud model, that can be the cloud.",
   switchRewind: "Agents can search what I saw and said",
-  switchWorkflows: "Agents can read my workflows",
+  switchWorkflows: "Agents can read my activities, tasks and workflows",
 
   audioTitle: "Transcribe calls",
   audioBody:
@@ -357,7 +357,7 @@ const de: Record<Key, string> = {
   cloudNote:
     "Was der Agent liest, läuft dort, wo sein Modell läuft. Bei einem Cloud-Modell kann das die Cloud sein.",
   switchRewind: "Agenten dürfen durchsuchen, was ich gesehen und gesagt habe",
-  switchWorkflows: "Agenten dürfen meine Abläufe lesen",
+  switchWorkflows: "Agenten dürfen meine Aktivitäten, Aufgaben und Abläufe lesen",
 
   audioTitle: "Gespräche mitschreiben",
   audioBody:

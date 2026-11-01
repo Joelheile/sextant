@@ -83,7 +83,7 @@ fn first_workflow_id(client: &mut Client) -> i64 {
 }
 
 #[test]
-fn the_handshake_lists_seven_tools() {
+fn the_handshake_lists_every_tool() {
     let (_db, mut client) = fixture_client("mcp-handshake");
     let init = client.request(
         "initialize",
@@ -102,12 +102,15 @@ fn the_handshake_lists_seven_tools() {
         names,
         [
             "context_at",
+            "day",
             "get_skill",
             "get_workflow",
             "list_workflows",
             "report_handoff",
             "search",
-            "timeline"
+            "task",
+            "timeline",
+            "week"
         ]
     );
     let listed = client.request("tools/list", json!({}));
@@ -281,10 +284,36 @@ fn every_tool_answers_from_the_fixture_week() {
         .map(|i| i["kind"].as_str().expect("kind"))
         .collect();
     assert!(
-        kinds.contains("episode") && kinds.contains("meeting"),
+        kinds.contains("activity") && kinds.contains("meeting"),
         "{kinds:?}"
     );
     assert!(week["items"].to_string().contains("Weekly sync"));
+
+    let page = client
+        .tool("week", json!({"start": "2026-03-02"}))
+        .expect("week");
+    assert_eq!(page["days"].as_array().expect("days").len(), 7);
+    let kind = &page["repeated_tasks"][0];
+    let task_id = kind["task_ids"][0].as_i64().expect("task id");
+    let task = client.tool("task", json!({"id": task_id})).expect("task");
+    assert_eq!(task["label"], kind["label"]);
+    let first_day = &task["first"].as_str().expect("first")[..10];
+    let day = client.tool("day", json!({"date": first_day})).expect("day");
+    assert!(
+        day["activities"]
+            .as_array()
+            .expect("activities")
+            .iter()
+            .any(|a| a["task"] == task_id),
+        "{day}"
+    );
+    assert_eq!(
+        client.tool("week", json!({})).expect("week")["to"],
+        "2026-03-07",
+        "the default week ends today"
+    );
+    assert!(client.tool("task", json!({})).is_err());
+    assert!(client.tool("day", json!({"date": "yesterday"})).is_err());
 
     let list = client.tool("list_workflows", json!({})).expect("list");
     assert!(list["total"].as_i64().expect("total") >= 1);
@@ -466,6 +495,13 @@ fn excluded_apps_never_reach_the_output() {
         )
         .expect("context_at");
     assert!(!around.to_string().contains("\"app\":\"Mail\""), "{around}");
+    for (name, args) in [
+        ("week", json!({"start": "2026-03-02"})),
+        ("day", json!({"date": "2026-03-02"})),
+    ] {
+        let page = client.tool(name, args).expect(name);
+        assert!(!page.to_string().contains("Mail"), "{page}");
+    }
 
     let visible = ids(&mut client);
     let hidden: Vec<i64> = all_ids.difference(&visible).copied().collect();
@@ -558,6 +594,8 @@ fn every_tool_stays_under_200_ms_p95() {
             "timeline",
             json!({"from": "2026-03-09", "to": "2026-03-13"}),
         ),
+        ("week", json!({"start": "2026-03-09"})),
+        ("day", json!({"date": "2026-03-10"})),
         ("list_workflows", json!({})),
         ("get_workflow", json!({"id": id})),
         ("get_skill", json!({"id": id})),
@@ -592,4 +630,35 @@ fn every_tool_stays_under_200_ms_p95() {
         worst < MCP_P95,
         "worst tool p95 {worst:?} is over the {MCP_P95:?} budget"
     );
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "budget tests run in release mode")]
+fn every_day_page_of_90_days_stays_under_8_kb_and_100_ms() {
+    const DAY_BYTES: usize = 8_000;
+    const DAY_TIME: Duration = Duration::from_millis(100);
+    let db = TempDb::new("budget-day-pages");
+    let mut store = db.open().expect("test setup");
+    let spec = Spec {
+        first_monday: WEEK_START,
+        weeks: 13,
+        noise_per_day: 250,
+        frames: false,
+    };
+    let now = WEEK_START + 90 * DAY;
+    load(&mut store, &generate(&spec), now).expect("test setup");
+    store.refresh(local(now)).expect("test setup");
+    let mut client = Client::new(store.reader().expect("test setup"));
+
+    let (mut largest, mut slowest) = (0, Duration::ZERO);
+    for day in 0..90 {
+        let noon = WEEK_START + day * DAY + DAY / 2;
+        let started = Instant::now();
+        let page = client.tool("day", json!({"date": noon})).expect("day");
+        slowest = slowest.max(started.elapsed());
+        largest = largest.max(page.to_string().len());
+    }
+    println!("day pages over 90 days: largest {largest} bytes, slowest {slowest:?}");
+    assert!(largest < DAY_BYTES, "a day page holds {largest} bytes");
+    assert!(slowest < DAY_TIME, "a day page took {slowest:?}");
 }

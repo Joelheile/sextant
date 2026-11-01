@@ -13,6 +13,7 @@ mod finder;
 pub mod fixtures;
 pub mod mcp;
 mod model;
+mod pages;
 pub mod profile_fixture;
 mod recall;
 mod redact;

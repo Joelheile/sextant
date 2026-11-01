@@ -76,7 +76,22 @@ fn serves_every_tool_group_over_stdio() {
     .expect("notify");
 
     let tools = session.call("tools/list", json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().expect("tools").len(), 7);
+    assert_eq!(
+        tools["result"]["tools"].as_array().expect("tools").len(),
+        10
+    );
+
+    let week = session.call(
+        "tools/call",
+        json!({"name": "week", "arguments": {"start": "2026-03-02"}}),
+    );
+    assert_eq!(week["result"]["isError"], false);
+    assert!(
+        week["result"]["content"][0]["text"]
+            .as_str()
+            .expect("text")
+            .contains("\"repeated_tasks\"")
+    );
 
     let list = session.call(
         "tools/call",

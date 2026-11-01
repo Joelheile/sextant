@@ -126,7 +126,10 @@ The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`,
 | ----------------------------------- | ---------------------------------------------------------------------------------------- |
 | `search` (query, from?, to?, app?)  | matching screen lines and transcript lines with time, app, window, grouped into sessions |
 | `context_at` (time, window?)        | the screen text and transcript around a moment                                           |
-| `timeline` (from, to)               | episodes and meetings in that range, compact                                             |
+| `timeline` (from, to)               | activities and meetings in that range, compact                                           |
+| `week` (start?)                     | minutes and top tasks per day, task kinds and activities that repeat on 2 or more days   |
+| `day` (date?)                       | the day's tasks, their activities in order, other activities folded by app and label     |
+| `task` (id)                         | a task's activities and folded actions with value types; values need the rewind switch   |
 | `list_workflows`                    | ranked workflows with hours, potential, reasons                                          |
 | `get_workflow` (id)                 | steps, follows, example cases (redacted), commitments                                    |
 | `get_skill` (id)                    | ready `SKILL.md` for that workflow                                                       |

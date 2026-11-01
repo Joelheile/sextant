@@ -286,6 +286,12 @@ fn stable_id(variant: &str) -> i64 {
     (fnv1a(variant) >> 16) as i64
 }
 
+/// Survives refreshes: an activity keeps its id while its start and object stay the same. A task
+/// takes the id of its first activity.
+fn activity_id(episode: &episodes::Episode) -> i64 {
+    stable_id(&format!("{}|{}", episode.start, episode.key))
+}
+
 /// Root of `index` in a union-find forest, halving the path on the way.
 fn find(parent: &mut [usize], mut index: usize) -> usize {
     while parent[index] != index {
@@ -311,10 +317,11 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
     {
+        let activity_ids: Vec<i64> = analysis.episodes.iter().map(activity_id).collect();
         let mut insert = tx.prepare("INSERT INTO episodes(id, start_ts, end_ts, app, object_key, step_id, live) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")?;
-        for (i, e) in analysis.episodes.iter().enumerate() {
+        for (e, &activity) in analysis.episodes.iter().zip(&activity_ids) {
             insert.execute(params![
-                id(i),
+                activity,
                 e.start,
                 e.end,
                 e.app,
@@ -351,7 +358,7 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 n(e.episodes.len())
             ])?;
             for episode in &e.episodes {
-                mention.execute(params![id(i), id(*episode)])?;
+                mention.execute(params![id(i), activity_ids[*episode]])?;
             }
         }
         let mut insert = tx.prepare("INSERT INTO follows(from_step_id, to_step_id, count, median_gap_s, copies, days) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
@@ -370,12 +377,17 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
         )?;
         let mut episode_link =
             tx.prepare("INSERT INTO task_episodes(task_id, episode_id) VALUES (?1, ?2)")?;
-        for (i, t) in analysis.tasks.iter().enumerate() {
+        let task_ids: Vec<i64> = analysis
+            .tasks
+            .iter()
+            .map(|t| activity_ids[t.episodes[0]])
+            .collect();
+        for (t, &task_id) in analysis.tasks.iter().zip(&task_ids) {
             let workflow = t
                 .workflow
                 .map(|w| stable_id(&analysis.workflows[w].0.variant));
             insert.execute(params![
-                id(i),
+                task_id,
                 t.label(),
                 workflow,
                 t.first,
@@ -383,7 +395,7 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 t.active_s
             ])?;
             for &episode in &t.episodes {
-                episode_link.execute(params![id(i), id(episode)])?;
+                episode_link.execute(params![task_id, activity_ids[episode]])?;
             }
         }
         let mut insert = tx.prepare(
@@ -442,7 +454,7 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 c.source,
                 c.text,
                 c.due,
-                c.task.map(id),
+                c.task.map(|t| task_ids[t]),
                 c.overdue
             ])?;
         }

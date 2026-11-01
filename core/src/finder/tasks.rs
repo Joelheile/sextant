@@ -316,6 +316,57 @@ mod tests {
         assert!(adjusted_rand(&[0, 1, 0, 1], &[0, 0, 1, 1]) < 0.1);
     }
 
+    fn ids_by_start(store: &crate::store::Store, sql: &str) -> HashMap<i64, i64> {
+        let mut statement = store.conn.prepare(sql).expect("test setup");
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("test setup")
+            .collect::<std::result::Result<_, _>>()
+            .expect("test setup")
+    }
+
+    #[test]
+    fn activity_and_task_ids_survive_a_refresh_whose_window_moved() {
+        let (fixture, _) = actions_week();
+        let db = TempDb::new("stable-ids");
+        let mut store = db.open().expect("test setup");
+        load(&mut store, &fixture, WEEK_NOW).expect("test setup");
+        let activities = "SELECT start_ts, id FROM episodes";
+        let tasks = "SELECT first_ts, id FROM tasks";
+
+        store.refresh(local(WEEK_NOW)).expect("test setup");
+        let (activities_before, tasks_before) = (
+            ids_by_start(&store, activities),
+            ids_by_start(&store, tasks),
+        );
+        // 90 days after Tuesday noon, so Monday and Tuesday morning fall out of the window.
+        store
+            .refresh(local(WEEK_START + DAY + 12 * 3600 + 90 * DAY))
+            .expect("test setup");
+        let (activities_after, tasks_after) = (
+            ids_by_start(&store, activities),
+            ids_by_start(&store, tasks),
+        );
+
+        assert!(activities_after.len() < activities_before.len());
+        let kept: Vec<_> = activities_after
+            .iter()
+            .filter(|(start, _)| activities_before.contains_key(start))
+            .collect();
+        assert!(!kept.is_empty());
+        for (start, id) in kept {
+            assert_eq!(activities_before[start], *id, "activity at {start}");
+        }
+        let kept_tasks: Vec<_> = tasks_after
+            .iter()
+            .filter(|(first, _)| tasks_before.contains_key(first))
+            .collect();
+        assert!(!kept_tasks.is_empty());
+        for (first, id) in kept_tasks {
+            assert_eq!(tasks_before[first], *id, "task starting at {first}");
+        }
+    }
+
     #[test]
     fn tasks_agree_with_the_interleaved_truth_at_least_0_9() {
         let (fixture, truth) = actions_week();
