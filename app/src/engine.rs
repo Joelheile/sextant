@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 use sextant_core::backfill;
 use sextant_core::{Item, Key, Secret, Settings, Store};
 
-use crate::capture::{Control, FLUSH_EVERY, Ingest, Pipeline, Sink};
-use crate::{audio, clock, home, models, platform, prefs};
+use crate::capture::{Control, FLUSH_EVERY, Ingest, Pipeline, Sink, Stats, percentile};
+use crate::{audio, clock, debug, home, models, platform, prefs};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(300);
 const RETENTION_EVERY: Duration = Duration::from_secs(3600);
@@ -208,6 +208,7 @@ impl Engine {
         drop(capture);
         if let Err(err) = self.sync_audio() {
             eprintln!("audio did not start: {err:#}");
+            debug::record("starting audio");
         }
         Ok(())
     }
@@ -334,6 +335,43 @@ impl Engine {
         }
     }
 
+    /// Live capture counters and OCR timings for the debug report. Empty while capture is off.
+    pub fn capture_numbers(&self) -> Vec<(&'static str, f64)> {
+        let Ok(capture) = self.capture.lock() else {
+            return Vec::new();
+        };
+        let Some(pipeline) = capture.as_ref() else {
+            return Vec::new();
+        };
+        let stats = &pipeline.stats;
+        let ocr_ms = stats.ocr_ms();
+        let mut numbers = vec![
+            ("ocr p50 ms", percentile(&ocr_ms, 50.0)),
+            ("ocr p95 ms", percentile(&ocr_ms, 95.0)),
+        ];
+        let counters = [
+            ("looks", &stats.looks),
+            ("frames captured", &stats.captured),
+            ("frames skipped", &stats.skipped),
+            ("frames read by OCR", &stats.ocr),
+            ("frames read from the tree", &stats.tree),
+            ("frames dropped", &stats.dropped),
+            ("capture errors", &stats.capture_errors),
+            ("OCR errors", &stats.ocr_errors),
+            ("copies", &stats.copies),
+            ("presses", &stats.presses),
+            ("edits", &stats.edits),
+        ];
+        numbers.extend(counters.map(|(name, counter)| (name, Stats::get(counter) as f64)));
+        numbers.extend(
+            stats
+                .blocked()
+                .into_iter()
+                .map(|(reason, count)| (reason, count as f64)),
+        );
+        numbers
+    }
+
     /// Runs `read` on the read-only connection.
     pub fn read<T>(&self, read: impl FnOnce(&Store) -> sextant_core::Result<T>) -> Result<T> {
         let reader = self
@@ -374,7 +412,10 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
             Ok(Msg::Backfill) => {
                 match backfill_and_refresh(&mut store, &mut ingest, dir, emit) {
                     Ok(summary) => emit("backfill-done", summary),
-                    Err(err) => emit("backfill-failed", json!({"message": err.to_string()})),
+                    Err(err) => {
+                        debug::record("backfill");
+                        emit("backfill-failed", json!({"message": err.to_string()}));
+                    }
                 }
                 last_refresh = Instant::now();
             }
@@ -388,10 +429,14 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
-        if ingest.due()
-            && let Err(err) = ingest.flush(&mut store, clock::now())
-        {
-            eprintln!("flush failed: {err}");
+        if ingest.due() {
+            match ingest.flush(&mut store, clock::now()) {
+                Ok((_, latencies)) => debug::flushed(&latencies),
+                Err(err) => {
+                    eprintln!("flush failed: {err}");
+                    debug::record("flush");
+                }
+            }
         }
         if last_refresh.elapsed() >= REFRESH_EVERY {
             refresh(&mut store, &mut last_refresh);
@@ -400,6 +445,7 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
             enforce_retention(&mut store, dir);
             if let Err(err) = store.maintain(clock::now()) {
                 eprintln!("maintenance failed: {err}");
+                debug::record("maintenance");
             }
             next_retention = Instant::now() + RETENTION_EVERY;
         }
@@ -412,6 +458,7 @@ fn enforce_retention(store: &mut Store, dir: &Path) {
     let days = prefs::load(dir)
         .unwrap_or_else(|err| {
             eprintln!("retention uses the default: {err:#}");
+            debug::record("reading settings");
             Settings::default()
         })
         .retention_days;
@@ -419,12 +466,18 @@ fn enforce_retention(store: &mut Store, dir: &Path) {
         && let Err(err) = store.retention(clock::local(), days)
     {
         eprintln!("retention failed: {err}");
+        debug::record("retention");
     }
 }
 
 fn refresh(store: &mut Store, last_refresh: &mut Instant) {
-    if let Err(err) = store.refresh(clock::local()) {
-        eprintln!("refresh failed: {err}");
+    let started = Instant::now();
+    match store.refresh(clock::local()) {
+        Ok(_) => debug::refreshed(started.elapsed()),
+        Err(err) => {
+            eprintln!("refresh failed: {err}");
+            debug::record("refresh");
+        }
     }
     *last_refresh = Instant::now();
 }

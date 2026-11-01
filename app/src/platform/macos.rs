@@ -187,6 +187,18 @@ fn find_repos(dir: &Path, depth: u32, repos: &mut Vec<String>) {
     }
 }
 
+/// `26.0.1`, or `unknown` when `sw_vers` fails.
+pub fn os_version() -> String {
+    Command::new("sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map_or("unknown".to_owned(), |out| {
+            String::from_utf8_lossy(&out.stdout).trim().to_owned()
+        })
+}
+
 pub fn calendar_status() -> &'static str {
     eventkit::status(Kind::Events)
 }

@@ -7,6 +7,7 @@ pub mod backfill;
 pub mod capture;
 pub mod connect;
 mod corrections;
+mod debug;
 mod enjoyment;
 mod error;
 mod finder;
@@ -31,6 +32,7 @@ mod writer;
 
 pub use analytics::Insights;
 pub use corrections::{Rule, Target, parse as parse_correction};
+pub use debug::Facts;
 pub use enjoyment::Enjoyment;
 pub use error::{Error, Result};
 pub use finder::{Action, Category, Kind, ValueType, Workflow, WorkflowDetail};

@@ -49,6 +49,10 @@ impl Platform for System {
     }
 }
 
+pub fn os_version() -> String {
+    "unknown".to_owned()
+}
+
 pub fn calendar_status() -> &'static str {
     "denied"
 }

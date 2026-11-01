@@ -6,6 +6,7 @@ mod clock;
 mod commands;
 mod connect;
 mod data;
+mod debug;
 mod engine;
 mod home;
 mod judge;
@@ -43,10 +44,14 @@ fn start_engine(app: &AppHandle) {
             Ok(settings) if settings.onboarded => {
                 if let Err(err) = engine.start_capture(settings) {
                     eprintln!("capture did not start: {err:#}");
+                    debug::record("starting capture");
                 }
             }
             Ok(_) => {}
-            Err(err) => eprintln!("capture did not start: {err:#}"),
+            Err(err) => {
+                eprintln!("capture did not start: {err:#}");
+                debug::record("reading settings");
+            }
         }
         Ok(engine)
     });
@@ -74,6 +79,7 @@ fn main() -> anyhow::Result<()> {
                         && let Err(err) = rewind::toggle(app)
                     {
                         eprintln!("opening search failed: {err}");
+                        debug::record("opening search");
                     }
                 })
                 .build(),
@@ -113,6 +119,7 @@ fn main() -> anyhow::Result<()> {
             screens::weekly_report,
             screens::save_report_image,
             screens::storage_used,
+            debug::debug_report,
             screens::set_excluded_apps,
             screens::set_live,
             screens::set_retention,
