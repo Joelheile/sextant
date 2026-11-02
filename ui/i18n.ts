@@ -298,6 +298,7 @@ const en = {
     "Your agent reads your weeks in Sextant and saves the work it could take over. Sextant measures the hours from what it cites.",
   routineStop: "Asks you before: {action}",
   routineSeen: "{count} activities, {first} to {last}",
+  routineSkill: "To turn it into a skill, paste this into {agent}:",
   analyzeWith: "Find routines with {agent}",
   analyzing: "Your agent is reading your weeks, this takes a few minutes",
   pickAgent: "Pick Claude Code or Codex in Settings to find routines.",
@@ -620,6 +621,7 @@ const de: Record<Key, string> = {
     "Dein Agent liest deine Wochen in Sextant und speichert die Arbeit, die er übernehmen könnte. Sextant misst die Stunden an dem, was er belegt.",
   routineStop: "Fragt dich vor: {action}",
   routineSeen: "{count} Aktivitäten, {first} bis {last}",
+  routineSkill: "Für einen Skill füge das in {agent} ein:",
   analyzeWith: "Routinen mit {agent} finden",
   analyzing: "Dein Agent liest deine Wochen, das dauert ein paar Minuten",
   pickAgent:

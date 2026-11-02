@@ -2,8 +2,10 @@
 //! activities it read. Code checks every citation, measures the hours and stores the time spans.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::LazyLock;
 
-use rusqlite::params;
+use regex::Regex;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -12,7 +14,7 @@ use crate::pages::{covered_s, midnight, minutes};
 use crate::redact::redact;
 use crate::settings::Settings;
 use crate::store::Store;
-use crate::text::round2;
+use crate::text::{pattern, round2};
 use crate::time::{day, iso, parse};
 
 const MIN_ACTIVITIES: usize = 3;
@@ -21,6 +23,11 @@ const TITLE_CHARS: usize = 120;
 const TEXT_CHARS: usize = 1000;
 /// Hours a week count work days, as the finder's do.
 const WORK_DAYS: f64 = 5.0;
+
+/// A numbered step in a `SKILL.md`, such as "1. Open the sheet".
+static STEP: LazyLock<Regex> = LazyLock::new(|| pattern(r"^\s*\d+[.)]\s"));
+/// A step's citation, such as "(task 42: Mail · AXButton · send)".
+static CITATION: LazyLock<Regex> = LazyLock::new(|| pattern(r"\(task (-?\d+): ([^()]+)\)"));
 
 /// Work outside tasks, cited the way `day` folds it: an app, a label and the dates it ran.
 #[derive(Debug, Deserialize, Serialize)]
@@ -152,6 +159,82 @@ impl Store {
             }));
         }
         Ok(json!({"routines": routines}))
+    }
+
+    /// Checks a draft `SKILL.md` for routine `id`: every numbered step cites a task the routine
+    /// cites and an action that task holds, as `(task <id>: <action>)`. Errors name every
+    /// problem, so the agent can fix them in one pass.
+    pub fn check_skill(&self, settings: &Settings, id: i64, skill: &str) -> Result<Value> {
+        let tasks = self.routine_tasks(id)?;
+        if tasks.is_empty() {
+            return Err(Error::Invalid(format!(
+                "routine {id} cites no tasks, so its steps have nothing to cite"
+            )));
+        }
+        let mut actions: BTreeMap<i64, BTreeSet<String>> = BTreeMap::new();
+        for &task in &tasks {
+            let visible = self
+                .task_actions(task)?
+                .into_iter()
+                .map(|a| a.symbol)
+                .filter(|symbol| !settings.is_excluded(symbol.split(" · ").next().unwrap_or("")));
+            actions.insert(task, visible.collect());
+        }
+
+        let steps: Vec<&str> = skill.lines().filter(|line| STEP.is_match(line)).collect();
+        if steps.is_empty() {
+            return Err(Error::Invalid(
+                "the skill has no numbered steps: write them as 1. 2. 3.".into(),
+            ));
+        }
+        let mut problems = Vec::new();
+        let mut citations = 0;
+        for (index, step) in steps.iter().enumerate() {
+            let n = index + 1;
+            let cited: Vec<_> = CITATION.captures_iter(step).collect();
+            if cited.is_empty() {
+                problems.push(format!(
+                    "step {n} cites nothing: end it with (task <id>: <action>)"
+                ));
+            }
+            for citation in cited {
+                citations += 1;
+                let (task, action) = (&citation[1], citation[2].trim());
+                let Some(known) = task.parse().ok().and_then(|task: i64| actions.get(&task)) else {
+                    problems.push(format!(
+                        "step {n} cites task {task}, which routine {id} does not cite: use one of {tasks:?}"
+                    ));
+                    continue;
+                };
+                if !known.contains(action) {
+                    problems.push(format!(
+                        "step {n}: task {task} has no action \"{action}\": copy one from its actions in task"
+                    ));
+                }
+            }
+        }
+        if !problems.is_empty() {
+            return Err(Error::Invalid(problems.join("; ")));
+        }
+        Ok(json!({"ok": true, "steps": steps.len(), "citations": citations}))
+    }
+
+    /// The task ids routine `id` cites.
+    fn routine_tasks(&self, id: i64) -> Result<Vec<i64>> {
+        let cites: String = self
+            .conn
+            .query_row(
+                "SELECT cites FROM routines WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| Error::Invalid(format!("no routine {id}: use an id from routines")))?;
+        let cites: Value = serde_json::from_str(&cites)?;
+        Ok(cites["task_ids"]
+            .as_array()
+            .map(|ids| ids.iter().filter_map(Value::as_i64).collect())
+            .unwrap_or_default())
     }
 
     /// Every cited activity's time span by activity id. An unknown task or repeat is an error
@@ -376,5 +459,54 @@ mod tests {
 
         let receipts = task_ids(&store, "re #");
         save(&store, &routine(receipts, vec![])).expect("other work saves");
+    }
+
+    #[test]
+    fn a_skill_passes_only_when_every_step_cites_a_real_action_of_the_routine() {
+        let (_db, store) = invoice_week("routine-skill");
+        let invoices = task_ids(&store, "inv #");
+        let saved = save(&store, &routine(invoices.clone(), vec![])).expect("saved");
+        let id = saved["id"].as_i64().expect("id");
+        let settings = Settings::default();
+        let task = store
+            .task_page(&settings, invoices[0], UTC_OFFSET_S)
+            .expect("task");
+        let actions: Vec<&str> = task["actions"]
+            .as_array()
+            .expect("actions")
+            .iter()
+            .map(|a| a["action"].as_str().expect("symbol"))
+            .collect();
+        assert!(actions.len() >= 2, "{task}");
+        let check = |skill: &str| {
+            store
+                .check_skill(&settings, id, skill)
+                .map_err(|e| e.to_string())
+        };
+
+        let good = format!(
+            "---\nname: send-invoices\n---\n\nSteps:\n\n1. Start here (task {0}: {1})\n2. Then this (task {0}: {2})\n",
+            invoices[0], actions[0], actions[1]
+        );
+        assert_eq!(check(&good).expect("passes")["citations"], 2);
+
+        let receipts = task_ids(&store, "re #");
+        let bad = format!(
+            "1. Guess\n2. Other work (task {}: {})\n3. Made up (task {}: Mail · AXButton · teleport)\n",
+            receipts[0], actions[0], invoices[0]
+        );
+        let refused = check(&bad).expect_err("bad citations");
+        assert!(refused.contains("step 1 cites nothing"), "{refused}");
+        assert!(
+            refused.contains(&format!("cites task {}", receipts[0])),
+            "{refused}"
+        );
+        assert!(refused.contains("teleport"), "{refused}");
+        assert!(check("No steps at all.").is_err());
+        assert!(
+            store
+                .check_skill(&settings, id + 1, &good)
+                .is_err_and(|e| e.to_string().contains("no routine"))
+        );
     }
 }

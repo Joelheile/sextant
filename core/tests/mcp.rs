@@ -101,6 +101,7 @@ fn the_handshake_lists_every_tool() {
     assert_eq!(
         names,
         [
+            "check_skill",
             "context_at",
             "day",
             "get_skill",
@@ -434,7 +435,7 @@ fn a_saved_routine_comes_back_measured_and_listed() {
 }
 
 #[test]
-fn the_find_routines_prompt_follows_the_work_patterns_switch() {
+fn the_prompts_follow_the_work_patterns_switch() {
     let (_db, mut client) = fixture_client("mcp-prompt");
     let listed = client.request("prompts/list", json!({}));
     assert_eq!(listed["result"]["prompts"][0]["name"], "find_routines");
@@ -443,6 +444,17 @@ fn the_find_routines_prompt_follows_the_work_patterns_switch() {
         .as_str()
         .expect("text");
     assert!(text.contains("save_routine"), "{text}");
+    let skill = client.request(
+        "prompts/get",
+        json!({"name": "write_skill", "arguments": {"routine_id": "7"}}),
+    );
+    let text = skill["result"]["messages"][0]["content"]["text"]
+        .as_str()
+        .expect("text");
+    assert!(
+        text.contains("routine 7") && text.contains("check_skill"),
+        "{text}"
+    );
 
     client.settings.borrow_mut().mcp_workflows = false;
     let listed = client.request("prompts/list", json!({}));

@@ -167,7 +167,7 @@ Rule: the LLM judges, code computes (CLAUDE.md, code rule 9). It sees one compac
 
 ## Engine: a memory your agent can read
 
-Status: decided 2026-11-01. E1, D1, E2 and E3 are built. It replaces the agent bridge's brief and answer in `core/src/agent.rs`, and the earlier plan of a one-shot task digest. Today the brief holds app, category and minutes per step of the workflows the rules found. That is too little for an agent to judge, and it hides every routine the rules miss.
+Status: decided 2026-11-01. E1, D1, E2, E3 and E4a are built. It replaces the agent bridge's brief and answer in `core/src/agent.rs`, and the earlier plan of a one-shot task digest. Today the brief holds app, category and minutes per step of the workflows the rules found. That is too little for an agent to judge, and it hides every routine the rules miss.
 
 Code builds the graph and the day pages, local models label and embed, your Claude Code or Codex reasons over them through MCP tools, and code checks every claim. The model proposes, code measures.
 
@@ -225,6 +225,7 @@ One MCP server is the whole engine interface. The bridge, Claude Code, Claude De
 | `search`, `context_at` | Exist today: full-text search, and the screen text and speech around a moment (rewind)                                                          |
 | `save_routine(...)`    | The one new write. Code checks the cited ids, measures hours a week and stores the routine with the time spans it cites. An error says what to fix |
 | `routines()`           | Saved routines with their hours and evidence                                                                                                    |
+| `check_skill(...)`     | Checks a draft `SKILL.md` for a routine: every numbered step cites `(task <id>: <action>)`, a task the routine cites and an action it holds      |
 
 - Ids survive refreshes: an activity's id comes from its start time and object, and a task's id is its first activity's. A routine stores the time spans it cites, so it outlives the 90-day window.
 - The two existing switches stay. "Screen text" (`mcp_rewind`) gates `search`, `context_at` and the values in `task`. "Work patterns" (`mcp_workflows`) gates the rest. Excluded apps never appear, the page tools hold no transcripts, and every result goes through `redact.rs`.
@@ -255,8 +256,10 @@ One MCP server is the whole engine interface. The bridge, Claude Code, Claude De
 
 ### E4. Skills, then remove the old path
 
-- Opening a routine gives a one-line prompt for your agent. The `write_skill` prompt has the agent read the routine's evidence through `task` and write a `SKILL.md` where it loads skills. Every step cites a task id and an action symbol.
-- Then delete workflows, steps, `score.rs`, follows, step categories, the `agent_ideas` table, `list_workflows`, `get_workflow` and `get_skill`. Rename episodes to activities in code and in `schema_v9.sql` after the removal, when fewer files mention them.
+E4 ships in two steps, because the old path still drives the Workflows and Results tabs, the popover's hours, insights, the share image and corrections.
+
+- **E4a, built:** each routine on the Ideas tab shows a one-line prompt to copy: `/mcp__sextant__write_skill <id>` for Claude Code, and a plain request for Codex, whose support for MCP prompts is unclear. The `write_skill` prompt has the agent read the routine's evidence through `task`, check its draft with `check_skill` and save a `SKILL.md` where it loads skills. Every step cites a task id and an action symbol. An ignored test runs real Claude on the fixture, and every citation resolves.
+- **E4b, next:** decide what replaces each screen that reads workflows, move it to routines, then delete workflows, steps, `score.rs`, follows, step categories, the `agent_ideas` table, `list_workflows`, `get_workflow` and `get_skill`. Rename episodes to activities in code and in `schema_v9.sql` after the removal, when fewer files mention them.
 - Done when a fixture routine yields a skill whose citations all resolve, and every test passes after the removal.
 
 ### E5. Search with local embeddings

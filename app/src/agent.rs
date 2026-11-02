@@ -63,8 +63,9 @@ fn find(agent: AgentName) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-/// Runs `agent` with `server` (the `sextant` binary) as its only MCP server.
-fn ask(agent: AgentName, server: &Path) -> Result<()> {
+/// Runs `agent` on `prompt` with `server` (the `sextant` binary) as its only MCP server, and
+/// returns what it printed.
+fn ask(agent: AgentName, server: &Path, prompt: &str) -> Result<String> {
     let path = find(agent).with_context(|| format!("{agent} is not installed"))?;
     let dir = std::env::temp_dir().join(format!(
         "sextant-agent-{}-{}",
@@ -72,12 +73,12 @@ fn ask(agent: AgentName, server: &Path) -> Result<()> {
         clock::now()
     ));
     std::fs::create_dir_all(&dir).context("creating the agent folder")?;
-    let answer = run(agent, &path, &dir, server);
+    let answer = run(agent, &path, &dir, server, prompt);
     let _ = std::fs::remove_dir_all(&dir);
     answer
 }
 
-fn run(agent: AgentName, path: &Path, dir: &Path, server: &Path) -> Result<()> {
+fn run(agent: AgentName, path: &Path, dir: &Path, server: &Path, prompt: &str) -> Result<String> {
     let server = server.to_str().context("the Sextant path is not UTF-8")?;
     let mut command = Command::new(path);
     match agent {
@@ -147,7 +148,8 @@ fn run(agent: AgentName, path: &Path, dir: &Path, server: &Path) -> Result<()> {
         .with_context(|| format!("starting {agent}"))?;
 
     let mut stdin = child.stdin.take().context("agent stdin")?;
-    let writer = thread::spawn(move || stdin.write_all(FIND_ROUTINES.as_bytes()));
+    let prompt = prompt.to_owned();
+    let writer = thread::spawn(move || stdin.write_all(prompt.as_bytes()));
     let mut stdout = child.stdout.take().context("agent stdout")?;
     let reader = thread::spawn(move || {
         let mut out = String::new();
@@ -192,10 +194,10 @@ fn run(agent: AgentName, path: &Path, dir: &Path, server: &Path) -> Result<()> {
         let last: String = last.chars().take(200).collect();
         bail!("{agent} stopped ({status}): {last}");
     }
-    match agent {
-        AgentName::Claude => claude_succeeded(&out),
-        AgentName::Codex => Ok(()),
+    if agent == AgentName::Claude {
+        claude_succeeded(&out)?;
     }
+    Ok(out)
 }
 
 fn signed_out(stderr: &str) -> bool {
@@ -240,7 +242,7 @@ fn analyze(engine: &Engine, settings: &Settings, agent: AgentName) -> Result<()>
         let started = Instant::now();
         let before = routine_count(engine)?;
         let server = std::env::current_exe().context("finding the Sextant binary")?;
-        ask(agent, &server)?;
+        ask(agent, &server, FIND_ROUTINES)?;
         eprintln!(
             "agent run: {} routines saved, {} s",
             routine_count(engine)? - before,
@@ -350,22 +352,26 @@ pub fn spawn_weekly(app: AppHandle) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use sextant_core::Store;
-    use sextant_core::fixtures::{TEST_SECRET, WEEK_NOW, load, local, week};
+    use std::path::PathBuf;
+
+    use sextant_core::fixtures::{
+        Fixture, TEST_SECRET, UTC_OFFSET_S, WEEK_NOW, WEEK_START, actions_week, load, local, week,
+    };
+    use sextant_core::mcp::write_skill;
+    use sextant_core::{Routine, Store};
 
     use super::*;
 
     const KEY_HEX: &str = "0707070707070707070707070707070707070707070707070707070707070707";
 
-    /// Runs the real CLI on the fixture week through `sextant mcp`, so it costs a little of your
-    /// plan. Build the binary first, then run
-    /// `cargo build -p sextant-app && cargo test -p sextant-app live_ -- --ignored --nocapture`.
-    fn live(agent: AgentName) {
-        let dir = std::env::temp_dir().join(format!("sextant-bridge-{agent}-{}", clock::now()));
+    /// A temporary Sextant home holding `fixture`, set up for `sextant mcp`. Returns the folder,
+    /// the database and the server binary.
+    fn home(fixture: &Fixture) -> (PathBuf, PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("sextant-bridge-{}", clock::now()));
         std::fs::create_dir_all(&dir).expect("test setup");
         let db = dir.join("sextant.db");
         let mut store = Store::open(&db, &[7; 32], &TEST_SECRET).expect("test setup");
-        load(&mut store, &week(), WEEK_NOW).expect("test setup");
+        load(&mut store, fixture, WEEK_NOW).expect("test setup");
         store.refresh(local(WEEK_NOW)).expect("test setup");
         drop(store);
         // SAFETY: the ignored live tests are run one at a time and nothing else reads these.
@@ -380,9 +386,17 @@ mod tests {
             .and_then(|exe| Some(exe.parent()?.parent()?.join("sextant")))
             .filter(|path| path.is_file())
             .expect("build the app first: cargo build -p sextant-app");
+        (dir, db, server)
+    }
+
+    /// Runs the real CLI on the fixture week through `sextant mcp`, so it costs a little of your
+    /// plan. Build the binary first, then run
+    /// `cargo build -p sextant-app && cargo test -p sextant-app live_ -- --ignored --nocapture`.
+    fn live(agent: AgentName) {
+        let (dir, db, server) = home(&week());
 
         let started = Instant::now();
-        ask(agent, &server).expect("agent run");
+        ask(agent, &server, FIND_ROUTINES).expect("agent run");
         let store = Store::open_read_only(&db, &[7; 32]).expect("test setup");
         let routines = store.routines(0).expect("routines");
         let routines = routines["routines"].as_array().expect("list");
@@ -433,5 +447,49 @@ mod tests {
     #[ignore = "calls the codex CLI"]
     fn live_codex_saves_the_invoice_routine() {
         live(AgentName::Codex);
+    }
+
+    /// Claude writes a skill for the saved invoice routine, and every citation resolves. It
+    /// can't save files here, so it replies with the SKILL.md.
+    #[test]
+    #[ignore = "calls the claude CLI"]
+    fn live_claude_writes_a_skill_whose_citations_resolve() {
+        let (dir, db, server) = home(&actions_week().0);
+        let settings = Settings::default();
+        let store = Store::open_read_only(&db, &[7; 32]).expect("test setup");
+        let week = store
+            .week_page(&settings, WEEK_START, UTC_OFFSET_S)
+            .expect("week");
+        let invoices = week["repeated_tasks"]
+            .as_array()
+            .and_then(|kinds| kinds.iter().find(|kind| kind["label"] == "inv #"))
+            .map(|kind| kind["task_ids"].clone())
+            .expect("the invoice tasks");
+        let routine: Routine = serde_json::from_value(serde_json::json!({
+            "title": "Send invoices",
+            "task_ids": invoices,
+            "how": "Fill the invoice from the sheet and email it.",
+            "approval": "sending the email",
+            "why": "Every weekday.",
+        }))
+        .expect("test setup");
+        let saved = store
+            .save_routine(&settings, &routine, WEEK_NOW, UTC_OFFSET_S)
+            .expect("test setup");
+        let id = saved["id"].as_i64().expect("id");
+
+        let prompt = format!(
+            "{}\n\nYou can't save files here. Instead end your reply with the whole SKILL.md.",
+            write_skill(id)
+        );
+        let started = Instant::now();
+        let out = ask(AgentName::Claude, &server, &prompt).expect("agent run");
+        let reply: Value = serde_json::from_str(&out).expect("json");
+        let skill = reply["result"].as_str().expect("reply");
+        eprintln!("claude: skill in {:?}\n{skill}", started.elapsed());
+        let checked = store.check_skill(&settings, id, skill);
+        let _ = std::fs::remove_dir_all(&dir);
+        let checked = checked.expect("every citation resolves");
+        assert!(checked["steps"].as_u64() >= Some(3), "{checked}");
     }
 }

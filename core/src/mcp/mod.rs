@@ -9,14 +9,14 @@ use std::io::{BufRead, Write};
 use serde_json::{Value, json};
 
 use self::tools::{Ctx, Group, TOOLS};
-pub use self::tools::{DEFAULT_LIMIT, FIND_ROUTINES};
+pub use self::tools::{DEFAULT_LIMIT, FIND_ROUTINES, write_skill};
 use crate::settings::Settings;
 use crate::store::Store;
 use crate::time::Local;
 
 const LATEST: &str = "2025-06-18";
 const SUPPORTED: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const INSTRUCTIONS: &str = "Sextant holds what the user did on this Mac: activities, tasks, the text they saw on screen and what they said. To find work an agent could take over, read week first, then day and task, and save each routine you find with save_routine; routines lists the saved ones, and the find_routines prompt walks through it. Use search, context_at and timeline to look back. list_workflows, get_workflow and get_skill show the workflows Sextant's rules found. Results are capped: pass next_offset as offset for the next page.";
+const INSTRUCTIONS: &str = "Sextant holds what the user did on this Mac: activities, tasks, the text they saw on screen and what they said. To find work an agent could take over, read week first, then day and task, and save each routine you find with save_routine; routines lists the saved ones, and the find_routines prompt walks through it. To turn a routine into a skill, read its cited tasks with task and check the draft with check_skill before you save it. Use search, context_at and timeline to look back. list_workflows, get_workflow and get_skill show the workflows Sextant's rules found. Results are capped: pass next_offset as offset for the next page.";
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;

@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { api, type AgentName, type AgentStatus, type Insights } from "./api";
 import { dateTime, hours } from "./format";
-import { LoaderCircle, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { Check, Copy, LoaderCircle, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 import { t } from "./i18n";
 import { Failed, List, Muted, Section } from "./layout";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,47 @@ const AGENT_LABEL: Record<AgentName, string> = {
   claude: "Claude Code",
   codex: "Codex",
 };
+
+/** The line that has your agent turn a routine into a skill. Claude Code runs MCP prompts as
+ * slash commands; Codex gets the request in words and finds check_skill on its own. */
+function skillPrompt(agent: AgentName, id: number): string {
+  return agent === "claude"
+    ? `/mcp__sextant__write_skill ${id}`
+    : `Write a skill for Sextant routine ${id}.`;
+}
+
+function SkillPrompt({ agent, id }: { agent: AgentName; id: number }) {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const line = skillPrompt(agent, id);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(line);
+      setCopied(true);
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1 pt-1">
+      <span className="text-xs text-muted-foreground">
+        {t("routineSkill", { agent: AGENT_LABEL[agent] })}
+      </span>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1 font-mono text-xs">
+          {line}
+        </code>
+        <Button size="sm" variant="outline" onClick={() => void copy()}>
+          {copied ? <Check /> : <Copy />}
+          {copied ? t("copied") : t("copy")}
+        </Button>
+      </div>
+      {error && <Failed>{error}</Failed>}
+    </div>
+  );
+}
 
 /** Hours a week to get back, and how this week's automatable time compares with last week. */
 function Potential({ insights }: { insights: Insights }) {
@@ -137,6 +178,7 @@ export default function Ideas({ opened }: { opened: number }) {
                     })}
                   </span>
                 )}
+                <SkillPrompt agent={agent.chosen ?? "claude"} id={routine.id} />
               </li>
             ))}
           </List>

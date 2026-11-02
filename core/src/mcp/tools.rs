@@ -176,6 +176,18 @@ pub const TOOLS: &[Tool] = &[
         schema: || json!({"type": "object", "properties": {}}),
     },
     Tool {
+        name: "check_skill",
+        group: Group::Workflows,
+        description: "Check a draft SKILL.md for a saved routine before you save it. Every numbered step must end with a citation (task <id>: <action>): a task the routine cites, and an action copied exactly from that task's actions. An error names every step to fix.",
+        read_only: true,
+        schema: || {
+            json!({"type": "object", "required": ["routine_id", "skill"], "properties": {
+                "routine_id": {"type": "integer", "description": "The routine's id from routines."},
+                "skill": {"type": "string", "description": "The whole SKILL.md."},
+            }})
+        },
+    },
+    Tool {
         name: "list_workflows",
         group: Group::Workflows,
         description: "The user's recurring workflows across apps, ranked by estimated hours a week an agent could save. Each has hours, automation potential, rough (backfill only) and the reasons behind its scores.",
@@ -229,23 +241,57 @@ pub const FIND_ROUTINES: &str = "Find routines in my work that an agent could ta
 5. If save_routine returns an error, fix what it names and try again. Skip work that only repeats a saved routine.
 6. End with a short list of what you saved and the hours a week Sextant measured for each.";
 
+/// The `write_skill` prompt for routine `id`.
+pub fn write_skill(id: i64) -> String {
+    format!("Write a skill for routine {id} in Sextant, so an agent can do it for me.
+
+1. Call routines and find routine {id}. Its cites lists the task ids that show it.
+2. Call task for each of those ids. Read the activities and the actions in order, and the values moved between apps.
+3. Draft a SKILL.md: front matter with a name (lowercase words joined by hyphens) and a one-line description of when to use it, then what starts it, what it needs, and numbered steps. End every step with a citation (task <id>: <action>), with the action copied exactly from that task's actions. Before the step that does what the routine's approval names, stop and ask me.
+4. Call check_skill with routine_id {id} and the draft. Fix what it names until it passes.
+5. Save it as <name>/SKILL.md in the folder you load skills from, and tell me the path.")
+}
+
 /// MCP prompts. They need the work pattern tools, so they follow that switch.
 pub fn prompts(settings: &Settings) -> Value {
-    let prompts: Vec<Value> = settings
-        .mcp_workflows
-        .then(|| json!({"name": "find_routines", "title": "Find routines", "description": "Read your weeks in Sextant and save the routines an agent could take over."}))
-        .into_iter()
-        .collect();
-    json!({"prompts": prompts})
+    if !settings.mcp_workflows {
+        return json!({"prompts": []});
+    }
+    json!({"prompts": [
+        {"name": "find_routines", "title": "Find routines", "description": "Read your weeks in Sextant and save the routines an agent could take over."},
+        {"name": "write_skill", "title": "Write a skill", "description": "Turn a saved routine into a SKILL.md whose steps cite what you did.",
+         "arguments": [{"name": "routine_id", "description": "The routine's id, as the Routines tab or routines shows it.", "required": true}]},
+    ]})
 }
 
 /// One prompt's messages, for `prompts/get`.
 pub fn prompt(params: &Value, settings: &Settings) -> std::result::Result<Value, String> {
+    let message = |description: &str, text: &str| {
+        json!({
+            "description": description,
+            "messages": [{"role": "user", "content": {"type": "text", "text": text}}],
+        })
+    };
     match params.get("name").and_then(Value::as_str) {
-        Some("find_routines") if settings.mcp_workflows => Ok(json!({
-            "description": "Find and save routines an agent could take over.",
-            "messages": [{"role": "user", "content": {"type": "text", "text": FIND_ROUTINES}}],
-        })),
+        Some("find_routines") if settings.mcp_workflows => Ok(message(
+            "Find and save routines an agent could take over.",
+            FIND_ROUTINES,
+        )),
+        Some("write_skill") if settings.mcp_workflows => {
+            let id = params
+                .pointer("/arguments/routine_id")
+                .and_then(|id| {
+                    id.as_str()
+                        .map(str::trim)
+                        .and_then(|id| id.parse().ok())
+                        .or(id.as_i64())
+                })
+                .ok_or("routine_id must be a routine's id, such as 3")?;
+            Ok(message(
+                "Write a skill for a saved routine.",
+                &write_skill(id),
+            ))
+        }
         Some(name) => Err(format!("unknown prompt {name}")),
         None => Err("name is required".to_string()),
     }
@@ -282,6 +328,11 @@ pub fn call(ctx: &Ctx, name: &str, args: &Value) -> std::result::Result<String, 
                     .save_routine(ctx.settings, &routine, ctx.when.now, ctx.when.utc_offset_s)
             }),
         "routines" => ctx.store.routines(ctx.when.utc_offset_s),
+        "check_skill" => int(args, "routine_id").and_then(|id| {
+            let id = id.ok_or_else(|| bad("routine_id is required"))?;
+            let skill = text_arg(args, "skill").ok_or_else(|| bad("skill is required"))?;
+            ctx.store.check_skill(ctx.settings, id, skill)
+        }),
         "list_workflows" => list_workflows(ctx, args),
         "get_workflow" => get_workflow(ctx, args),
         "get_skill" => return get_skill(ctx, args).map_err(|e| e.to_string()),

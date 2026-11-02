@@ -43,6 +43,7 @@ pub use recall::keywords;
 pub use redact::{Secret, redact};
 pub use results::{MIN_DAYS, Measurement};
 pub use rewind::Turn;
+pub use routines::Routine;
 pub use search::HitSource;
 pub use sent::Sent;
 pub use sessions::Session;
