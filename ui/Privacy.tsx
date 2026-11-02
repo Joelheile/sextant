@@ -131,7 +131,33 @@ function DeleteEverything() {
   );
 }
 
-/** Sources, permissions, exclusions, retention, agent access and Delete everything. */
+function DebugReport() {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const copy = async () => {
+    try {
+      // The clipboard write starts inside the click, which WebKit needs; the text follows.
+      const report = api.debugReport().then((text) => new Blob([text], { type: "text/plain" }));
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": report })]);
+      setCopied(true);
+      setError(null);
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  return (
+    <Section title={t("debugTitle")} description={t("debugBody")}>
+      <Button type="button" variant="outline" className="self-start" onClick={() => void copy()}>
+        {copied ? t("copied") : t("debugCopy")}
+      </Button>
+      {error && <Failed>{error}</Failed>}
+    </Section>
+  );
+}
+
+/** Sources, permissions, exclusions, retention, agent access, the debug report and Delete everything. */
 export default function Privacy() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [bytes, setBytes] = useState<number | null>(null);
@@ -226,6 +252,7 @@ export default function Privacy() {
       </Section>
 
       {error && <Failed>{error}</Failed>}
+      <DebugReport />
       <DeleteEverything />
 
       <Section title={t("aboutTitle")} description={t("aboutBody")} />

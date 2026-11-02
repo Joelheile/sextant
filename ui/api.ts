@@ -314,6 +314,7 @@ export const api = {
   saveReportImage: (day: string, png: number[]) =>
     invoke<string>("save_report_image", { day, png }),
   storageUsed: () => invoke<{ bytes: number }>("storage_used"),
+  debugReport: () => invoke<string>("debug_report"),
   setExcludedApps: (apps: string[]) => invoke<Settings>("set_excluded_apps", { apps }),
   setLive: (live: Live) => invoke<Settings>("set_live", { live }),
   setRetention: (days: number | null) => invoke<Settings>("set_retention", { days }),

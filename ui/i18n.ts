@@ -222,6 +222,10 @@ const en = {
   retention_forever: "Forever",
   storageTitle: "Storage used",
   storageValue: "{size} MB on this Mac",
+  debugTitle: "Debug report",
+  debugBody:
+    "Versions, switches, counts and error kinds. It holds nothing you saw, typed or said. Paste it into a GitHub issue.",
+  debugCopy: "Copy debug report",
   mcpTitle: "What agents can read",
   deleteTitle: "Delete everything",
   deleteBody:
@@ -506,6 +510,10 @@ const de: Record<Key, string> = {
   retention_forever: "Für immer",
   storageTitle: "Speicherplatz",
   storageValue: "{size} MB auf diesem Mac",
+  debugTitle: "Fehlerbericht",
+  debugBody:
+    "Versionen, Schalter, Zahlen und Fehlerarten. Er enthält nichts, was du gesehen, getippt oder gesagt hast. Füge ihn in ein GitHub-Issue ein.",
+  debugCopy: "Fehlerbericht kopieren",
   mcpTitle: "Was Agenten lesen dürfen",
   deleteTitle: "Alles löschen",
   deleteBody:
