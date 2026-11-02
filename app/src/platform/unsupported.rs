@@ -49,6 +49,10 @@ impl Platform for System {
     }
 }
 
+pub fn trash_app() -> anyhow::Result<()> {
+    anyhow::bail!("needs macOS")
+}
+
 pub fn os_version() -> String {
     "unknown".to_owned()
 }

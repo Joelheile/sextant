@@ -162,6 +162,7 @@ impl<S: Sensors> Capturer<S> {
     /// One poll. Returns how long to wait before the next. `now_ms` is a steady clock for the
     /// trigger timing, `now_s` is Unix time for the records.
     pub fn step(&mut self, now_ms: i64, now_s: i64) -> Duration {
+        self.stats.beat(now_s);
         let settings = self.control.settings();
         let paused = self.control.paused_until(now_s).is_some();
         if let Err(blocked) = capture::session(&settings, paused) {
@@ -252,6 +253,7 @@ impl<S: Sensors> Capturer<S> {
             let tab = self.sensors.browser_tab(app, browser).ok();
             capture::tab(tab.as_ref().map(|tab| tab.private))?;
             url = tab.map(|tab| tab.url).unwrap_or_default();
+            capture::site(settings, &url)?;
         }
         let mut window = Window {
             app: app.name.clone(),
@@ -276,10 +278,12 @@ impl<S: Sensors> Capturer<S> {
         if capture::enough(&lines) {
             let key = (window_key(&window), text_key(&lines));
             if self.last_tree.replace(key) == Some(key) {
+                self.stats.read_ok();
                 Stats::add(&self.stats.skipped);
                 return;
             }
             Stats::add(&self.stats.tree);
+            self.stats.read_ok();
             let frame = Frame {
                 ts: now_s,
                 window,
@@ -288,13 +292,19 @@ impl<S: Sensors> Capturer<S> {
             (self.sink)(Item::Frame(frame), taken);
             return;
         }
+        if self.sensors.low_power() {
+            Stats::add(&self.stats.low_power);
+            return;
+        }
         let shot = match self.sensors.capture(app) {
             Ok(shot) => shot,
             Err(_) => {
                 Stats::add(&self.stats.capture_errors);
+                self.stats.read_failed(now_s);
                 return;
             }
         };
+        self.stats.read_ok();
         Stats::add(&self.stats.captured);
         if !self.diff.changed(window_key(&window), shot.thumb) {
             Stats::add(&self.stats.skipped);
@@ -424,6 +434,7 @@ impl Pipeline {
     {
         let stop = Arc::new(AtomicBool::new(false));
         let stats = Arc::new(Stats::default());
+        stats.beat(crate::clock::now());
         let queue = Arc::new(ArrayQueue::new(QUEUE));
 
         let ocr_thread = thread::Builder::new()

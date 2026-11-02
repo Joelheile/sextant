@@ -85,6 +85,10 @@ pub trait Sensors: Send + 'static {
     fn focused_field(&mut self, app: &App) -> Option<Field>;
     /// The value of a field [`Sensors::focused_field`] returned before, read again.
     fn reread(&mut self, id: u64) -> Option<String>;
+    /// Low Power Mode is on: capture skips screenshots and OCR and reads the tree only.
+    fn low_power(&mut self) -> bool {
+        false
+    }
 }
 
 pub trait Ocr<I>: Send + 'static {

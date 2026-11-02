@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::time::Duration;
 
 use sextant_core::capture::Blocked;
@@ -10,10 +10,11 @@ use sextant_core::capture::Blocked;
 /// Timings kept for percentiles. Older ones fall out, so a long session stays small.
 const KEPT: usize = 4096;
 
-const BLOCKED: [Blocked; 7] = [
+const BLOCKED: [Blocked; 8] = [
     Blocked::Paused,
     Blocked::SourceOff,
     Blocked::ExcludedApp,
+    Blocked::ExcludedSite,
     Blocked::OpaqueBrowser,
     Blocked::PrivateWindow,
     Blocked::TabUnknown,
@@ -39,6 +40,12 @@ pub struct Stats {
     pub copies: AtomicU64,
     pub presses: AtomicU64,
     pub edits: AtomicU64,
+    /// Windows that needed a screenshot while Low Power Mode was on, so none was taken.
+    pub low_power: AtomicU64,
+    /// Unix time of the last poll of the capture thread.
+    beat: AtomicI64,
+    /// Since when every screenshot failed, 0 while reads work.
+    failing_since: AtomicI64,
     blocked: [AtomicU64; BLOCKED.len()],
     ocr_ms: Mutex<VecDeque<f64>>,
 }
@@ -65,6 +72,29 @@ impl Stats {
             .zip(&self.blocked)
             .map(|(reason, count)| (reason.as_str(), Self::get(count)))
             .collect()
+    }
+
+    pub fn beat(&self, now_s: i64) {
+        self.beat.store(now_s, Ordering::Relaxed);
+    }
+
+    pub fn read_ok(&self) {
+        self.failing_since.store(0, Ordering::Relaxed);
+    }
+
+    pub fn read_failed(&self, now_s: i64) {
+        let _ = self
+            .failing_since
+            .compare_exchange(0, now_s, Ordering::Relaxed, Ordering::Relaxed);
+    }
+
+    /// What capture health needs: the last poll and since when reads fail.
+    pub fn health(&self) -> (i64, Option<i64>) {
+        let failing = self.failing_since.load(Ordering::Relaxed);
+        (
+            self.beat.load(Ordering::Relaxed),
+            (failing > 0).then_some(failing),
+        )
     }
 
     pub fn record_ocr(&self, took: Duration) {

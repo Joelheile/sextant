@@ -19,6 +19,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("schema_v4.sql"),
     include_str!("schema_v5.sql"),
     include_str!("schema_v6.sql"),
+    include_str!("schema_v7.sql"),
 ];
 
 const EMAIL_SECRET: &str = "email_secret";
@@ -43,7 +44,7 @@ pub struct Store {
     pub(crate) secret: Secret,
 }
 
-/// Rows removed by [`Store::retention`].
+/// Rows removed by [`Store::retention`] and [`Store::forget`].
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Retained {
     pub frames: usize,
@@ -173,9 +174,7 @@ impl Store {
             .workflow(workflow_id)?
             .ok_or(Error::NoWorkflow(workflow_id))?;
         let sequence: Vec<&str> = workflow.steps.iter().map(|s| s.key.as_str()).collect();
-        let conn = Connection::open(&self.path)?;
-        unlock(&conn, &self.key)?;
-        conn.busy_timeout(Duration::from_secs(5))?;
+        let conn = self.write_conn()?;
         conn.execute(
             "INSERT INTO handoffs(workflow_id, ts, status, note, name, sequence) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
@@ -188,6 +187,14 @@ impl Store {
             ],
         )?;
         Ok(conn.last_insert_rowid())
+    }
+
+    /// A short-lived keyed write connection, so a read-only reader can append a row.
+    pub(crate) fn write_conn(&self) -> Result<Connection> {
+        let conn = Connection::open(&self.path)?;
+        unlock(&conn, &self.key)?;
+        conn.busy_timeout(Duration::from_secs(5))?;
+        Ok(conn)
     }
 
     /// Hourly upkeep: updates the query planner's statistics and, once a week while the user is
@@ -225,16 +232,22 @@ impl Store {
     /// Deletes raw capture rows older than `days` (plan.md §5) and lines and windows nothing
     /// references, then refreshes, so the engine tables hold only what the remaining rows make.
     pub fn retention(&mut self, when: Local, days: u32) -> Result<Retained> {
-        let cutoff = when.now - i64::from(days) * DAY;
+        self.forget(when, i64::MIN, when.now - i64::from(days) * DAY)
+    }
+
+    /// Deletes raw rows from `from` up to `to` (Unix seconds, `to` excluded), with the lines and
+    /// windows only they used and every utterance that overlaps the range, then refreshes.
+    pub fn forget(&mut self, when: Local, from: i64, to: i64) -> Result<Retained> {
         let tx = self.conn.transaction()?;
         let mut gone = Retained::default();
         let mut line_ids = HashSet::new();
         let mut window_ids = HashSet::new();
         {
-            let mut old = tx.prepare("SELECT id, window_id, packed FROM frames WHERE ts < ?1")?;
+            let mut old =
+                tx.prepare("SELECT id, window_id, packed FROM frames WHERE ts >= ?1 AND ts < ?2")?;
             let mut unlink =
                 tx.prepare("DELETE FROM frame_lines WHERE line_id = ?1 AND frame_id = ?2")?;
-            let mut rows = old.query(params![cutoff])?;
+            let mut rows = old.query(params![from, to])?;
             while let Some(row) = rows.next()? {
                 let (frame_id, window_id): (i64, i64) = (row.get(0)?, row.get(1)?);
                 window_ids.insert(window_id);
@@ -244,11 +257,15 @@ impl Store {
                 }
             }
         }
-        gone.frames = tx.execute("DELETE FROM frames WHERE ts < ?1", params![cutoff])?;
-        gone.utterances =
-            tx.execute("DELETE FROM utterances WHERE end_ts < ?1", params![cutoff])?;
-        gone.events = tx.execute("DELETE FROM events WHERE ts < ?1", params![cutoff])?;
-        gone.turns = tx.execute("DELETE FROM turns WHERE ts < ?1", params![cutoff])?;
+        let range = params![from, to];
+        gone.frames = tx.execute("DELETE FROM frames WHERE ts >= ?1 AND ts < ?2", range)?;
+        gone.utterances = tx.execute(
+            "DELETE FROM utterances WHERE end_ts >= ?1 AND start_ts < ?2",
+            range,
+        )?;
+        gone.events = tx.execute("DELETE FROM events WHERE ts >= ?1 AND ts < ?2", range)?;
+        gone.turns = tx.execute("DELETE FROM turns WHERE ts >= ?1 AND ts < ?2", range)?;
+        tx.execute("DELETE FROM sent WHERE ts >= ?1 AND ts < ?2", range)?;
         {
             let mut line = tx.prepare(
                 "DELETE FROM lines WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM frame_lines WHERE line_id = ?1)",
@@ -266,6 +283,41 @@ impl Store {
         tx.commit()?;
         self.refresh(when)?;
         Ok(gone)
+    }
+
+    /// Bytes the database uses, without the free pages a vacuum would return.
+    pub fn used_bytes(&self) -> Result<u64> {
+        let bytes: i64 = self.conn.query_row(
+            "SELECT (p.page_count - f.freelist_count) * s.page_size
+             FROM pragma_page_count() p, pragma_freelist_count() f, pragma_page_size() s",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(bytes.max(0) as u64)
+    }
+
+    /// Deletes the oldest day of raw data until the database uses at most `cap` bytes. The
+    /// freed pages are reused, so the file stops growing. Returns the days deleted.
+    pub fn cap_storage(&mut self, when: Local, cap: u64) -> Result<usize> {
+        let mut days = 0;
+        while self.used_bytes()? > cap {
+            let Some(oldest) = self.oldest_raw()? else {
+                break;
+            };
+            self.forget(when, i64::MIN, oldest + DAY)?;
+            days += 1;
+        }
+        Ok(days)
+    }
+
+    fn oldest_raw(&self) -> Result<Option<i64>> {
+        Ok(self.conn.query_row(
+            "SELECT MIN(ts) FROM (SELECT MIN(ts) AS ts FROM frames
+                UNION ALL SELECT MIN(ts) FROM events
+                UNION ALL SELECT MIN(start_ts) FROM utterances)",
+            [],
+            |row| row.get(0),
+        )?)
     }
 }
 
@@ -409,5 +461,59 @@ mod tests {
                 "{table}"
             );
         }
+    }
+    #[test]
+    fn forgetting_a_range_keeps_what_came_before_and_after() {
+        use crate::fixtures::{TempDb, WEEK_NOW, WEEK_START, load, local, week};
+
+        let db = TempDb::new("forget-range");
+        let mut store = db.open().expect("test setup");
+        load(&mut store, &week(), WEEK_NOW).expect("test setup");
+        let (from, to) = (WEEK_START + 2 * DAY, WEEK_START + 3 * DAY);
+        let within = |store: &Store| {
+            count(
+                store,
+                &format!("SELECT count(*) FROM events WHERE ts >= {from} AND ts < {to}"),
+            )
+        };
+        let outside = |store: &Store| {
+            count(
+                store,
+                &format!("SELECT count(*) FROM events WHERE ts < {from} OR ts >= {to}"),
+            )
+        };
+        let kept = outside(&store);
+        assert!(within(&store) > 0 && kept > 0, "test setup");
+
+        let gone = store.forget(local(WEEK_NOW), from, to).expect("forget");
+
+        assert!(gone.events > 0);
+        assert_eq!(within(&store), 0);
+        assert_eq!(outside(&store), kept);
+        assert_eq!(
+            count(
+                &store,
+                &format!("SELECT count(*) FROM frames WHERE ts >= {from} AND ts < {to}")
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn the_storage_cap_deletes_the_oldest_days_first() {
+        use crate::fixtures::{TempDb, WEEK_NOW, load, local, week};
+
+        let db = TempDb::new("storage-cap");
+        let mut store = db.open().expect("test setup");
+        load(&mut store, &week(), WEEK_NOW).expect("test setup");
+        let used = store.used_bytes().expect("used");
+        let newest = count(&store, "SELECT MAX(ts) FROM events");
+
+        assert_eq!(store.cap_storage(local(WEEK_NOW), used).expect("cap"), 0);
+        let days = store.cap_storage(local(WEEK_NOW), used - 1).expect("cap");
+
+        assert!(days >= 1);
+        assert!(store.used_bytes().expect("used") < used);
+        assert_eq!(count(&store, "SELECT MAX(ts) FROM events"), newest);
     }
 }

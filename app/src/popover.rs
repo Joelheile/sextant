@@ -77,6 +77,7 @@ pub async fn menu_status(app: AppHandle) -> Reply<Status> {
         let (capture, paused_until) = match engine.capture_state() {
             CaptureState::Off => ("off", None),
             CaptureState::Capturing => ("capturing", None),
+            CaptureState::Stalled(_) => ("stalled", None),
             CaptureState::Paused(until) => ("paused", Some(until)),
         };
         let last = engine.read(|store| store.last_capture()).map_err(msg)?;

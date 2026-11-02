@@ -5,7 +5,7 @@ Sextant is a tiny local app for macOS (Windows later). It does two things:
 1. **Easy rewind for your agents.** Everything you saw and said becomes searchable text that Claude (or any MCP client) can query: "what did Anna say about pricing on Tuesday?", "find the invoice number I saw yesterday".
 2. **Automation finder.** It maps your work into workflows across apps and days and tells you which ones to hand to an agent, then measures the hours you got back.
 
-Everything stays on the device, encrypted. It should feel invisible: no fan, no battery hit, no setup.
+Everything stays on the device, encrypted, until your own agent reads it, and the sent log shows each time it did. It should feel invisible: no fan, no battery hit, no setup.
 
 **How to use this file with Claude Code:** start each milestone in a fresh session in plan mode and say "Read plan.md. Do milestone M<n> only. Plan first, build, prove every 'done when' item with command output, then commit."
 
@@ -39,7 +39,7 @@ Pre-approved crates for core: rusqlite, thiserror, regex, serde, serde_json, pet
 | **Backfill:** browser history (Chrome, Arc, Brave, Edge; Safari if Full Disk Access is granted), calendar and reminders (90 days), git commits in folders the user picks, recently used files | once, in onboarding         | on, each source can be unticked in onboarding |
 | **Live:** focused app, window title, document, browser URL                                                                                                                                    | while working               | on                                            |
 | **Live:** OCR text of the focused window                                                                                                                                                      | while working               | on                                            |
-| **Live:** mic and system audio transcripts                                                                                                                                                    | during calls and voice use  | on, tray shows it, one click stops it         |
+| **Live:** mic and system audio transcripts                                                                                                                                                    | during calls and voice use  | off, switch in Privacy; tray shows it, one click stops it |
 | **Live:** copy events (which app, never the content)                                                                                                                                          | while working               | on                                            |
 | **Live:** actions: presses on labelled controls and the value left in each text field (never keystrokes, never secure fields)                                                                 | while working               | on                                            |
 | Screenshots or audio files on disk                                                                                                                                                            | never                       | never                                         |
@@ -57,7 +57,7 @@ every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶
 
 - One process, plain threads for capture and audio, `crossbeam_queue::ArrayQueue::force_push` between them (oldest frame drops under load).
 - **Triggers:** focus change (300 ms settle), input pause (1 s after activity, read from OS idle time, never keyboard hooks), 10 s tick while active. Nothing when idle over 60 s, locked or asleep.
-- **Gates before any frame or stream exists:** excluded app (password managers including Apple Passwords, Health and messengers by default), private browser window (Chromium `mode`, Arc `incognito`; Safari excluded unless the user opts in), secure input (`IsSecureEventInputEnabled`), paused, source off. Call audio passes the excluded-app and private-window gates before a stream opens.
+- **Gates before any frame or stream exists:** excluded app (password managers including Apple Passwords, Health and messengers by default), private browser window (Chromium `mode`, Arc `incognito`; Safari excluded unless the user opts in), secure input (`IsSecureEventInputEnabled`), excluded site (banks and payment sites by default, subdomains included; backfill visits are dropped too), paused, source off. Call audio passes the excluded-app and private-window gates before a stream opens.
 - **AX tree first:** walk the focused window's Accessibility tree (core `capture::window_lines`, one batched `AXUIElementCopyMultipleAttributeValues` per element, 3000 nodes, 120 ms). Menus, toolbars, scroll bars and secure fields are pruned, offscreen subtrees skipped, rows joined with " · ", checkboxes rendered `[ ]`, `[x]`, `[-]`. `AXManualAccessibility` is set once per app so Electron and Chromium expose their tree. Exact text, no pixels; an unchanged window and text hash writes nothing.
 - **Actions (the UI log for workflow mining):** a global left-mouse-down monitor (`NSEvent`, position only) unparks the capture thread, which resolves the press before the UI changes: `AXUIElementCopyElementAtPosition`, dropped unless it belongs to the focused app, then up to 6 parents to the nearest button, link, menu item, checkbox, row or cell, named by its own label or the text clicked (core `capture::press_event`). The focused text field (`AXFocusedUIElement`) is read each poll; when focus leaves it, it is read once more and the value left in it becomes one edit (core `capture::Edits`). A press first writes the open field, so order holds. A field that empties on send keeps what was typed. Secure fields, values over 2000 characters and keystrokes are never read. Actions are read only while the focus key (pid and window) is the one that last passed every gate, so a private window of the same browser process is closed before anything is read. Redaction applies like any event.
 - **Capture:** only when the tree gives under 80 letters and digits. Only the focused window, `SCScreenshotManager` (macOS 14+).
@@ -66,6 +66,8 @@ every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶
 - **Redaction before storage:** emails, IBANs, card numbers, API keys, tokens. Emails become `<email:hash>` so entity linking still works.
 - **Audio:** per-process mic detection (`kAudioProcessPropertyIsRunningInput`, skipping Sextant), mic via `cpal`, system audio via a Core Audio process tap on the call app only (macOS 14.2+), 16 kHz mono, Silero VAD, Parakeet loaded on first speech and unloaded after 5 min of silence. Mic and system are separate streams, so "me" vs "them" is known without diarization.
 - Timeouts on every OS call that can hang (AX 0.5 s, 0.1 s per element in the tree walk, AppleScript 2 s).
+- **Low Power Mode:** no screenshots or OCR while it is on. The AX tree, focus and actions still run.
+- **Capture health** (core `capture::stall`): the capture thread records a heartbeat each poll, and the app records since when screenshots and database writes fail. No poll for 30 s, or failures for 5 min, turn the tray to "Capture stopped: restart Sextant" and show a Restart banner in the popover.
 
 ## 5. Storage
 
@@ -136,13 +138,14 @@ The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`,
 | `report_handoff` (id, status, note) | records that an agent took over a workflow, starts the before/after measurement          |
 
 - Results are capped (default 50 lines) and paginated, so they fit an agent's context.
+- Every answer writes a `sent` row (client name from `initialize`, tool, size) before it goes out. If the row can't be written, the call fails. Privacy shows the last 50.
 - Whatever the agent uses runs where its model runs, maybe in the cloud. The connect screen says so plainly. Excluded apps and redaction apply to MCP output too. Rewind tools and workflow tools can be switched separately.
 
 ## 9. App UI (small)
 
 - Tray icon while capturing (filled on, outline paused, dot while transcribing, ring with "!" when a permission blocks capture). Right click: status, Pause 1 h, Stop audio, Search, Open Sextant, Quit Sextant.
 - **Popover** (left click on the tray icon): a status line with a breathing dot ("Reading Safari, 12 s ago"), chips for what is captured now, a banner with an Allow button when capture is blocked. Tabs: **Today** (time at the Mac, 7-day bars, longest focus, app switches an hour, lines saved, call minutes, top apps, all computed on this Mac), **Ideas** (hours you could get back, trend against last week, ideas from your agent), **Settings** (agent bridge and everything from Privacy).
-- **Onboarding** (one screen per step): pick backfill sources, grant permissions, see the first map, connect to Claude.
+- **Onboarding** (four screens, no titles or intro text): pick backfill sources, grant the permissions they and live capture need, see the first map, connect to Claude. Call audio and the agent switches live in Privacy.
 - **Workflows:** "X hours a week you could get back", quick enjoyment question, ranked workflows as rows of steps (apps, gaps, copy points), promises you keep pushing, things to protect. Detail: reasons, example cases, correction box, "Create automation" (writes `SKILL.md`, copies a ready prompt for Claude).
 - **Search:** one box over screen text and transcripts, results by session. No timeline replay.
 - **Results:** hours before and after each handoff, from 3+ days of data.
@@ -178,8 +181,9 @@ Measured by `sextant bench` on fixtures and `sextant bench --live 3600` on a rea
 | Full refresh over 90 days                           | < 2 s                         |
 | App download without models                         | < 30 MB                       |
 | ASR real-time factor                                | ≤ 0.2                         |
+| Energy Impact in Activity Monitor, working (1 h)    | "Low", under 1 on average     |
 
-If a budget can't be met, stop and report numbers and options. Never loosen one silently.
+If a budget can't be met, stop and report numbers and options. Never loosen one silently. Each release note publishes the bench numbers it was built against.
 
 ## 12. Working rules for the agent
 
@@ -216,7 +220,7 @@ Done when: corrections change scores on fixtures, a reported handoff shows hours
 **M6 Release.** Signing with hardened runtime, notarization, DMG, GitHub release, one-line install in the README.
 Done when: **(user)** a fresh Mac installs, grants permissions and shows a map without a terminal.
 
-**Later.** Windows (Windows Graphics Capture, `Windows.Media.Ocr`, process loopback, UI Automation; same traits). German workplace mode (work hours, 7-day retention, per-call consent, MCP limited to workflows, works council docs) as the paid team product.
+**Later.** Windows (Windows Graphics Capture, `Windows.Media.Ocr`, process loopback, UI Automation; same traits). German workplace mode (work hours, 7-day retention, per-call consent, MCP limited to workflows, works council docs). If it is ever paid, it sells setup and support, never privacy or core features (AGENTS.md, Never).
 
 ## 14. macOS bundle
 

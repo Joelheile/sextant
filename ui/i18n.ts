@@ -1,30 +1,18 @@
 const en = {
-  step: "Step {n} of {total}",
   next: "Next",
   back: "Back",
   finish: "Finish",
   copy: "Copy",
   copied: "Copied",
 
-  sourcesTitle: "Pick what Sextant reads",
-  sourcesBody:
-    "Sextant reads the last 90 days from these sources to draw your first map. It stays on this Mac. Untick anything you want left out.",
   sourceBrowsers: "Chrome, Arc, Brave and Edge",
-  sourceBrowsersNote: "Pages you visited, grouped by site",
   sourceSafari: "Safari",
-  sourceSafariNote: "Needs Full Disk Access",
   sourceCalendar: "Calendar and Reminders",
-  sourceCalendarNote: "Meetings and promises",
   sourceGit: "Git commits",
-  sourceGitNote: "Commit times and subjects",
   sourceFiles: "Recent files",
-  sourceFilesNote: "File names only, never the content",
   addFolder: "Add code folder",
   removeFolder: "Remove",
 
-  accessTitle: "Allow access",
-  accessBody:
-    "macOS asks before Sextant can read these. Skip any you do not want to allow. Sextant leaves that source out.",
   accessNone: "The sources you picked need no permission.",
   permCalendar: "Calendar",
   permReminders: "Reminders",
@@ -39,12 +27,13 @@ const en = {
   openSettings: "Open System Settings",
   allowAll: "Allow all",
   dragHint: "Drag Sextant into the list, then switch it on.",
-  reopenHint: "Screen Recording and Full Disk Access start working after Sextant reopens.",
+  reopenHint:
+    "Screen Recording and Full Disk Access start working after Sextant reopens.",
   reopen: "Reopen Sextant",
-  automationHint: "Open your browser first, then press Allow. Without this, Sextant skips browser windows.",
+  automationHint:
+    "Open your browser first, then press Allow. Without this, Sextant skips browser windows.",
   readHistory: "Read my history",
 
-  mapTitle: "Your first map",
   mapWorking: "Reading your history. This takes a few seconds.",
   stage_browsers: "Reading browser history",
   stage_calendar: "Reading calendar and reminders",
@@ -53,7 +42,6 @@ const en = {
   stage_saving: "Saving",
   stage_analyzing: "Finding your workflows",
   mapHours: "You could get back about {hours} hours a week.",
-  mapRough: "This is a rough draft from history only. It gets sharper as Sextant watches you work.",
   mapEmpty: "No repeating work found yet. Sextant looks again as you work.",
   mapFailed: "Reading your history failed: {message}",
   sourceSkipped: "{stage}: skipped, {message}",
@@ -62,14 +50,10 @@ const en = {
   cases: "{n} times",
   showMore: "Show more",
 
-  connectTitle: "Connect to Claude",
-  connectBody: "Let Claude look things up in Sextant while you chat.",
-  desktopTitle: "Claude Desktop",
   desktopAdd: "Add to Claude Desktop",
-  desktopDone: "Added. Your old config is saved as {backup}. Restart Claude Desktop.",
+  desktopDone:
+    "Added. Your old config is saved as {backup}. Restart Claude Desktop.",
   desktopDoneNoBackup: "Added to {path}. Restart Claude Desktop.",
-  codeTitle: "Claude Code",
-  codeBody: "Run this in your terminal:",
   cloudNote:
     "Whatever the agent reads runs where its model runs. With a cloud model, that can be the cloud.",
   switchRewind: "Agents can search what I saw and said",
@@ -101,7 +85,8 @@ const en = {
   tabResults: "Results",
 
   askTitle: "How do you feel about this work?",
-  askBody: "Your answer outranks what Sextant infers from your day and changes which work it suggests first.",
+  askBody:
+    "Your answer outranks what Sextant infers from your day and changes which work it suggests first.",
   enjoy_hate: "Hate it",
   enjoy_dislike: "Dislike it",
   enjoy_neutral: "Neutral",
@@ -128,7 +113,8 @@ const en = {
   durDays: "{n} d",
 
   reasonsTitle: "Why this score",
-  stepsMergeHint: "Tick two steps and write \"these belong together\" to merge them.",
+  stepsMergeHint:
+    'Tick two steps and write "these belong together" to merge them.',
   copyPointsTitle: "Copied by hand",
   copyPoint: "{from} to {to}, {n}x",
   examplesTitle: "Example cases",
@@ -141,22 +127,25 @@ const en = {
   correctPlaceholder: "What should Sextant know?",
   correctApply: "Apply",
   correctUnknown: "Sextant did not understand that. Try one of the examples.",
-  understood_enjoyment: "Understood: you said \"{arg}\".",
+  understood_enjoyment: 'Understood: you said "{arg}".',
   understood_client: "Understood: this is client work.",
   understood_not_automatable:
     "Understood: this cannot be automated. It no longer counts as hours you could get back.",
-  understood_rename: "Understood: the new name is \"{arg}\".",
+  understood_rename: 'Understood: the new name is "{arg}".',
   understood_hide: "Understood: this workflow is hidden.",
   understood_merge: "Understood: the two steps are one step now.",
   understood_split: "Understood: these are separate workflows now.",
   automationTitle: "Hand it to Claude",
-  automationBody: "Sextant writes a skill file and copies a prompt. Paste the prompt into Claude.",
+  automationBody:
+    "Sextant writes a skill file and copies a prompt. Paste the prompt into Claude.",
   automationWhere: "Skill file:",
-  workflowGone: "This workflow changed after your correction. Go back to the list.",
+  workflowGone:
+    "This workflow changed after your correction. Go back to the list.",
   automationChoose: "Choose folder",
   automationFolderPrompt: "Pick the folder for the skill file",
   automationCreate: "Create automation",
-  automationDone: "Written to {path}. The prompt is on your clipboard. Paste it into Claude.",
+  automationDone:
+    "Written to {path}. The prompt is on your clipboard. Paste it into Claude.",
   handoffButton: "I handed this off",
   handoffDone: "Sextant now measures the hours. See Results.",
 
@@ -170,7 +159,7 @@ const en = {
 
   resultsTitle: "Hours you got back",
   resultsEmpty:
-    "Nothing handed off yet. Press \"I handed this off\" on a workflow, or let your agent report it.",
+    'Nothing handed off yet. Press "I handed this off" on a workflow, or let your agent report it.',
   measuring: "Measuring, {n} of {total} days",
   handoffOn: "Handed off {date}",
   hoursBefore: "Before",
@@ -178,7 +167,8 @@ const en = {
   hoursBack: "{hours} h a week back",
 
   reportTitle: "Weekly report",
-  reportHint: "A picture you can share. It shows hours and kinds of work only, never names, titles or text.",
+  reportHint:
+    "A picture you can share. It shows hours and kinds of work only, never names, titles or text.",
   reportCopy: "Copy image",
   reportSave: "Save image",
   reportCopied: "Image copied",
@@ -209,12 +199,42 @@ const en = {
   liveMetadata: "Window titles and app names",
   liveOcr: "Text on screen",
   liveCopy: "Which app copied (never what)",
-  liveActions: "Buttons you click and what you leave in text fields (never keystrokes or passwords)",
+  liveActions:
+    "Buttons you click and what you leave in text fields (never keystrokes or passwords)",
   liveOpaque: "Browsers that cannot report private windows",
   excludedTitle: "Excluded apps",
   excludedBody: "Text from these apps is never shown to Claude or in search.",
   excludedAdd: "Add",
   excludedPlaceholder: "App name",
+  sitesTitle: "Excluded sites",
+  sitesBody:
+    "Pages on these sites and their subdomains are never read, live or from browser history. Banks and payment sites are on the list from the start.",
+  sitesPlaceholder: "example.com",
+  capTitle: "Storage limit",
+  cap_1000: "1 GB",
+  cap_2000: "2 GB",
+  cap_5000: "5 GB",
+  cap_10000: "10 GB",
+  cap_none: "No limit",
+  forgetTitle: "Delete recent data",
+  forgetBody:
+    "Deletes everything captured in that time: screen text, actions, transcripts and searches.",
+  forget_15: "Last 15 minutes",
+  forget_60: "Last hour",
+  forget_1440: "Last day",
+  forgotten: "Deleted",
+  sentTitle: "Sent to your agent",
+  sentBody:
+    "Each answer an agent got from Sextant, with its size. The content itself is not kept here.",
+  sentEmpty: "Nothing sent yet.",
+  sentRow: "{time} · {client} · {tool} · {size} KB",
+  uninstallTitle: "Uninstall Sextant",
+  uninstallBody:
+    "Deletes everything, removes Sextant from Claude Desktop, moves the app to the Trash and quits. If you added Sextant to Claude Code, also run: claude mcp remove sextant",
+  uninstallButton: "Uninstall",
+  uninstallConfirm: "This deletes all your data and the app. Uninstall?",
+  uninstallYes: "Yes, uninstall",
+  uninstallWorking: "Uninstalling",
   retentionTitle: "Keep data for",
   retention_30: "30 days",
   retention_90: "90 days",
@@ -254,6 +274,9 @@ const en = {
   statusPaused: "Paused until {time}",
   statusOff: "Capture is off",
   statusBlocked: "Capture is blocked",
+  statusStalled: "Capture stopped",
+  stalledBody: "Nothing has been saved for a while. Restart Sextant to start again.",
+  restart: "Restart",
   blockedBy: "macOS blocks {names}.",
   activeToday: "at your Mac today",
   weekLabel: "Time at your Mac, last 7 days",
@@ -263,7 +286,8 @@ const en = {
   statCalls: "of calls written down",
   topApps: "Where your time went",
   noActivity: "Nothing yet today.",
-  insightsNote: "Worked out on this Mac from what Sextant captured. Updates every 5 minutes.",
+  insightsNote:
+    "Worked out on this Mac from what Sextant captured. Updates every 5 minutes.",
   couldGetBack: "you could get back",
   automatableWeek: "{hours} h in these workflows this week",
   automatableTrend: "{hours} h in these workflows this week, {change}% on last week",
@@ -287,32 +311,20 @@ const en = {
 export type Key = keyof typeof en;
 
 const de: Record<Key, string> = {
-  step: "Schritt {n} von {total}",
   next: "Weiter",
   back: "Zurück",
   finish: "Fertig",
   copy: "Kopieren",
   copied: "Kopiert",
 
-  sourcesTitle: "Was darf Sextant lesen?",
-  sourcesBody:
-    "Sextant liest die letzten 90 Tage aus diesen Quellen, um deine erste Karte zu zeichnen. Alles bleibt auf diesem Mac. Entferne den Haken bei allem, was draußen bleiben soll.",
   sourceBrowsers: "Chrome, Arc, Brave und Edge",
-  sourceBrowsersNote: "Besuchte Seiten, nach Website gruppiert",
   sourceSafari: "Safari",
-  sourceSafariNote: "Braucht Vollzugriff auf die Festplatte",
   sourceCalendar: "Kalender und Erinnerungen",
-  sourceCalendarNote: "Termine und Zusagen",
   sourceGit: "Git-Commits",
-  sourceGitNote: "Zeitpunkt und Titel der Commits",
   sourceFiles: "Zuletzt geöffnete Dateien",
-  sourceFilesNote: "Nur Dateinamen, nie der Inhalt",
   addFolder: "Code-Ordner hinzufügen",
   removeFolder: "Entfernen",
 
-  accessTitle: "Zugriff erlauben",
-  accessBody:
-    "macOS fragt, bevor Sextant diese Daten lesen darf. Überspringe, was du nicht erlauben willst. Sextant lässt die Quelle dann aus.",
   accessNone: "Die gewählten Quellen brauchen keine Erlaubnis.",
   permCalendar: "Kalender",
   permReminders: "Erinnerungen",
@@ -327,12 +339,13 @@ const de: Record<Key, string> = {
   openSettings: "Systemeinstellungen öffnen",
   allowAll: "Alle erlauben",
   dragHint: "Zieh Sextant in die Liste und schalte es dann ein.",
-  reopenHint: "Bildschirmaufnahme und Festplattenvollzugriff wirken erst, wenn Sextant neu startet.",
+  reopenHint:
+    "Bildschirmaufnahme und Festplattenvollzugriff wirken erst, wenn Sextant neu startet.",
   reopen: "Sextant neu öffnen",
-  automationHint: "Öffne zuerst deinen Browser und tippe dann auf Erlauben. Ohne diese Erlaubnis überspringt Sextant Browserfenster.",
+  automationHint:
+    "Öffne zuerst deinen Browser und tippe dann auf Erlauben. Ohne diese Erlaubnis überspringt Sextant Browserfenster.",
   readHistory: "Verlauf lesen",
 
-  mapTitle: "Deine erste Karte",
   mapWorking: "Dein Verlauf wird gelesen. Das dauert einige Sekunden.",
   stage_browsers: "Browser-Verlauf wird gelesen",
   stage_calendar: "Kalender und Erinnerungen werden gelesen",
@@ -341,8 +354,8 @@ const de: Record<Key, string> = {
   stage_saving: "Wird gespeichert",
   stage_analyzing: "Deine Abläufe werden gesucht",
   mapHours: "Du könntest etwa {hours} Stunden pro Woche zurückgewinnen.",
-  mapRough: "Das ist ein grober Entwurf nur aus dem Verlauf. Er wird genauer, wenn Sextant dir beim Arbeiten zusieht.",
-  mapEmpty: "Noch keine wiederkehrende Arbeit gefunden. Sextant schaut erneut, während du arbeitest.",
+  mapEmpty:
+    "Noch keine wiederkehrende Arbeit gefunden. Sextant schaut erneut, während du arbeitest.",
   mapFailed: "Der Verlauf konnte nicht gelesen werden: {message}",
   sourceSkipped: "{stage}: übersprungen, {message}",
   rough: "grob",
@@ -350,18 +363,15 @@ const de: Record<Key, string> = {
   cases: "{n} Mal",
   showMore: "Mehr anzeigen",
 
-  connectTitle: "Mit Claude verbinden",
-  connectBody: "Lass Claude im Chat Dinge in Sextant nachschlagen.",
-  desktopTitle: "Claude Desktop",
   desktopAdd: "Zu Claude Desktop hinzufügen",
-  desktopDone: "Hinzugefügt. Deine alte Konfiguration liegt als {backup}. Starte Claude Desktop neu.",
+  desktopDone:
+    "Hinzugefügt. Deine alte Konfiguration liegt als {backup}. Starte Claude Desktop neu.",
   desktopDoneNoBackup: "Hinzugefügt in {path}. Starte Claude Desktop neu.",
-  codeTitle: "Claude Code",
-  codeBody: "Führe das im Terminal aus:",
   cloudNote:
     "Was der Agent liest, läuft dort, wo sein Modell läuft. Bei einem Cloud-Modell kann das die Cloud sein.",
   switchRewind: "Agenten dürfen durchsuchen, was ich gesehen und gesagt habe",
-  switchWorkflows: "Agenten dürfen meine Aktivitäten, Aufgaben und Abläufe lesen",
+  switchWorkflows:
+    "Agenten dürfen meine Aktivitäten, Aufgaben und Abläufe lesen",
 
   audioTitle: "Gespräche mitschreiben",
   audioBody:
@@ -373,7 +383,8 @@ const de: Record<Key, string> = {
   audioLaw:
     "In Deutschland kann es strafbar sein, ein Gespräch ohne Wissen der Gegenseite aufzuzeichnen (§ 201 StGB). Sag allen im Gespräch, dass du es mitschreibst.",
   audioDownloadButton: "Herunterladen und einschalten",
-  audioSwitch: "Gespräche mitschreiben, solange eine Anruf-App das Mikrofon nutzt",
+  audioSwitch:
+    "Gespräche mitschreiben, solange eine Anruf-App das Mikrofon nutzt",
   downloading: "{done} von {total} MB",
   downloadFailed: "Der Download ist fehlgeschlagen: {message}",
   cancel: "Abbrechen",
@@ -389,7 +400,8 @@ const de: Record<Key, string> = {
   tabResults: "Ergebnisse",
 
   askTitle: "Wie fühlt sich diese Arbeit für dich an?",
-  askBody: "Deine Antwort zählt mehr als alles, was Sextant aus deinem Tag ableitet, und ändert, welche Arbeit zuerst vorgeschlagen wird.",
+  askBody:
+    "Deine Antwort zählt mehr als alles, was Sextant aus deinem Tag ableitet, und ändert, welche Arbeit zuerst vorgeschlagen wird.",
   enjoy_hate: "Hasse ich",
   enjoy_dislike: "Mag ich nicht",
   enjoy_neutral: "Egal",
@@ -416,11 +428,13 @@ const de: Record<Key, string> = {
   durDays: "{n} Tg.",
 
   reasonsTitle: "Warum diese Bewertung",
-  stepsMergeHint: "Wähle zwei Schritte und schreibe \"das gehört zusammen\", um sie zu verbinden.",
+  stepsMergeHint:
+    'Wähle zwei Schritte und schreibe "das gehört zusammen", um sie zu verbinden.',
   copyPointsTitle: "Von Hand kopiert",
   copyPoint: "{from} nach {to}, {n}x",
   examplesTitle: "Beispiele",
-  examplesNote: "E-Mail-Adressen und Nummern, die eine Person erkennbar machen, sind verborgen.",
+  examplesNote:
+    "E-Mail-Adressen und Nummern, die eine Person erkennbar machen, sind verborgen.",
   commitmentsTitle: "Zusagen zu dieser Arbeit",
   overdue: "überfällig",
   correctTitle: "Sextant korrigieren",
@@ -428,23 +442,27 @@ const de: Record<Key, string> = {
     "Schreibe es auf Deutsch oder Englisch. Zum Beispiel: Ich hasse das. Das lässt sich nicht automatisieren. Das ist für einen Kunden. Ausblenden. Benenne das um in Rechnungslauf.",
   correctPlaceholder: "Was soll Sextant wissen?",
   correctApply: "Anwenden",
-  correctUnknown: "Das hat Sextant nicht verstanden. Probiere eines der Beispiele.",
-  understood_enjoyment: "Verstanden: Du sagst \"{arg}\".",
+  correctUnknown:
+    "Das hat Sextant nicht verstanden. Probiere eines der Beispiele.",
+  understood_enjoyment: 'Verstanden: Du sagst "{arg}".',
   understood_client: "Verstanden: Das ist Kundenarbeit.",
   understood_not_automatable:
     "Verstanden: Das lässt sich nicht automatisieren. Es zählt nicht mehr zu den Stunden, die du zurückgewinnen könntest.",
-  understood_rename: "Verstanden: Der neue Name ist \"{arg}\".",
+  understood_rename: 'Verstanden: Der neue Name ist "{arg}".',
   understood_hide: "Verstanden: Dieser Ablauf ist ausgeblendet.",
   understood_merge: "Verstanden: Die beiden Schritte sind jetzt ein Schritt.",
   understood_split: "Verstanden: Das sind jetzt getrennte Abläufe.",
   automationTitle: "An Claude übergeben",
-  automationBody: "Sextant schreibt eine Skill-Datei und kopiert einen Prompt. Füge ihn in Claude ein.",
+  automationBody:
+    "Sextant schreibt eine Skill-Datei und kopiert einen Prompt. Füge ihn in Claude ein.",
   automationWhere: "Skill-Datei:",
-  workflowGone: "Dieser Ablauf hat sich nach deiner Korrektur geändert. Gehe zurück zur Liste.",
+  workflowGone:
+    "Dieser Ablauf hat sich nach deiner Korrektur geändert. Gehe zurück zur Liste.",
   automationChoose: "Ordner wählen",
   automationFolderPrompt: "Wähle den Ordner für die Skill-Datei",
   automationCreate: "Automatisierung erstellen",
-  automationDone: "Geschrieben nach {path}. Der Prompt liegt in der Zwischenablage. Füge ihn in Claude ein.",
+  automationDone:
+    "Geschrieben nach {path}. Der Prompt liegt in der Zwischenablage. Füge ihn in Claude ein.",
   handoffButton: "Ich habe das abgegeben",
   handoffDone: "Sextant misst jetzt die Stunden. Siehe Ergebnisse.",
 
@@ -458,7 +476,7 @@ const de: Record<Key, string> = {
 
   resultsTitle: "Stunden, die du zurückhast",
   resultsEmpty:
-    "Noch nichts abgegeben. Tippe bei einem Ablauf auf \"Ich habe das abgegeben\" oder lass deinen Agenten es melden.",
+    'Noch nichts abgegeben. Tippe bei einem Ablauf auf "Ich habe das abgegeben" oder lass deinen Agenten es melden.',
   measuring: "Wird gemessen, {n} von {total} Tagen",
   handoffOn: "Abgegeben am {date}",
   hoursBefore: "Vorher",
@@ -466,7 +484,8 @@ const de: Record<Key, string> = {
   hoursBack: "{hours} Std. pro Woche zurück",
 
   reportTitle: "Wochenbericht",
-  reportHint: "Ein Bild zum Teilen. Es zeigt nur Stunden und Arten von Arbeit, nie Namen, Titel oder Text.",
+  reportHint:
+    "Ein Bild zum Teilen. Es zeigt nur Stunden und Arten von Arbeit, nie Namen, Titel oder Text.",
   reportCopy: "Bild kopieren",
   reportSave: "Bild speichern",
   reportCopied: "Bild kopiert",
@@ -497,12 +516,43 @@ const de: Record<Key, string> = {
   liveMetadata: "Fenstertitel und App-Namen",
   liveOcr: "Text auf dem Bildschirm",
   liveCopy: "Welche App kopiert hat (nie was)",
-  liveActions: "Angeklickte Schaltflächen und was in Textfeldern steht (nie Tastenanschläge oder Passwörter)",
+  liveActions:
+    "Angeklickte Schaltflächen und was in Textfeldern steht (nie Tastenanschläge oder Passwörter)",
   liveOpaque: "Browser, die private Fenster nicht melden",
   excludedTitle: "Ausgeschlossene Apps",
-  excludedBody: "Text aus diesen Apps wird nie an Claude oder in der Suche gezeigt.",
+  excludedBody:
+    "Text aus diesen Apps wird nie an Claude oder in der Suche gezeigt.",
   excludedAdd: "Hinzufügen",
   excludedPlaceholder: "App-Name",
+  sitesTitle: "Ausgeschlossene Websites",
+  sitesBody:
+    "Seiten dieser Websites und ihrer Subdomains werden nie gelesen, weder live noch aus dem Browserverlauf. Banken und Bezahldienste stehen von Anfang an auf der Liste.",
+  sitesPlaceholder: "beispiel.de",
+  capTitle: "Speichergrenze",
+  cap_1000: "1 GB",
+  cap_2000: "2 GB",
+  cap_5000: "5 GB",
+  cap_10000: "10 GB",
+  cap_none: "Keine Grenze",
+  forgetTitle: "Letzte Daten löschen",
+  forgetBody:
+    "Löscht alles, was in dieser Zeit erfasst wurde: Bildschirmtext, Aktionen, Transkripte und Suchen.",
+  forget_15: "Letzte 15 Minuten",
+  forget_60: "Letzte Stunde",
+  forget_1440: "Letzter Tag",
+  forgotten: "Gelöscht",
+  sentTitle: "An deinen Agenten gesendet",
+  sentBody:
+    "Jede Antwort, die ein Agent von Sextant bekam, mit ihrer Größe. Der Inhalt selbst wird hier nicht gespeichert.",
+  sentEmpty: "Noch nichts gesendet.",
+  sentRow: "{time} · {client} · {tool} · {size} KB",
+  uninstallTitle: "Sextant deinstallieren",
+  uninstallBody:
+    "Löscht alles, entfernt Sextant aus Claude Desktop, legt die App in den Papierkorb und beendet sie. Wenn du Sextant zu Claude Code hinzugefügt hast, führe auch aus: claude mcp remove sextant",
+  uninstallButton: "Deinstallieren",
+  uninstallConfirm: "Das löscht alle deine Daten und die App. Deinstallieren?",
+  uninstallYes: "Ja, deinstallieren",
+  uninstallWorking: "Wird deinstalliert",
   retentionTitle: "Daten aufbewahren für",
   retention_30: "30 Tage",
   retention_90: "90 Tage",
@@ -542,6 +592,9 @@ const de: Record<Key, string> = {
   statusPaused: "Pausiert bis {time}",
   statusOff: "Erfassung ist aus",
   statusBlocked: "Erfassung ist blockiert",
+  statusStalled: "Erfassung gestoppt",
+  stalledBody: "Seit einer Weile wird nichts gespeichert. Starte Sextant neu, um weiterzumachen.",
+  restart: "Neu starten",
   blockedBy: "macOS blockiert {names}.",
   activeToday: "heute am Mac",
   weekLabel: "Zeit am Mac, letzte 7 Tage",
@@ -551,7 +604,8 @@ const de: Record<Key, string> = {
   statCalls: "Gespräche mitgeschrieben",
   topApps: "Wohin deine Zeit ging",
   noActivity: "Heute noch nichts.",
-  insightsNote: "Auf diesem Mac aus dem berechnet, was Sextant erfasst hat. Alle 5 Minuten neu.",
+  insightsNote:
+    "Auf diesem Mac aus dem berechnet, was Sextant erfasst hat. Alle 5 Minuten neu.",
   couldGetBack: "könntest du zurückbekommen",
   automatableWeek: "{hours} Std. in diesen Abläufen diese Woche",
   automatableTrend: "{hours} Std. in diesen Abläufen diese Woche, {change} % zur Vorwoche",
@@ -572,9 +626,18 @@ const de: Record<Key, string> = {
     "Er bekommt deine Abläufe als nummerierte Schritte: App oder Website, Kategorie, Minuten und wie Schritte aufeinander folgen. Er bekommt keine Fenstertitel, keinen Bildschirmtext und keine Mitschriften. Claude läuft ohne Werkzeuge. Codex kennt diesen Modus nicht und läuft deshalb nur lesend und offline in einem leeren Ordner, ohne deine Konfiguration, Plugins oder Websuche.",
 };
 
-const strings: Record<Key, string> = navigator.language.toLowerCase().startsWith("de") ? de : en;
+const strings: Record<Key, string> = navigator.language
+  .toLowerCase()
+  .startsWith("de")
+  ? de
+  : en;
 
 /** `t("hoursWeek", { hours: 3.5 })` fills {hours} in the string for the system language. */
-export function t(key: Key, values: Record<string, string | number> = {}): string {
-  return strings[key].replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? ""));
+export function t(
+  key: Key,
+  values: Record<string, string | number> = {},
+): string {
+  return strings[key].replace(/\{(\w+)\}/g, (_, name: string) =>
+    String(values[name] ?? ""),
+  );
 }

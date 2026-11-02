@@ -36,7 +36,7 @@ objc2-core-audio-types = { version = "=0.3.2", default-features = false, feature
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFArray", "CFBase", "CFCGTypes", "CFData", "CFDate", "CFDictionary", "CFNumber", "CFRunLoop", "CFString"] }
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["std", "block2", "CGBitmapContext", "CGColorSpace", "CGContext", "CGDirectDisplay", "CGEventSource", "CGEventTypes", "CGImage", "CGSession", "CGDataProvider", "CGGeometry", "CGWindow"] }
 objc2-event-kit = "=0.3.2"
-objc2-foundation = { version = "=0.3.2", features = ["NSArray", "NSCalendar", "NSDate", "NSDictionary", "NSError", "NSString", "NSValue", "NSGeometry", "NSData", "NSUUID", "NSURL", "NSURLSession", "NSURLRequest", "NSURLResponse", "NSOperation", "block2"] }
+objc2-foundation = { version = "=0.3.2", features = ["NSArray", "NSCalendar", "NSDate", "NSDictionary", "NSError", "NSString", "NSValue", "NSGeometry", "NSData", "NSUUID", "NSURL", "NSURLSession", "NSURLRequest", "NSURLResponse", "NSOperation", "NSProcessInfo", "NSFileManager", "block2"] }
 objc2-screen-capture-kit = { version = "=0.3.2", default-features = false, features = ["std", "block2", "libc", "objc2-core-foundation", "objc2-core-graphics", "SCScreenshotManager", "SCShareableContent", "SCStream"] }
 objc2-vision = { version = "=0.3.2", default-features = false, features = ["std", "objc2-core-graphics", "objc2-core-foundation", "VNObservation", "VNRecognizeTextRequest", "VNRequest", "VNRequestHandler", "VNTypes", "VNGeometry"] }
 parakeet-rs = { version = "=0.4.3", default-features = false, features = ["cpu", "coreml", "load-dynamic", "api-28"] }

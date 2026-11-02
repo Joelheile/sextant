@@ -196,7 +196,7 @@ fn toggle_pause(app: &AppHandle) {
     if let Some(Ok(engine)) = app.state::<AppState>().engine.get() {
         match engine.capture_state() {
             CaptureState::Paused(_) => engine.resume_capture(),
-            CaptureState::Capturing => engine.pause_capture(),
+            CaptureState::Capturing | CaptureState::Stalled(_) => engine.pause_capture(),
             CaptureState::Off => {}
         }
     }
@@ -229,6 +229,11 @@ fn refresh(app: &AppHandle) {
             format!("Paused until {}", clock_time(until)),
             "Resume",
             tauri::include_image!("icons/tray-paused.png"),
+        ),
+        CaptureState::Stalled(_) => (
+            "Capture stopped: restart Sextant".into(),
+            "Pause 1 h",
+            tauri::include_image!("icons/tray-alert.png"),
         ),
     };
     let blocked = state == CaptureState::Capturing

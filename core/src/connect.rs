@@ -31,6 +31,19 @@ pub fn claude_desktop_config(existing: &str, binary: &str) -> Result<String> {
     Ok(serde_json::to_string_pretty(&config)? + "\n")
 }
 
+/// The config without the `sextant` entry, for the uninstall. `None` when there is nothing to
+/// remove, including a config that is not valid JSON, which is left alone.
+pub fn without_sextant(existing: &str) -> Option<String> {
+    let mut config: Value = serde_json::from_str(existing).ok()?;
+    config
+        .get_mut("mcpServers")?
+        .as_object_mut()?
+        .remove("sextant")?;
+    serde_json::to_string_pretty(&config)
+        .ok()
+        .map(|text| text + "\n")
+}
+
 /// The one-line command for Claude Code. The path is quoted when the shell would split it.
 pub fn claude_code_command(binary: &str) -> String {
     let plain = binary
@@ -74,6 +87,19 @@ mod tests {
     fn broken_configs_are_refused_not_overwritten() {
         for bad in ["{not json", "[]", r#"{"mcpServers": []}"#] {
             assert!(claude_desktop_config(bad, "/bin/sextant").is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_uninstall_removes_only_the_sextant_entry() {
+        let existing = r#"{"globalShortcut": "Alt+Space", "mcpServers": {"notes": {"command": "npx"}, "sextant": {"command": "/old"}}}"#;
+        let left: Value =
+            serde_json::from_str(&without_sextant(existing).expect("removes")).expect("json");
+        assert_eq!(left["globalShortcut"], "Alt+Space");
+        assert_eq!(left["mcpServers"]["notes"]["command"], "npx");
+        assert!(left["mcpServers"].get("sextant").is_none());
+        for untouched in ["{not json", r#"{"mcpServers": {"notes": {}}}"#, "{}"] {
+            assert_eq!(without_sextant(untouched), None, "{untouched}");
         }
     }
 

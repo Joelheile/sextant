@@ -3,6 +3,7 @@
 
 mod tools;
 
+use std::cell::RefCell;
 use std::io::{BufRead, Write};
 
 use serde_json::{Value, json};
@@ -21,11 +22,14 @@ const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
+const INTERNAL_ERROR: i64 = -32603;
 
 pub struct Server {
     store: Store,
     settings: Box<dyn Fn() -> Settings>,
     clock: Box<dyn Fn() -> Local>,
+    /// The client's name from `initialize`, for the sent log.
+    client: RefCell<String>,
 }
 
 impl Server {
@@ -41,6 +45,7 @@ impl Server {
             store,
             settings: Box::new(settings),
             clock: Box::new(clock),
+            client: RefCell::new("unknown".into()),
         }
     }
 
@@ -74,7 +79,12 @@ impl Server {
         let params = message.get("params").cloned().unwrap_or(Value::Null);
         let settings = (self.settings)();
         let reply = match method {
-            "initialize" => Ok(initialize(&params)),
+            "initialize" => {
+                if let Some(name) = params.pointer("/clientInfo/name").and_then(Value::as_str) {
+                    *self.client.borrow_mut() = name.to_owned();
+                }
+                Ok(initialize(&params))
+            }
             "ping" => Ok(json!({})),
             "tools/list" => Ok(list(&settings)),
             "tools/call" => self.call(&params, &settings),
@@ -98,11 +108,12 @@ impl Server {
             .iter()
             .find(|tool| tool.name == name)
             .ok_or((INVALID_PARAMS, format!("unknown tool {name}")))?;
+        let when = (self.clock)();
         let outcome = if enabled(tool.group, settings) {
             let ctx = Ctx {
                 store: &self.store,
                 settings,
-                when: (self.clock)(),
+                when,
             };
             let args = params
                 .get("arguments")
@@ -118,6 +129,12 @@ impl Server {
             Ok(text) => (text, false),
             Err(message) => (message, true),
         };
+        if !is_error {
+            // Nothing leaves without a row in the sent log.
+            self.store
+                .record_sent(when.now, &self.client.borrow(), name, text.len())
+                .map_err(|err| (INTERNAL_ERROR, format!("logging the answer failed: {err}")))?;
+        }
         Ok(json!({"content": [{"type": "text", "text": text}], "isError": is_error}))
     }
 }

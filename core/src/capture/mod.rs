@@ -7,6 +7,7 @@ mod browser;
 mod diff;
 mod focus;
 mod gate;
+mod health;
 mod ocr;
 mod triggers;
 
@@ -22,7 +23,8 @@ pub use ax::{AxRead, AxSource, MAX_NODES, enough, window_lines};
 pub use browser::{Browser, classify};
 pub use diff::{CELL_DELTA, DiffGate, MIN_CELLS, SIDE, Thumb};
 pub use focus::focused_window;
-pub use gate::{Blocked, app, call, secure_input, session, tab};
+pub use gate::{Blocked, app, call, secure_input, session, site, tab};
+pub use health::{Stall, stall};
 pub use ocr::{MIN_CONFIDENCE, RawLine, lines};
 pub use triggers::{
     Away, IDLE_LIMIT_S, INPUT_PAUSE_S, Reason, SETTLE_MS, Sample, Signal, TICK_MS, Triggers,

@@ -244,6 +244,16 @@ fn gated_cases() -> Vec<Gated> {
             false,
         ),
         case(
+            "excluded bank site",
+            vec![
+                working(0)
+                    .in_app(chrome(), "Online banking")
+                    .tab("https://banking.sparkasse.de/konto", false),
+            ],
+            open.clone(),
+            false,
+        ),
+        case(
             "browser that does not say whether the window is private",
             vec![{
                 let mut scene = working(0).in_app(chrome(), "News");
@@ -357,6 +367,7 @@ fn gated_sources_leave_no_trace_in_events_either() {
         "excluded password manager",
         "excluded messenger",
         "private Chromium window",
+        "excluded bank site",
         "browser that does not say whether the window is private",
         "Safari without the opt-in",
         "secure input",
@@ -427,6 +438,11 @@ fn the_os_is_not_read_beyond_what_the_gate_needs() {
     assert_eq!(
         private.window_text, 0,
         "the title of a private window is never read"
+    );
+    let bank = calls_of("excluded bank site");
+    assert_eq!(
+        bank.window_text, 0,
+        "the title of a bank page is never read"
     );
     let secure = calls_of("secure input");
     assert_eq!(secure.window_text + secure.browser_tab, 0);

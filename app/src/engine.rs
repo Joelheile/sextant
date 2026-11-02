@@ -5,7 +5,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 use sextant_core::backfill;
+use sextant_core::capture::{Stall, stall};
 use sextant_core::{Item, Key, Secret, Settings, Store};
 
 use crate::capture::{Control, FLUSH_EVERY, Ingest, Pipeline, Sink, Stats, percentile};
@@ -45,6 +46,8 @@ pub enum CaptureState {
     Capturing,
     /// Until this Unix time.
     Paused(i64),
+    /// On, but nothing reaches the database.
+    Stalled(Stall),
 }
 
 /// What the tray shows about call audio.
@@ -70,6 +73,8 @@ pub struct Engine {
     audio: Mutex<Option<audio::Pipeline>>,
     /// The cancel flag of the model download that runs, if one does.
     download: Arc<Mutex<Option<Arc<AtomicBool>>>>,
+    /// Since when flushes fail, 0 while they work.
+    writes_failing_since: Arc<AtomicI64>,
 }
 
 impl Engine {
@@ -84,11 +89,13 @@ impl Engine {
         let reader = store.reader().context("opening the read connection")?;
         let (inbox, messages) = mpsc::channel();
         let (dir, emit) = (dir.to_path_buf(), Arc::new(emit) as Emit);
+        let writes_failing_since = Arc::new(AtomicI64::new(0));
         thread::Builder::new()
             .name("sextant-db".into())
             .spawn({
-                let (dir, emit) = (dir.clone(), emit.clone());
-                move || work(store, &dir, messages, &emit)
+                let (dir, emit, failing) =
+                    (dir.clone(), emit.clone(), writes_failing_since.clone());
+                move || work(store, &dir, messages, &emit, &failing)
             })
             .context("starting the database thread")?;
         Ok(Self {
@@ -100,6 +107,7 @@ impl Engine {
             capture: Mutex::new(None),
             audio: Mutex::new(None),
             download: Arc::new(Mutex::new(None)),
+            writes_failing_since,
         })
     }
 
@@ -327,10 +335,25 @@ impl Engine {
     }
 
     pub fn capture_state(&self) -> CaptureState {
-        let running = self.capture.lock().is_ok_and(|capture| capture.is_some());
-        match self.control.paused_until(clock::now()) {
-            _ if !running => CaptureState::Off,
-            Some(until) => CaptureState::Paused(until),
+        let now = clock::now();
+        let Ok(capture) = self.capture.lock() else {
+            return CaptureState::Off;
+        };
+        let Some(pipeline) = capture.as_ref() else {
+            return CaptureState::Off;
+        };
+        if let Some(until) = self.control.paused_until(now) {
+            return CaptureState::Paused(until);
+        }
+        let (beat, reads_failing_since) = pipeline.stats.health();
+        let writes = self.writes_failing_since.load(Ordering::Relaxed);
+        match stall(
+            now,
+            beat,
+            reads_failing_since,
+            (writes > 0).then_some(writes),
+        ) {
+            Some(stalled) => CaptureState::Stalled(stalled),
             None => CaptureState::Capturing,
         }
     }
@@ -401,7 +424,13 @@ fn create_private_dir(dir: &Path) -> Result<()> {
         .context("creating the data folder")
 }
 
-fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
+fn work(
+    mut store: Store,
+    dir: &Path,
+    messages: Receiver<Msg>,
+    emit: &Emit,
+    writes_failing_since: &AtomicI64,
+) {
     let mut ingest = Ingest::new();
     let mut last_refresh = Instant::now();
     let mut next_retention = Instant::now();
@@ -419,7 +448,11 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
                 }
                 last_refresh = Instant::now();
             }
-            Ok(Msg::Job(job)) => job(&mut store),
+            Ok(Msg::Job(job)) => {
+                // A job sees everything captured before it, so a delete leaves nothing behind.
+                flush(&mut store, &mut ingest, writes_failing_since);
+                job(&mut store);
+            }
             Ok(Msg::Close(closed)) => {
                 drop(store);
                 let _ = closed.send(());
@@ -430,25 +463,47 @@ fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, emit: &Emit) {
             Err(RecvTimeoutError::Disconnected) => break,
         }
         if ingest.due() {
-            match ingest.flush(&mut store, clock::now()) {
-                Ok((_, latencies)) => debug::flushed(&latencies),
-                Err(err) => {
-                    eprintln!("flush failed: {err}");
-                    debug::record("flush");
-                }
-            }
+            flush(&mut store, &mut ingest, writes_failing_since);
         }
         if last_refresh.elapsed() >= REFRESH_EVERY {
             refresh(&mut store, &mut last_refresh);
         }
         if Instant::now() >= next_retention {
             enforce_retention(&mut store, dir);
+            enforce_storage_cap(&mut store, dir);
             if let Err(err) = store.maintain(clock::now()) {
                 eprintln!("maintenance failed: {err}");
                 debug::record("maintenance");
             }
             next_retention = Instant::now() + RETENTION_EVERY;
         }
+    }
+}
+
+fn flush(store: &mut Store, ingest: &mut Ingest, writes_failing_since: &AtomicI64) {
+    let now = clock::now();
+    match ingest.flush(store, now) {
+        Ok((_, latencies)) => {
+            writes_failing_since.store(0, Ordering::Relaxed);
+            debug::flushed(&latencies);
+        }
+        Err(err) => {
+            let _ =
+                writes_failing_since.compare_exchange(0, now, Ordering::Relaxed, Ordering::Relaxed);
+            eprintln!("flush failed: {err}");
+            debug::record("flush");
+        }
+    }
+}
+
+/// Deletes the oldest raw days while the database is over the storage cap the user chose.
+fn enforce_storage_cap(store: &mut Store, dir: &Path) {
+    let Ok(Some(cap_mb)) = prefs::load(dir).map(|settings| settings.storage_cap_mb) else {
+        return;
+    };
+    if let Err(err) = store.cap_storage(clock::local(), u64::from(cap_mb) * 1_000_000) {
+        eprintln!("storage cap failed: {err}");
+        debug::record("storage cap");
     }
 }
 
@@ -492,13 +547,17 @@ fn backfill_and_refresh(
     let when = clock::local();
     let now = when.now;
 
-    let collected = backfill::collect(
+    let mut collected = backfill::collect(
         &platform::System,
         &settings.sources,
         &settings.git_folders,
         now,
         |stage| emit("backfill-progress", json!({"stage": stage.as_str()})),
     );
+    collected.events.retain(|event| {
+        let url = event.json.get("url").and_then(Value::as_str);
+        !url.is_some_and(|url| settings.is_excluded_site(url))
+    });
     emit("backfill-progress", json!({"stage": "saving"}));
     store.clear_backfill()?;
     let events = collected.events.len();

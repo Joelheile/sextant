@@ -25,7 +25,7 @@ Every choice is judged by this. When a feature makes Sextant harder to use or mo
 
 - **Now: early AI adopters on a Mac.** Founders, indie builders, and ops, finance or sales people at small companies who already use Claude Code or Codex and want them to take over real work. They install from GitHub, run the agent themselves and give feedback.
 - **Later: white-collar workers in general.** Anyone whose week holds repeated multi-app work. Reaching them needs Cowork-style handoff with no terminal, so nothing in the design may assume a developer.
-- **Not:** employers who want to monitor staff. Sextant never reports to anyone but the user.
+- **Not:** employers who want to monitor staff, or anyone recording other people. Sextant never reports to anyone but the user, and call audio stays off until the user turns it on.
 
 Judge every feature by one question: does it get an early adopter to their first handover sooner?
 
@@ -42,7 +42,7 @@ The user does nothing beyond installing and granting permissions. A first map ap
 
 | Measure    | Definition                                                     |
 | ---------- | -------------------------------------------------------------- |
-| Aha moment | A notification names a routine you recognize, with its hours   |
+| Aha moment | A notification names a routine you recognize, with its hours. At most one a week, with an off switch |
 | Activation | The first routine handed to an agent within 14 days of install |
 | North star | Hours a week handed to agents that still run after 30 days     |
 
@@ -56,6 +56,7 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
 - **Explain everything.** Every score shows its reasons and evidence. Every skill step cites what was observed. No ungrounded step ships.
 - **Invisible.** No fan, no battery hit, no setup. Every feature earns its CPU and its lines of code.
 - **The agent is the main interface.** The app window stays small. Claude reaches the data through MCP.
+- **Trust you can check.** Every claim has a place to see it: the sent log lists each answer an agent got, the tray says when capture stops, excluded apps and sites drop data before it is stored, and you can delete the last hour or uninstall in one click.
 
 ## Words
 
@@ -111,6 +112,8 @@ Workflows, `score.rs` and the step brief are the old path. They stay live until 
 
 If a budget can't be met, stop and report numbers and options. Never loosen one.
 
+Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-desktop-testing.md`.
+
 ## Never
 
 - Store pixels, audio, keystrokes or secure field values.
@@ -119,6 +122,8 @@ If a budget can't be met, stop and report numbers and options. Never loosen one.
 - Put network code outside `app/src/models.rs`.
 - Read the real data folder or keychain entry from an agent, or capture the real screen. Use fixtures and fakes.
 - Claim "nothing leaves your Mac". Say it stays on the Mac until the user's agent reads it.
+- Let an answer reach an agent without a row in the sent log.
+- Require an account or an email, change the MIT license, or sell a paid tier that holds back privacy or core features.
 
 ## Distribution
 

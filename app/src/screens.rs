@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use sextant_core::{
-    Action, Category, Enjoyment, Kind, Live, MIN_DAYS, Measurement, Session, Settings, Store,
+    Action, Category, Enjoyment, Kind, Live, MIN_DAYS, Measurement, Sent, Session, Settings, Store,
     Target, Turn, Workflow, WorkflowDetail, keywords, parse_correction, redact, skill,
 };
 use tauri::ipc::Channel;
@@ -16,12 +16,17 @@ use tauri::{AppHandle, Manager, State};
 use crate::commands::{AppState, MAX_ROWS, Reply, blocking, msg};
 use crate::keys::Keychain;
 use crate::platform::language::Note;
-use crate::{clock, data, platform};
+use crate::{clock, connect, data, platform};
 
 const SKILLS_FOLDER: &str = "skills";
 const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
 const MAX_IMAGE_BYTES: usize = 8 << 20;
 const RETENTION_CHOICES: [Option<u32>; 4] = [Some(30), Some(90), Some(365), None];
+const STORAGE_CAP_CHOICES: [Option<u32>; 5] =
+    [Some(1000), Some(2000), Some(5000), Some(10000), None];
+/// "Delete the last 15 minutes, hour or day".
+const FORGET_CHOICES: [i64; 3] = [15, 60, 1440];
+const SENT_ROWS: usize = 50;
 
 #[derive(Serialize)]
 pub struct StepView {
@@ -607,6 +612,76 @@ pub async fn set_live(state: State<'_, AppState>, live: Live) -> Reply<Settings>
         .map_err(msg)
 }
 
+#[tauri::command]
+pub async fn set_excluded_sites(state: State<'_, AppState>, sites: Vec<String>) -> Reply<Settings> {
+    let sites: Vec<String> = sites
+        .into_iter()
+        .map(|site| site.trim().to_lowercase())
+        .filter(|site| !site.is_empty())
+        .collect();
+    state
+        .engine()?
+        .change_settings(move |s| s.excluded_sites = sites.clone())
+        .map_err(msg)
+}
+
+/// Caps raw data at 1, 2, 5 or 10 GB, or not at all (`None`), and applies it now.
+#[tauri::command]
+pub async fn set_storage_cap(app: AppHandle, mb: Option<u32>) -> Reply<Settings> {
+    blocking(app, move |state| {
+        if !STORAGE_CAP_CHOICES.contains(&mb) {
+            return Err("choose 1, 2, 5 or 10 GB, or no cap".into());
+        }
+        let engine = state.engine()?;
+        let settings = engine
+            .change_settings(move |s| s.storage_cap_mb = mb)
+            .map_err(msg)?;
+        if let Some(mb) = mb {
+            engine
+                .write(move |store| {
+                    store
+                        .cap_storage(clock::local(), u64::from(mb) * 1_000_000)
+                        .map(|_| ())
+                })
+                .map_err(msg)?;
+        }
+        Ok(settings)
+    })
+    .await
+}
+
+/// Deletes everything captured in the last 15 minutes, hour or day.
+#[tauri::command]
+pub async fn forget_recent(app: AppHandle, minutes: i64) -> Reply<()> {
+    blocking(app, move |state| {
+        if !FORGET_CHOICES.contains(&minutes) {
+            return Err("choose 15 minutes, an hour or a day".into());
+        }
+        let when = clock::local();
+        state
+            .engine()?
+            .write(move |store| {
+                store
+                    .forget(when, when.now - minutes * 60, i64::MAX)
+                    .map(|_| ())
+            })
+            .map_err(msg)
+    })
+    .await
+}
+
+/// What agents received: each MCP answer and each bridge run, newest first.
+#[tauri::command]
+pub async fn sent_log(app: AppHandle) -> Reply<Vec<Sent>> {
+    blocking(app, |state| {
+        state
+            .engine()?
+            .read(|store| store.sent(SENT_ROWS))
+            .map_err(msg)
+    })
+    .await
+}
+
 /// Keeps raw data for 30, 90 or 365 days, or forever (`None`), and applies it now.
 #[tauri::command]
 pub async fn set_retention(app: AppHandle, days: Option<u32>) -> Reply<Settings> {
@@ -640,6 +715,26 @@ pub async fn delete_everything(app: AppHandle) -> Reply<()> {
     .map_err(msg)?
     .map_err(|err| format!("{err:#}"))?;
     app.restart()
+}
+
+/// "Delete everything", then takes Sextant out of the Claude Desktop config, moves the app to
+/// the Trash and quits. Dev builds keep the app.
+#[tauri::command]
+pub async fn uninstall(app: AppHandle) -> Reply<()> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<()> {
+        handle.state::<AppState>().delete_everything(&Keychain)?;
+        connect::remove_from_desktop_config(&connect::desktop_config_path()?)?;
+        if !cfg!(debug_assertions) {
+            platform::trash_app()?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(msg)?
+    .map_err(|err| format!("{err:#}"))?;
+    app.exit(0);
+    Ok(())
 }
 
 const REWIND_RESULTS: usize = 5;

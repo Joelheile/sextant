@@ -367,6 +367,23 @@ pub fn pick_folder(prompt: &str) -> Result<Option<String>> {
     Ok((!path.is_empty()).then_some(path))
 }
 
+/// Moves the running `Sextant.app` to the Trash, for the uninstall. Refuses a binary that is not
+/// inside an app bundle.
+pub fn trash_app() -> Result<()> {
+    let exe = std::env::current_exe().context("finding the app")?;
+    let bundle = exe
+        .ancestors()
+        .nth(3)
+        .filter(|path| path.extension().is_some_and(|ext| ext == "app"))
+        .context("Sextant is not running from an app bundle")?;
+    let url = objc2_foundation::NSURL::fileURLWithPath(&objc2_foundation::NSString::from_str(
+        &bundle.to_string_lossy(),
+    ));
+    objc2_foundation::NSFileManager::defaultManager()
+        .trashItemAtURL_resultingItemURL_error(&url, None)
+        .map_err(|err| anyhow::anyhow!("moving Sextant to the Trash: {err}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

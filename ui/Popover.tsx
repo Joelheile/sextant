@@ -36,11 +36,12 @@ const BLOCKER_LABEL: Partial<Record<PermissionName, Key>> = {
   accessibility: "permAccessibility",
 };
 
-type Tone = "on" | "paused" | "blocked" | "off";
+type Tone = "on" | "paused" | "blocked" | "stalled" | "off";
 
 function tone(status: MenuStatus): Tone {
   if (status.capture === "capturing")
     return status.blocked_by.length > 0 ? "blocked" : "on";
+  if (status.capture === "stalled") return "stalled";
   return status.capture === "paused" ? "paused" : "off";
 }
 
@@ -48,6 +49,8 @@ function statusLine(status: MenuStatus): string {
   switch (tone(status)) {
     case "blocked":
       return t("statusBlocked");
+    case "stalled":
+      return t("statusStalled");
     case "paused":
       return t("statusPaused", {
         time: clock(status.paused_until ?? status.now),
@@ -84,7 +87,7 @@ function Pulse({ tone }: { tone: Tone }) {
           "relative inline-flex size-2.5 rounded-full",
           tone === "on" && "bg-primary",
           tone === "paused" && "bg-amber-500",
-          tone === "blocked" && "bg-destructive",
+          (tone === "blocked" || tone === "stalled") && "bg-destructive",
           tone === "off" && "bg-muted-foreground/50",
         )}
       />
@@ -143,6 +146,14 @@ function Header({
             }
           >
             {t("allow")}
+          </Button>
+        </div>
+      )}
+      {current === "stalled" && (
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm">
+          <span>{t("stalledBody")}</span>
+          <Button size="xs" variant="outline" onClick={() => void api.relaunch()}>
+            {t("restart")}
           </Button>
         </div>
       )}

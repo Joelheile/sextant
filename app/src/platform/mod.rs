@@ -60,7 +60,7 @@ mod vision;
 pub use macos::{
     System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,
     open_settings_pane, os_version, pick_folder, pump, reminders_status, request_permission,
-    safari_status, screen_recording_status, start_audio, start_live,
+    safari_status, screen_recording_status, start_audio, start_live, trash_app,
 };
 #[cfg(target_os = "macos")]
 pub use speech::{Parakeet, silero};
@@ -70,5 +70,5 @@ pub use unsupported::{Parakeet, language, silero};
 pub use unsupported::{
     System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,
     open_settings_pane, os_version, pick_folder, pump, reminders_status, request_permission,
-    safari_status, screen_recording_status, start_audio, start_live,
+    safari_status, screen_recording_status, start_audio, start_live, trash_app,
 };

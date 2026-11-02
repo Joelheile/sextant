@@ -21,6 +21,7 @@ pub struct Scene {
     pub locked: bool,
     pub asleep: bool,
     pub secure_input: bool,
+    pub low_power: bool,
     pub app: Option<App>,
     pub text: WindowText,
     /// `None` makes the browser fail to answer.
@@ -46,6 +47,7 @@ impl Scene {
             locked: false,
             asleep: false,
             secure_input: false,
+            low_power: false,
             app: None,
             text: WindowText::default(),
             tab: Some(Tab {
@@ -166,6 +168,10 @@ impl Sensors for Fake {
     fn window_id(&mut self, _app: &App) -> u64 {
         self.log(|calls| calls.window_id += 1);
         self.scene().window
+    }
+
+    fn low_power(&mut self) -> bool {
+        self.scene().low_power
     }
 
     fn secure_input(&mut self) -> bool {

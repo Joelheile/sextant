@@ -126,6 +126,25 @@ fn the_handshake_lists_every_tool() {
 }
 
 #[test]
+fn every_answer_is_logged_with_its_client_and_size_before_it_goes_out() {
+    let (db, mut client) = fixture_client("mcp-sent");
+    client.request(
+        "initialize",
+        json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": "claude-code"}}),
+    );
+    let text = client.tool("week", json!({})).expect("week").to_string();
+    assert!(client.tool("task", json!({"id": -1})).is_err());
+
+    let sent = db.open().expect("store").sent(10).expect("sent");
+    assert_eq!(sent.len(), 1, "errors send nothing worth logging");
+    assert_eq!(
+        (sent[0].client.as_str(), sent[0].tool.as_str(), sent[0].ts),
+        ("claude-code", "week", WEEK_NOW)
+    );
+    assert_eq!(sent[0].bytes, text.len());
+}
+
+#[test]
 fn the_timeline_lists_upcoming_meetings_at_their_real_time() {
     let db = TempDb::new("mcp-upcoming");
     let mut store = db.open().expect("test setup");

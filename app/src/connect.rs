@@ -52,6 +52,22 @@ pub fn write_desktop_config(path: &Path, binary: &str, stamp: i64) -> Result<Wri
     })
 }
 
+/// Takes Sextant out of the Claude Desktop config at `path`. A missing file, a config without
+/// Sextant or one that is not valid JSON stays as it is.
+pub fn remove_from_desktop_config(path: &Path) -> Result<()> {
+    let existing = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err).context("reading the Claude Desktop config"),
+    };
+    let Some(left) = sextant_core::connect::without_sextant(&existing) else {
+        return Ok(());
+    };
+    let temp = path.with_extension("json.tmp");
+    fs::write(&temp, left).context("writing the Claude Desktop config")?;
+    fs::rename(&temp, path).context("replacing the Claude Desktop config")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,6 +111,23 @@ mod tests {
         let written = write_desktop_config(&config, "/bin/sextant", 1).expect("writes");
         assert_eq!(written.backup, None);
         assert!(config.is_file());
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn removing_undoes_the_connect_and_keeps_the_rest() {
+        let dir = temp("remove");
+        let config = dir.join("claude_desktop_config.json");
+        fs::write(&config, r#"{"mcpServers": {"notes": {"command": "npx"}}}"#).expect("test setup");
+        write_desktop_config(&config, "/bin/sextant", 1).expect("test setup");
+
+        remove_from_desktop_config(&config).expect("removes");
+        remove_from_desktop_config(&dir.join("missing.json")).expect("nothing to remove");
+
+        let left: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&config).expect("config")).expect("json");
+        assert_eq!(left["mcpServers"]["notes"]["command"], "npx");
+        assert!(left["mcpServers"].get("sextant").is_none());
         fs::remove_dir_all(dir).expect("cleanup");
     }
 

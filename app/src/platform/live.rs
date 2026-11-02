@@ -15,6 +15,7 @@ use objc2_core_graphics::{
     CGEventSource, CGEventSourceStateID, CGEventType, CGMainDisplayID,
     CGSessionCopyCurrentDictionary,
 };
+use objc2_foundation::NSProcessInfo;
 use sextant_core::OcrLine;
 use sextant_core::capture::{Browser, Element, Field};
 
@@ -156,6 +157,10 @@ impl Sensors for Mac {
                 .unwrap_or_default(),
             pid,
         })
+    }
+
+    fn low_power(&mut self) -> bool {
+        NSProcessInfo::processInfo().isLowPowerModeEnabled()
     }
 
     fn secure_input(&mut self) -> bool {

@@ -1,6 +1,6 @@
 //! Gates (plan.md §4). They run in this order, each before the step that would read more:
-//! [`session`] before any OS call, [`app`] before the window is read, [`secure_input`] and [`tab`]
-//! before a frame exists. A failed gate means no capture call is made at all.
+//! [`session`] before any OS call, [`app`] before the window is read, [`secure_input`], [`tab`]
+//! and [`site`] before a frame exists. A failed gate means no capture call is made at all.
 
 use super::browser::{Browser, classify};
 use crate::settings::Settings;
@@ -10,6 +10,8 @@ pub enum Blocked {
     Paused,
     SourceOff,
     ExcludedApp,
+    /// A bank, payment site or another site the user excluded.
+    ExcludedSite,
     /// Safari and other browsers that cannot report a private window, unless the user opted in.
     OpaqueBrowser,
     PrivateWindow,
@@ -24,6 +26,7 @@ impl Blocked {
             Self::Paused => "paused",
             Self::SourceOff => "source off",
             Self::ExcludedApp => "excluded app",
+            Self::ExcludedSite => "excluded site",
             Self::OpaqueBrowser => "opaque browser",
             Self::PrivateWindow => "private window",
             Self::TabUnknown => "tab unknown",
@@ -73,6 +76,15 @@ pub fn tab(private: Option<bool>) -> Result<(), Blocked> {
     }
 }
 
+/// Banks and payment sites by default, checked before the tab's window is read.
+pub fn site(settings: &Settings, url: &str) -> Result<(), Blocked> {
+    if settings.is_excluded_site(url) {
+        Err(Blocked::ExcludedSite)
+    } else {
+        Ok(())
+    }
+}
+
 /// Call audio goes through the same gates as the screen (plan.md §4): no stream for an excluded
 /// app, and none for a browser unless its front window reports that it is not private.
 /// `front_window_private` is only called once the app gate has passed.
@@ -119,6 +131,11 @@ mod tests {
         assert_eq!(tab(Some(true)), Err(Blocked::PrivateWindow));
         assert_eq!(tab(None), Err(Blocked::TabUnknown));
         assert_eq!(tab(Some(false)), Ok(()));
+        assert_eq!(
+            site(&settings, "https://www.paypal.com/"),
+            Err(Blocked::ExcludedSite)
+        );
+        assert_eq!(site(&settings, "https://github.com/"), Ok(()));
         assert_eq!(secure_input(true), Err(Blocked::SecureInput));
         assert_eq!(secure_input(false), Ok(()));
     }

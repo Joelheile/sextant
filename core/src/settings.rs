@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::agent::AgentName;
 use crate::error::Result;
+use crate::text::split_url;
 
 /// Backfill sources the user can untick in onboarding (plan.md §3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +77,9 @@ pub struct Settings {
     /// Apps whose screen text never leaves the database through MCP (plan.md §4: password
     /// managers, Health, messengers). Compared case-insensitively against the app name.
     pub excluded_apps: Vec<String>,
+    /// Sites never read live or from browser history: banks and payment sites by default. A
+    /// site matches its subdomains too.
+    pub excluded_sites: Vec<String>,
     /// Switch for `search`, `context_at` and `timeline`.
     pub mcp_rewind: bool,
     /// Switch for `week`, `day`, `task`, `list_workflows`, `get_workflow`, `get_skill` and
@@ -88,6 +92,8 @@ pub struct Settings {
     pub git_folders: Vec<String>,
     /// How long raw data stays (plan.md §3): 30, 90 or 365 days, `None` for forever.
     pub retention_days: Option<u32>,
+    /// Above this many megabytes of raw data, the oldest days go first. `None` for no cap.
+    pub storage_cap_mb: Option<u32>,
     /// The agent CLI the bridge runs: `claude`, `codex`, or `None` while the bridge is off.
     pub agent: Option<AgentName>,
     /// Runs the agent once a week on its own.
@@ -113,6 +119,31 @@ impl Default for Settings {
             ]
             .map(String::from)
             .to_vec(),
+            excluded_sites: [
+                "paypal.com",
+                "wise.com",
+                "revolut.com",
+                "n26.com",
+                "sparkasse.de",
+                "deutsche-bank.de",
+                "commerzbank.de",
+                "ing.de",
+                "dkb.de",
+                "comdirect.de",
+                "postbank.de",
+                "consorsbank.de",
+                "traderepublic.com",
+                "chase.com",
+                "bankofamerica.com",
+                "wellsfargo.com",
+                "capitalone.com",
+                "citi.com",
+                "americanexpress.com",
+                "schwab.com",
+                "fidelity.com",
+            ]
+            .map(String::from)
+            .to_vec(),
             mcp_rewind: true,
             mcp_workflows: true,
             onboarded: false,
@@ -120,6 +151,7 @@ impl Default for Settings {
             live: Live::default(),
             git_folders: Vec::new(),
             retention_days: Some(90),
+            storage_cap_mb: Some(5000),
             agent: None,
             agent_weekly: false,
         }
@@ -146,6 +178,16 @@ impl Settings {
                 .excluded_apps
                 .iter()
                 .any(|excluded| app.starts_with(&excluded.to_lowercase()))
+    }
+
+    /// `url` is on an excluded site or one of its subdomains.
+    pub fn is_excluded_site(&self, url: &str) -> bool {
+        let (host, _) = split_url(url);
+        !host.is_empty()
+            && self.excluded_sites.iter().any(|site| {
+                let site = site.trim().to_lowercase();
+                host == site || host.ends_with(&format!(".{site}"))
+            })
     }
 }
 
@@ -177,5 +219,15 @@ mod tests {
         assert!(settings.is_excluded("Messages"));
         assert!(!settings.is_excluded("Mail"));
         assert!(!settings.is_excluded(""));
+    }
+
+    #[test]
+    fn a_site_excludes_its_subdomains_but_not_lookalikes() {
+        let settings = Settings::default();
+        assert!(settings.is_excluded_site("https://www.paypal.com/myaccount"));
+        assert!(settings.is_excluded_site("https://banking.sparkasse.de/login"));
+        assert!(!settings.is_excluded_site("https://notpaypal.com/"));
+        assert!(!settings.is_excluded_site("https://github.com/paypal.com"));
+        assert!(!settings.is_excluded_site(""));
     }
 }

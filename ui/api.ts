@@ -18,8 +18,18 @@ export type Live = {
   opaque_browsers: boolean;
 };
 
+/** One answer an agent received: an MCP tool call or a bridge run. */
+export type Sent = {
+  ts: number;
+  client: string;
+  tool: string;
+  bytes: number;
+};
+
 export type Settings = {
   excluded_apps: string[];
+  excluded_sites: string[];
+  storage_cap_mb: number | null;
   live: Live;
   mcp_rewind: boolean;
   mcp_workflows: boolean;
@@ -34,7 +44,7 @@ export type Settings = {
 export type AgentName = "claude" | "codex";
 
 export type MenuStatus = {
-  capture: "off" | "capturing" | "paused";
+  capture: "off" | "capturing" | "paused" | "stalled";
   paused_until: number | null;
   audio: "off" | "waiting" | "transcribing";
   last_capture: number | null;
@@ -111,7 +121,13 @@ export type MapRow = {
   rough: boolean;
 };
 
-export type Enjoyment = "hate" | "dislike" | "neutral" | "unknown" | "like" | "love";
+export type Enjoyment =
+  | "hate"
+  | "dislike"
+  | "neutral"
+  | "unknown"
+  | "like"
+  | "love";
 
 export type Category =
   | "meeting"
@@ -167,8 +183,19 @@ export type Detail = {
   workflow: WorkflowRow;
   reasons: string[];
   copy_points: { from: string; to: string; copies: number }[];
-  examples: { entity: string; first_ts: number; last_ts: number; path: string[] }[];
-  commitments: { ts: number; source: string; text: string; due_ts: number | null; overdue: boolean }[];
+  examples: {
+    entity: string;
+    first_ts: number;
+    last_ts: number;
+    path: string[];
+  }[];
+  commitments: {
+    ts: number;
+    source: string;
+    text: string;
+    due_ts: number | null;
+    overdue: boolean;
+  }[];
 };
 
 export type RuleName =
@@ -271,7 +298,8 @@ export const api = {
   openSettingsPane: (pane: SettingsPane, dragHint?: string) =>
     invoke<void>("open_settings_pane", { pane, dragHint }),
   relaunch: () => invoke<void>("relaunch"),
-  pickFolder: (prompt: string) => invoke<string | null>("pick_folder", { prompt }),
+  pickFolder: (prompt: string) =>
+    invoke<string | null>("pick_folder", { prompt }),
   saveChoices: (sources: Sources, gitFolders: string[]) =>
     invoke<Settings>("save_choices", { sources, gitFolders }),
   startBackfill: () => invoke<void>("start_backfill"),
@@ -290,7 +318,8 @@ export const api = {
     invoke<Overview>("workflow_overview", { offset, limit }),
   answerEnjoyment: (id: number, enjoyment: Enjoyment) =>
     invoke<void>("answer_enjoyment", { id, enjoyment }),
-  workflowDetail: (id: number) => invoke<Detail | null>("workflow_detail", { id }),
+  workflowDetail: (id: number) =>
+    invoke<Detail | null>("workflow_detail", { id }),
   correctWorkflow: (id: number, phrase: string, steps: string[]) =>
     invoke<Understood | null>("correct_workflow", { id, phrase, steps }),
   automationPlan: (id: number, folder: string | null) =>
@@ -299,7 +328,10 @@ export const api = {
     invoke<string>("write_skill", { id, folder }),
   reportHandoff: (id: number) => invoke<void>("report_handoff", { id }),
   results: () => invoke<Results>("results"),
-  rewindAsk: (question: string, onProgress: (progress: AskProgress) => void) => {
+  rewindAsk: (
+    question: string,
+    onProgress: (progress: AskProgress) => void,
+  ) => {
     const progress = new Channel<AskProgress>();
     progress.onmessage = onProgress;
     return invoke<Asked>("rewind_ask", { question, progress });
@@ -315,10 +347,20 @@ export const api = {
     invoke<string>("save_report_image", { day, png }),
   storageUsed: () => invoke<{ bytes: number }>("storage_used"),
   debugReport: () => invoke<string>("debug_report"),
-  setExcludedApps: (apps: string[]) => invoke<Settings>("set_excluded_apps", { apps }),
+  setExcludedApps: (apps: string[]) =>
+    invoke<Settings>("set_excluded_apps", { apps }),
   setLive: (live: Live) => invoke<Settings>("set_live", { live }),
-  setRetention: (days: number | null) => invoke<Settings>("set_retention", { days }),
+  setRetention: (days: number | null) =>
+    invoke<Settings>("set_retention", { days }),
   deleteEverything: () => invoke<void>("delete_everything"),
+  setExcludedSites: (sites: string[]) =>
+    invoke<Settings>("set_excluded_sites", { sites }),
+  setStorageCap: (mb: number | null) =>
+    invoke<Settings>("set_storage_cap", { mb }),
+  forgetRecent: (minutes: number) =>
+    invoke<void>("forget_recent", { minutes }),
+  sentLog: () => invoke<Sent[]>("sent_log"),
+  uninstall: () => invoke<void>("uninstall"),
   menuStatus: () => invoke<MenuStatus>("menu_status"),
   insights: () => invoke<Insights>("insights"),
   menuAction: (action: MenuAction) => invoke<void>("menu_action", { action }),
