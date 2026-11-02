@@ -21,6 +21,7 @@ mod redact;
 mod report;
 mod results;
 mod rewind;
+mod routines;
 mod search;
 mod sent;
 mod sessions;

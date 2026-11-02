@@ -10,6 +10,7 @@ use crate::error::{Error, Result};
 use crate::finder::Workflow;
 use crate::model::Speaker;
 use crate::redact::{redact, redact_json};
+use crate::routines::Routine;
 use crate::search::HitSource;
 use crate::settings::Settings;
 use crate::store::Store;
@@ -145,6 +146,36 @@ pub const TOOLS: &[Tool] = &[
         },
     },
     Tool {
+        name: "save_routine",
+        group: Group::Workflows,
+        description: "Save a routine: work that repeats and that an agent could take over. Cite the tasks and repeated activities you read in week, day and task. Sextant checks every citation, needs 3 or more activities on 2 or more days, refuses a routine that mostly repeats a saved one, and measures the hours a week itself. An error says what to fix.",
+        read_only: false,
+        schema: || {
+            json!({"type": "object", "required": ["title", "how", "why"], "properties": {
+                "title": {"type": "string", "description": "A short name, such as Send invoices."},
+                "task_ids": {"type": "array", "items": {"type": "integer"}, "description": "Task ids from week, day or task."},
+                "repeats": {"type": "array", "description": "Work outside tasks, as day lists it under other.", "items": {
+                    "type": "object", "required": ["app", "label", "dates"], "properties": {
+                        "app": {"type": "string"},
+                        "label": {"type": "string"},
+                        "dates": {"type": "array", "items": {"type": "string"}, "description": "Days it ran, such as 2026-03-02."},
+                    },
+                }},
+                "how": {"type": "string", "description": "How an agent would do it, step by step."},
+                "trigger": {"type": "string", "description": "What starts it, such as an email from a client."},
+                "approval": {"type": "string", "description": "The action the agent must stop before and ask, such as Mail · AXButton · send."},
+                "why": {"type": "string", "description": "What in the evidence shows it repeats."},
+            }})
+        },
+    },
+    Tool {
+        name: "routines",
+        group: Group::Workflows,
+        description: "The routines saved so far, most hours a week first, with what each cites and the time its evidence spans. Read it before saving, so you don't save one twice.",
+        read_only: true,
+        schema: || json!({"type": "object", "properties": {}}),
+    },
+    Tool {
         name: "list_workflows",
         group: Group::Workflows,
         description: "The user's recurring workflows across apps, ranked by estimated hours a week an agent could save. Each has hours, automation potential, rough (backfill only) and the reasons behind its scores.",
@@ -188,6 +219,38 @@ pub const TOOLS: &[Tool] = &[
     },
 ];
 
+/// The `find_routines` prompt. The agent bridge sends the same text.
+pub const FIND_ROUTINES: &str = "Find routines in my work that an agent could take over, and save each one.
+
+1. Call routines to see what is saved already.
+2. Call week for the last 7 days, then for the weeks before, with start set to each earlier Monday, until two weeks in a row add nothing new.
+3. Repeated task kinds and activities that repeat on 2 or more days are the candidates. Open them with day and task to see the steps, the apps and the values moved between them.
+4. For each routine, call save_routine. Cite the task ids and the repeats (app, label and dates as day lists them) that show it. Say how an agent would do it, what starts it, and the action it must stop before to ask me. Don't estimate hours: Sextant measures them from what you cite.
+5. If save_routine returns an error, fix what it names and try again. Skip work that only repeats a saved routine.
+6. End with a short list of what you saved and the hours a week Sextant measured for each.";
+
+/// MCP prompts. They need the work pattern tools, so they follow that switch.
+pub fn prompts(settings: &Settings) -> Value {
+    let prompts: Vec<Value> = settings
+        .mcp_workflows
+        .then(|| json!({"name": "find_routines", "title": "Find routines", "description": "Read your weeks in Sextant and save the routines an agent could take over."}))
+        .into_iter()
+        .collect();
+    json!({"prompts": prompts})
+}
+
+/// One prompt's messages, for `prompts/get`.
+pub fn prompt(params: &Value, settings: &Settings) -> std::result::Result<Value, String> {
+    match params.get("name").and_then(Value::as_str) {
+        Some("find_routines") if settings.mcp_workflows => Ok(json!({
+            "description": "Find and save routines an agent could take over.",
+            "messages": [{"role": "user", "content": {"type": "text", "text": FIND_ROUTINES}}],
+        })),
+        Some(name) => Err(format!("unknown prompt {name}")),
+        None => Err("name is required".to_string()),
+    }
+}
+
 pub struct Ctx<'a> {
     pub store: &'a Store,
     pub settings: &'a Settings,
@@ -212,6 +275,13 @@ pub fn call(ctx: &Ctx, name: &str, args: &Value) -> std::result::Result<String, 
             let id = id.ok_or_else(|| bad("id is required"))?;
             ctx.store.task_page(ctx.settings, id, ctx.when.utc_offset_s)
         }),
+        "save_routine" => serde_json::from_value::<Routine>(args.clone())
+            .map_err(Error::from)
+            .and_then(|routine| {
+                ctx.store
+                    .save_routine(ctx.settings, &routine, ctx.when.now, ctx.when.utc_offset_s)
+            }),
+        "routines" => ctx.store.routines(ctx.when.utc_offset_s),
         "list_workflows" => list_workflows(ctx, args),
         "get_workflow" => get_workflow(ctx, args),
         "get_skill" => return get_skill(ctx, args).map_err(|e| e.to_string()),

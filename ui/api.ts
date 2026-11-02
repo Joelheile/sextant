@@ -18,7 +18,7 @@ export type Live = {
   opaque_browsers: boolean;
 };
 
-/** One answer an agent received: an MCP tool call or a bridge run. */
+/** One answer an agent received: one MCP tool call, the bridge's included. */
 export type Sent = {
   ts: number;
   client: string;
@@ -68,13 +68,18 @@ export type Insights = {
   hours_back: number;
 };
 
-export type Idea = {
-  workflow_id: number;
-  workflow: string;
+/** A routine your agent saved, with the hours Sextant measured from what it cites. */
+export type Routine = {
+  id: number;
   title: string;
   how: string;
+  trigger: string;
+  approval: string;
+  why: string;
   hours_week: number;
-  confidence: number;
+  activities: number;
+  first: string | null;
+  last: string | null;
 };
 
 export type AgentStatus = {
@@ -84,7 +89,7 @@ export type AgentStatus = {
   running: boolean;
   last_run: number | null;
   last_agent: AgentName | null;
-  ideas: Idea[];
+  routines: Routine[];
 };
 
 export type MenuAction = "pause" | "search" | "open" | "quit" | "hide";

@@ -1,10 +1,11 @@
 //! The agent bridge: runs your own Claude Code (`claude -p`) or Codex (`codex exec`) under your
-//! own login and asks it for automation ideas on the redacted step graph (see
-//! `sextant_core::agent`). Sextant opens no connection itself: the CLI does, only after you pick
-//! one. The prompt goes in on stdin and the CLI runs in an empty temporary folder. Claude runs
-//! with no tools. Codex has no mode without tools: its shell can still read files, but only in
-//! a read-only sandbox with the network off, without your Codex config or rules, and with web
-//! search, apps, plugins, the browser, computer use and hooks turned off.
+//! own login with the `find_routines` prompt. The agent reads your weeks through Sextant's MCP
+//! tools and saves routines with `save_routine`, so every answer it gets has a row in the sent
+//! log. Sextant opens no connection itself: the CLI does, only after you pick one. The CLI runs
+//! in an empty temporary folder with Sextant as its only MCP server. Claude gets no other tools.
+//! Codex has no mode without tools: its shell can still read files, but only in a read-only
+//! sandbox with the network off, without your Codex config or rules, and with web search, apps,
+//! plugins, the browser, computer use and hooks turned off.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -17,14 +18,15 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use serde_json::Value;
 use sextant_core::Settings;
-use sextant_core::agent::{AgentName, PROMPT, Run, SCHEMA, parse_ideas};
+use sextant_core::agent::{AgentName, Run};
+use sextant_core::mcp::FIND_ROUTINES;
 use tauri::{AppHandle, Manager, State};
 
 use crate::clock;
 use crate::commands::{AppState, Reply, msg};
 use crate::engine::Engine;
 
-const TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const WEEK_S: i64 = 7 * 86_400;
 const CHECK_EVERY: Duration = Duration::from_secs(60 * 60);
 /// Apps started from Finder get a short PATH, so the usual install folders are searched too.
@@ -36,6 +38,9 @@ const HOME_DIRS: [&str; 5] = [
     ".volta/bin",
 ];
 const SYSTEM_DIRS: [&str; 3] = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
+/// Codex starts MCP servers with a short environment, so these reach `sextant mcp` by name. Only
+/// debug builds read them.
+const SERVER_ENV: &str = r#"["SEXTANT_HOME", "SEXTANT_DEV_KEY", "SEXTANT_NOW"]"#;
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -58,8 +63,8 @@ fn find(agent: AgentName) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-/// Runs `agent` on the brief and returns its answer text.
-fn ask(agent: AgentName, brief: &str) -> Result<String> {
+/// Runs `agent` with `server` (the `sextant` binary) as its only MCP server.
+fn ask(agent: AgentName, server: &Path) -> Result<()> {
     let path = find(agent).with_context(|| format!("{agent} is not installed"))?;
     let dir = std::env::temp_dir().join(format!(
         "sextant-agent-{}-{}",
@@ -67,58 +72,69 @@ fn ask(agent: AgentName, brief: &str) -> Result<String> {
         clock::now()
     ));
     std::fs::create_dir_all(&dir).context("creating the agent folder")?;
-    let answer = run(agent, &path, &dir, brief);
+    let answer = run(agent, &path, &dir, server);
     let _ = std::fs::remove_dir_all(&dir);
     answer
 }
 
-fn run(agent: AgentName, path: &Path, dir: &Path, brief: &str) -> Result<String> {
+fn run(agent: AgentName, path: &Path, dir: &Path, server: &Path) -> Result<()> {
+    let server = server.to_str().context("the Sextant path is not UTF-8")?;
     let mut command = Command::new(path);
     match agent {
-        AgentName::Claude => command.args([
-            "-p",
-            "--output-format",
-            "json",
-            "--tools",
-            "",
-            "--strict-mcp-config",
-            "--no-session-persistence",
-            "--json-schema",
-            SCHEMA,
-        ]),
-        AgentName::Codex => {
-            let schema = dir.join("schema.json");
-            std::fs::write(&schema, SCHEMA).context("writing the answer schema")?;
-            command
-                .args([
-                    "exec",
-                    "--sandbox",
-                    "read-only",
-                    "--skip-git-repo-check",
-                    "--ephemeral",
-                    "--ignore-user-config",
-                    "--ignore-rules",
-                    "-c",
-                    "web_search=\"disabled\"",
-                    "-c",
-                    "features.apps=false",
-                    "-c",
-                    "features.plugins=false",
-                    "-c",
-                    "features.browser_use=false",
-                    "-c",
-                    "features.in_app_browser=false",
-                    "-c",
-                    "features.computer_use=false",
-                    "-c",
-                    "features.hooks=false",
-                    "--color",
-                    "never",
-                    "--output-schema",
-                ])
-                .arg(&schema)
-                .arg("-")
-        }
+        AgentName::Claude => command
+            .args([
+                "-p",
+                "--output-format",
+                "json",
+                "--tools",
+                "",
+                "--allowedTools",
+                "mcp__sextant",
+                "--strict-mcp-config",
+                "--no-session-persistence",
+                "--mcp-config",
+            ])
+            .arg(sextant_core::connect::claude_desktop_config("", server)?),
+        AgentName::Codex => command
+            .args([
+                "exec",
+                "--sandbox",
+                "read-only",
+                "--skip-git-repo-check",
+                "--ephemeral",
+                "--ignore-user-config",
+                "--ignore-rules",
+                "-c",
+                "web_search=\"disabled\"",
+                "-c",
+                "features.apps=false",
+                "-c",
+                "features.plugins=false",
+                "-c",
+                "features.browser_use=false",
+                "-c",
+                "features.in_app_browser=false",
+                "-c",
+                "features.computer_use=false",
+                "-c",
+                "features.hooks=false",
+                "-c",
+            ])
+            .arg(format!(
+                "mcp_servers.sextant.command={}",
+                Value::from(server)
+            ))
+            .args([
+                "-c",
+                "mcp_servers.sextant.args=[\"mcp\"]",
+                "-c",
+                "mcp_servers.sextant.required=true",
+                "-c",
+                "mcp_servers.sextant.default_tools_approval_mode=\"approve\"",
+                "-c",
+            ])
+            .arg(format!("mcp_servers.sextant.env_vars={SERVER_ENV}"))
+            .args(["--color", "never", "-"]),
     };
     let path_var = std::env::join_paths(search_dirs()).context("building PATH")?;
     let mut child = command
@@ -130,9 +146,8 @@ fn run(agent: AgentName, path: &Path, dir: &Path, brief: &str) -> Result<String>
         .spawn()
         .with_context(|| format!("starting {agent}"))?;
 
-    let prompt = format!("{PROMPT}\n\n{brief}\n");
     let mut stdin = child.stdin.take().context("agent stdin")?;
-    let writer = thread::spawn(move || stdin.write_all(prompt.as_bytes()));
+    let writer = thread::spawn(move || stdin.write_all(FIND_ROUTINES.as_bytes()));
     let mut stdout = child.stdout.take().context("agent stdout")?;
     let reader = thread::spawn(move || {
         let mut out = String::new();
@@ -178,8 +193,8 @@ fn run(agent: AgentName, path: &Path, dir: &Path, brief: &str) -> Result<String>
         bail!("{agent} stopped ({status}): {last}");
     }
     match agent {
-        AgentName::Claude => claude_answer(&out),
-        AgentName::Codex => Ok(out),
+        AgentName::Claude => claude_succeeded(&out),
+        AgentName::Codex => Ok(()),
     }
 }
 
@@ -190,9 +205,8 @@ fn signed_out(stderr: &str) -> bool {
         .any(|hint| text.contains(hint))
 }
 
-/// `claude -p --output-format json` wraps the answer: `structured_output` with a schema, else
-/// `result`.
-fn claude_answer(out: &str) -> Result<String> {
+/// `claude -p --output-format json` exits 0 even when the run failed, and says so in `is_error`.
+fn claude_succeeded(out: &str) -> Result<()> {
     let value: Value = serde_json::from_str(out).context("reading the claude answer")?;
     if value["is_error"].as_bool() == Some(true) {
         let text: String = value["result"]
@@ -203,50 +217,40 @@ fn claude_answer(out: &str) -> Result<String> {
             .collect();
         bail!("claude failed: {text}");
     }
-    if value["structured_output"].is_object() {
-        return Ok(value["structured_output"].to_string());
-    }
-    value["result"]
-        .as_str()
-        .map(str::to_owned)
-        .context("the claude answer has no result")
+    Ok(())
 }
 
-/// One run: brief, ask, parse, save. Logs only counts and timings.
-fn analyze(engine: &Engine, agent: AgentName) -> Result<()> {
+fn routine_count(engine: &Engine) -> Result<usize> {
+    let routines = engine.read(|store| store.routines(0))?;
+    Ok(routines["routines"].as_array().map_or(0, Vec::len))
+}
+
+/// One run: the agent reads and saves through the tools, then the run is recorded. Logs only
+/// counts and timings.
+fn analyze(engine: &Engine, settings: &Settings, agent: AgentName) -> Result<()> {
+    if !settings.mcp_workflows {
+        bail!(
+            "turn on \"Agents can read my activities, tasks and workflows\" in Privacy first: your agent reads your weeks through it"
+        );
+    }
     if RUNNING.swap(true, Ordering::SeqCst) {
         bail!("an analysis is already running");
     }
     let result = (|| {
         let started = Instant::now();
-        let (brief, workflows) =
-            engine.read(|store| Ok((store.agent_brief()?, store.agent_workflows()?)))?;
-        if workflows.is_empty() {
-            bail!("no workflows yet; Sextant needs a few days of data first");
-        }
-        let answer = ask(agent, &brief)?;
-        let ideas = parse_ideas(&answer, &workflows)?;
+        let before = routine_count(engine)?;
+        let server = std::env::current_exe().context("finding the Sextant binary")?;
+        ask(agent, &server)?;
         eprintln!(
-            "agent run: {} workflows in, {} ideas out, {} s",
-            workflows.len(),
-            ideas.len(),
+            "agent run: {} routines saved, {} s",
+            routine_count(engine)? - before,
             started.elapsed().as_secs()
         );
         let now = clock::now();
-        engine.write(move |store| store.save_ideas(now, agent, &ideas))
+        engine.write(move |store| store.save_run(now, agent))
     })();
     RUNNING.store(false, Ordering::SeqCst);
     result
-}
-
-#[derive(Serialize)]
-pub struct IdeaView {
-    workflow_id: i64,
-    workflow: String,
-    title: String,
-    how: String,
-    hours_week: f64,
-    confidence: f64,
 }
 
 #[derive(Serialize)]
@@ -258,11 +262,13 @@ pub struct AgentStatus {
     running: bool,
     last_run: Option<i64>,
     last_agent: Option<AgentName>,
-    ideas: Vec<IdeaView>,
+    /// Saved routines, as the `routines` tool lists them.
+    routines: Value,
 }
 
 fn status(engine: &Engine, settings: &Settings) -> Result<AgentStatus> {
     let run: Option<Run> = engine.read(|store| store.agent_run())?;
+    let routines = engine.read(|store| store.routines(clock::local().utc_offset_s))?;
     Ok(AgentStatus {
         installed: AgentName::ALL
             .into_iter()
@@ -273,19 +279,7 @@ fn status(engine: &Engine, settings: &Settings) -> Result<AgentStatus> {
         running: RUNNING.load(Ordering::SeqCst),
         last_run: run.as_ref().map(|r| r.ts),
         last_agent: run.as_ref().map(|r| r.agent),
-        ideas: run
-            .map(|r| r.ideas)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|saved| IdeaView {
-                workflow_id: saved.idea.workflow_id,
-                workflow: saved.workflow,
-                title: saved.idea.title,
-                how: saved.idea.how,
-                hours_week: saved.idea.hours_week,
-                confidence: saved.idea.confidence,
-            })
-            .collect(),
+        routines: routines["routines"].clone(),
     })
 }
 
@@ -320,7 +314,7 @@ pub async fn run_agent(app: AppHandle) -> Reply<AgentStatus> {
         let engine = state.engine()?;
         let settings = crate::prefs::load(&state.dir).map_err(msg)?;
         let agent = settings.agent.ok_or("pick Claude Code or Codex first")?;
-        analyze(engine, agent).map_err(|err| format!("{err:#}"))?;
+        analyze(engine, &settings, agent).map_err(|err| format!("{err:#}"))?;
         status(engine, &settings).map_err(|err| format!("{err:#}"))
     })
     .await
@@ -345,7 +339,7 @@ pub fn spawn_weekly(app: AppHandle) -> Result<()> {
                 let due = engine
                     .read(|store| store.agent_run())
                     .is_ok_and(|run| run.is_none_or(|r| r.ts < clock::now() - WEEK_S));
-                if due && analyze(engine, agent).is_err() {
+                if due && analyze(engine, &settings, agent).is_err() {
                     eprintln!("weekly agent run failed");
                 }
             }
@@ -356,33 +350,63 @@ pub fn spawn_weekly(app: AppHandle) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use sextant_core::fixtures::{TempDb, WEEK_NOW, load, local, week};
+    use sextant_core::Store;
+    use sextant_core::fixtures::{TEST_SECRET, WEEK_NOW, load, local, week};
 
     use super::*;
 
-    /// Calls the real CLI on the fixture week, so it costs a little of your plan. Run with
-    /// `cargo test -p sextant-app live_ -- --ignored --nocapture`.
+    const KEY_HEX: &str = "0707070707070707070707070707070707070707070707070707070707070707";
+
+    /// Runs the real CLI on the fixture week through `sextant mcp`, so it costs a little of your
+    /// plan. Build the binary first, then run
+    /// `cargo build -p sextant-app && cargo test -p sextant-app live_ -- --ignored --nocapture`.
     fn live(agent: AgentName) {
-        let db = TempDb::new(&format!("agent-{agent}"));
-        let mut store = db.open().expect("test setup");
+        let dir = std::env::temp_dir().join(format!("sextant-bridge-{agent}-{}", clock::now()));
+        std::fs::create_dir_all(&dir).expect("test setup");
+        let db = dir.join("sextant.db");
+        let mut store = Store::open(&db, &[7; 32], &TEST_SECRET).expect("test setup");
         load(&mut store, &week(), WEEK_NOW).expect("test setup");
         store.refresh(local(WEEK_NOW)).expect("test setup");
-        let (brief, workflows) = (
-            store.agent_brief().expect("brief"),
-            store.agent_workflows().expect("workflows"),
-        );
-        assert!(!workflows.is_empty());
+        drop(store);
+        // SAFETY: the ignored live tests are run one at a time and nothing else reads these.
+        unsafe {
+            std::env::set_var("SEXTANT_HOME", &dir);
+            std::env::set_var("SEXTANT_DEV_KEY", KEY_HEX);
+            std::env::set_var("SEXTANT_NOW", WEEK_NOW.to_string());
+        }
+        // The test binary sits in target/debug/deps, the app binary one folder up.
+        let server = std::env::current_exe()
+            .ok()
+            .and_then(|exe| Some(exe.parent()?.parent()?.join("sextant")))
+            .filter(|path| path.is_file())
+            .expect("build the app first: cargo build -p sextant-app");
+
         let started = Instant::now();
-        let answer = ask(agent, &brief).expect("agent answer");
-        let ideas = parse_ideas(&answer, &workflows).expect("ideas");
-        eprintln!("{agent}: {} ideas in {:?}", ideas.len(), started.elapsed());
-        for idea in &ideas {
+        ask(agent, &server).expect("agent run");
+        let store = Store::open_read_only(&db, &[7; 32]).expect("test setup");
+        let routines = store.routines(0).expect("routines");
+        let routines = routines["routines"].as_array().expect("list");
+        eprintln!(
+            "{agent}: {} routines in {:?}",
+            routines.len(),
+            started.elapsed()
+        );
+        for routine in routines {
             eprintln!(
                 "  {:.1} h  {}  |  {}",
-                idea.hours_week, idea.title, idea.how
+                routine["hours_week"].as_f64().unwrap_or(0.0),
+                routine["title"],
+                routine["how"]
             );
         }
-        assert!(!ideas.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            routines.iter().any(|routine| {
+                let text = format!("{} {}", routine["title"], routine["how"]).to_lowercase();
+                text.contains("invoice") || text.contains("rechnung")
+            }),
+            "the invoice routine was not saved"
+        );
     }
 
     #[test]
@@ -394,14 +418,20 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_claude_run_is_an_error_even_with_exit_code_zero() {
+        assert!(claude_succeeded(r#"{"is_error": false, "result": "saved 2"}"#).is_ok());
+        assert!(claude_succeeded(r#"{"is_error": true, "result": "out of turns"}"#).is_err());
+    }
+
+    #[test]
     #[ignore = "calls the claude CLI"]
-    fn live_claude_returns_ideas() {
+    fn live_claude_saves_the_invoice_routine() {
         live(AgentName::Claude);
     }
 
     #[test]
     #[ignore = "calls the codex CLI"]
-    fn live_codex_returns_ideas() {
+    fn live_codex_saves_the_invoice_routine() {
         live(AgentName::Codex);
     }
 }

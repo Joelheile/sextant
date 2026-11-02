@@ -167,7 +167,7 @@ Rule: the LLM judges, code computes (CLAUDE.md, code rule 9). It sees one compac
 
 ## Engine: a memory your agent can read
 
-Status: decided 2026-11-01. E1 is built. It replaces the agent bridge's brief and answer in `core/src/agent.rs`, and the earlier plan of a one-shot task digest. Today the brief holds app, category and minutes per step of the workflows the rules found. That is too little for an agent to judge, and it hides every routine the rules miss.
+Status: decided 2026-11-01. E1, D1, E2 and E3 are built. It replaces the agent bridge's brief and answer in `core/src/agent.rs`, and the earlier plan of a one-shot task digest. Today the brief holds app, category and minutes per step of the workflows the rules found. That is too little for an agent to judge, and it hides every routine the rules miss.
 
 Code builds the graph and the day pages, local models label and embed, your Claude Code or Codex reasons over them through MCP tools, and code checks every claim. The model proposes, code measures.
 
@@ -240,7 +240,7 @@ One MCP server is the whole engine interface. The bridge, Claude Code, Claude De
 
 - `save_routine({title, task_ids, repeats, how, trigger, approval, why})`, `routines()` and the `find_routines` prompt. `repeats` cites work outside tasks as an app and label with the dates it ran, because `day` folds those activities without ids. `approval` names the action to stop before. The model gives no hours and no confidence.
 - Code checks: every cited task and repeat exists, the citations hold 3 or more activities on 2 or more days, and the routine shares at most half its time with a saved one. Hours a week are the cited active minutes divided by the weeks of data.
-- `schema_v7.sql` adds `routines` and `routine_spans(routine_id, start_ts, end_ts)`.
+- `schema_v8.sql` adds `routines` and `routine_spans(routine_id, start_ts, end_ts)`.
 - Done when a call with an unknown id gets an error naming it, an inflated routine comes back measured, and a duplicate is refused with the id of the saved one.
 
 ### E3. The bridge runs your agent on the tools
@@ -256,7 +256,7 @@ One MCP server is the whole engine interface. The bridge, Claude Code, Claude De
 ### E4. Skills, then remove the old path
 
 - Opening a routine gives a one-line prompt for your agent. The `write_skill` prompt has the agent read the routine's evidence through `task` and write a `SKILL.md` where it loads skills. Every step cites a task id and an action symbol.
-- Then delete workflows, steps, `score.rs`, follows, step categories, the brief, `agent_ideas`, `list_workflows`, `get_workflow` and `get_skill`. Rename episodes to activities in code and in `schema_v8.sql` after the removal, when fewer files mention them.
+- Then delete workflows, steps, `score.rs`, follows, step categories, the `agent_ideas` table, `list_workflows`, `get_workflow` and `get_skill`. Rename episodes to activities in code and in `schema_v9.sql` after the removal, when fewer files mention them.
 - Done when a fixture routine yields a skill whose citations all resolve, and every test passes after the removal.
 
 ### E5. Search with local embeddings

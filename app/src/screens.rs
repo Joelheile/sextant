@@ -670,7 +670,7 @@ pub async fn forget_recent(app: AppHandle, minutes: i64) -> Reply<()> {
     .await
 }
 
-/// What agents received: each MCP answer and each bridge run, newest first.
+/// What agents received: each MCP answer, the bridge's included, newest first.
 #[tauri::command]
 pub async fn sent_log(app: AppHandle) -> Reply<Vec<Sent>> {
     blocking(app, |state| {

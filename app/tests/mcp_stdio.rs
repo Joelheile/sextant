@@ -78,7 +78,7 @@ fn serves_every_tool_group_over_stdio() {
     let tools = session.call("tools/list", json!({}));
     assert_eq!(
         tools["result"]["tools"].as_array().expect("tools").len(),
-        10
+        12
     );
 
     let week = session.call(

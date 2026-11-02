@@ -50,7 +50,7 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
 
 ## Principles
 
-- **Private by construction.** Text only. Pixels, audio and keystrokes never touch disk. One encrypted database. No telemetry, no cloud, network code in one file and a CI check that enforces it. Data leaves the Mac only when the user's own agent reads it. The agent bridge runs Claude with no tools. Codex has no such mode, so it runs `exec --sandbox read-only` with the network off, without user config or rules, and with web search, apps, plugins, the browser, computer use and hooks off (`plan.md` §10).
+- **Private by construction.** Text only. Pixels, audio and keystrokes never touch disk. One encrypted database. No telemetry, no cloud, network code in one file and a CI check that enforces it. Data leaves the Mac only when the user's own agent reads it. The agent bridge gives Claude only Sextant's MCP tools. Codex has no such mode, so it runs `exec --sandbox read-only` with the network off, without user config or rules, and with web search, apps, plugins, the browser, computer use and hooks off (`plan.md` §10).
 - **Semantic capture beats pixels.** macOS Accessibility already says which button was pressed and which field was filled. Sextant reads that instead of running a vision model on every event, so it costs no model calls per event and can run all day.
 - **Code compiles, models judge.** Code builds the graph and the day pages and checks every claim a model makes. Agents answer questions about a day more accurately from a page compiled by code than from a summary a model wrote ([Activity Frames](https://arxiv.org/html/2608.05784)). Apple's on-device model writes labels. A local embedding model powers search. Your Claude Code or Codex finds routines and writes skills.
 - **Explain everything.** Every score shows its reasons and evidence. Every skill step cites what was observed. No ungrounded step ships.
@@ -92,12 +92,12 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
 | Activities (T1)    | Focus spans with their actions. Values get a type (email, id, amount, date).                                                                  | `core/src/finder/actions.rs`              | shipped                     |
 | Tasks (T2)         | Activities joined by shared identifiers. Answers "where does time go".                                                                        | `core/src/finder/tasks.rs`                | shipped                     |
 | Pages (E1)         | Week, day and task pages compiled by code, read through MCP tools                                                                             | `core/src/pages.rs`, `core/src/mcp`       | shipped                     |
-| Discovery (E2, E3) | Your agent finds routines through the tools and saves them. Code checks every cited id and computes the hours.                                | `core/src/agent.rs`                       | planned, replaces the brief |
+| Discovery (E2, E3) | Your agent finds routines through the tools and saves them. Code checks every cited id and computes the hours.                                | `core/src/routines.rs`, `app/src/agent.rs` | shipped                     |
 | Skills (E4)        | `SKILL.md` per routine with cited steps, copied to where Cowork and Codex load skills                                                         | `core/src/skill.rs`                       | exists for workflows        |
 | Search (E5)        | Local embeddings next to full-text search, and "similar" edges between activities                                                             | `app/src/models.rs`, `core/src/search.rs` | planned                     |
 | Input classes (T4) | Where each step's values come from: fixed, copied, derived or judgment                                                                        | not yet                                   | planned                     |
 
-Workflows, `score.rs` and the step brief are the old path. They stay live until E4 works, then go.
+Workflows and `score.rs` are the old path. They stay live until E4 works, then go.
 
 ## Quality bars
 
@@ -133,6 +133,6 @@ Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-d
 
 ## Status
 
-- **Shipped in the tree:** capture with AX-first text, actions v1, signals, popover and agent bridge, activities and tasks, stable ids, and the `week`, `day` and `task` pages over MCP (E1).
-- **Next:** the engine in `docs/routines-plan.md`: the debug report (D1), then E2 to E5. Then input classes (T4) and incremental refresh (T5).
+- **Shipped in the tree:** capture with AX-first text, actions v1, signals, popover, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) and the agent bridge running your agent on those tools (E3).
+- **Next:** the engine in `docs/routines-plan.md`: E4 and E5. Then input classes (T4) and incremental refresh (T5).
 - **Deferred:** task types (T3). Your agent finds recurring work in E2 and E3, so nothing needs task types yet.

@@ -50,7 +50,7 @@ function Potential({ insights }: { insights: Insights }) {
   );
 }
 
-/** The Ideas tab: automation potential and what your own agent suggested. */
+/** The Ideas tab: automation potential and the routines your own agent found. */
 export default function Ideas({ opened }: { opened: number }) {
   const [insights, setInsights] = useState<Insights | null>(null);
   const [agent, setAgent] = useState<AgentStatus | null>(null);
@@ -87,14 +87,14 @@ export default function Ideas({ opened }: { opened: number }) {
       <Potential insights={insights} />
 
       <Section
-        title={t("ideasTitle")}
+        title={t("routinesTitle")}
         description={
           agent.last_run && agent.last_agent
-            ? t("ideasFrom", {
+            ? t("routinesFrom", {
                 agent: AGENT_LABEL[agent.last_agent],
                 time: dateTime(agent.last_run),
               })
-            : t("ideasNone")
+            : t("routinesNone")
         }
       >
         {agent.chosen ? (
@@ -112,23 +112,31 @@ export default function Ideas({ opened }: { opened: number }) {
           <Muted>{t("pickAgent")}</Muted>
         )}
         {error && <Failed>{error}</Failed>}
-        {agent.ideas.length > 0 && (
+        {agent.routines.length > 0 && (
           <List>
-            {agent.ideas.map((idea) => (
-              <li
-                key={`${idea.workflow_id}-${idea.title}`}
-                className="flex flex-col gap-1 px-4 py-3"
-              >
+            {agent.routines.map((routine) => (
+              <li key={routine.id} className="flex flex-col gap-1 px-4 py-3">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm font-medium">{idea.title}</span>
+                  <span className="text-sm font-medium">{routine.title}</span>
                   <span className="shrink-0 text-sm text-primary tabular-nums">
-                    {t("hoursWeek", { hours: hours(idea.hours_week) })}
+                    {t("hoursWeek", { hours: hours(routine.hours_week) })}
                   </span>
                 </div>
-                <p className="text-sm text-muted-foreground">{idea.how}</p>
-                <span className="text-xs text-muted-foreground">
-                  {idea.workflow}
-                </span>
+                <p className="text-sm text-muted-foreground">{routine.how}</p>
+                {routine.approval && (
+                  <p className="text-sm text-muted-foreground">
+                    {t("routineStop", { action: routine.approval })}
+                  </p>
+                )}
+                {routine.first && routine.last && (
+                  <span className="text-xs text-muted-foreground">
+                    {t("routineSeen", {
+                      count: routine.activities,
+                      first: routine.first.slice(0, 10),
+                      last: routine.last.slice(0, 10),
+                    })}
+                  </span>
+                )}
               </li>
             ))}
           </List>

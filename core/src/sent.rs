@@ -1,6 +1,6 @@
-//! The log of what left the database for an agent (plan.md §5, §10): each MCP tool call and each
-//! agent bridge run, with its size. A row is written before the answer goes out, so nothing
-//! leaves without one.
+//! The log of what left the database for an agent (plan.md §5, §10): each MCP tool call, the
+//! agent bridge's included, with its size. A row is written before the answer goes out, so
+//! nothing leaves without one.
 
 use rusqlite::params;
 use serde::Serialize;
@@ -12,9 +12,8 @@ use crate::store::Store;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Sent {
     pub ts: i64,
-    /// The MCP client's name, or the agent the bridge ran.
+    /// The MCP client's name from `initialize`.
     pub client: String,
-    /// The MCP tool, or `analyze` for a bridge run.
     pub tool: String,
     pub bytes: usize,
 }
@@ -60,12 +59,12 @@ mod tests {
             .record_sent(10, "claude-ai", "search", 120)
             .expect("log");
         reader
-            .record_sent(20, "claude", "analyze", 900)
+            .record_sent(20, "claude-code", "week", 900)
             .expect("log");
 
         let sent = store.sent(10).expect("sent");
         assert_eq!(sent.len(), 2);
-        assert_eq!((sent[0].tool.as_str(), sent[0].bytes), ("analyze", 900));
+        assert_eq!((sent[0].tool.as_str(), sent[0].bytes), ("week", 900));
         assert_eq!(sent[1].client, "claude-ai");
     }
 }

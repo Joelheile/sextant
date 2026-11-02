@@ -31,17 +31,17 @@ struct Fold {
     actions: usize,
 }
 
-struct Activity {
-    id: i64,
-    start: i64,
-    end: i64,
-    app: String,
-    label: String,
+pub(crate) struct Activity {
+    pub(crate) id: i64,
+    pub(crate) start: i64,
+    pub(crate) end: i64,
+    pub(crate) app: String,
+    pub(crate) label: String,
     meeting: bool,
     task: Option<(i64, String)>,
 }
 
-fn minutes(seconds: i64) -> f64 {
+pub(crate) fn minutes(seconds: i64) -> f64 {
     (seconds as f64 / 6.0).round() / 10.0
 }
 
@@ -52,7 +52,11 @@ fn clock(ts: i64, utc_offset_s: i32) -> String {
 
 /// Seconds covered by at least one activity, so a meeting and the screen during it count once.
 fn active_s(activities: &[&Activity]) -> i64 {
-    let mut spans: Vec<(i64, i64)> = activities.iter().map(|a| (a.start, a.end)).collect();
+    covered_s(activities.iter().map(|a| (a.start, a.end)).collect())
+}
+
+/// Seconds covered by at least one of `spans`.
+pub(crate) fn covered_s(mut spans: Vec<(i64, i64)>) -> i64 {
     spans.sort_unstable();
     let mut total = 0;
     let mut reached = i64::MIN;
@@ -66,13 +70,18 @@ fn active_s(activities: &[&Activity]) -> i64 {
     total
 }
 
-fn midnight(day: i64, utc_offset_s: i32) -> i64 {
+pub(crate) fn midnight(day: i64, utc_offset_s: i32) -> i64 {
     day * DAY - i64::from(utc_offset_s)
 }
 
 impl Store {
     /// Visible activities that start in `[from, to)`, oldest first.
-    fn activities(&self, settings: &Settings, from: i64, to: i64) -> Result<Vec<Activity>> {
+    pub(crate) fn activities(
+        &self,
+        settings: &Settings,
+        from: i64,
+        to: i64,
+    ) -> Result<Vec<Activity>> {
         let mut statement = self.conn.prepare_cached(
             "SELECT e.id, e.start_ts, e.end_ts, e.app, e.object_key, s.key, s.name, t.id, t.label
              FROM episodes e JOIN steps s ON s.id = e.step_id
@@ -267,9 +276,12 @@ impl Store {
         }))
     }
 
-    /// One task: its activities and its actions, consecutive repeats folded. Values show only
-    /// when `settings.mcp_rewind` lets screen text out.
-    pub fn task_page(&self, settings: &Settings, id: i64, utc_offset_s: i32) -> Result<Value> {
+    /// The task's label, first and last time, and its visible activities in time order.
+    pub(crate) fn task_activities(
+        &self,
+        settings: &Settings,
+        id: i64,
+    ) -> Result<(String, i64, i64, Vec<Activity>)> {
         let no_task = || Error::Invalid(format!("no task {id}: use an id from day or week"));
         let (label, first, last) = self
             .conn
@@ -296,6 +308,13 @@ impl Store {
         if activities.is_empty() {
             return Err(no_task());
         }
+        Ok((label, first, last, activities))
+    }
+
+    /// One task: its activities and its actions, consecutive repeats folded. Values show only
+    /// when `settings.mcp_rewind` lets screen text out.
+    pub fn task_page(&self, settings: &Settings, id: i64, utc_offset_s: i32) -> Result<Value> {
+        let (label, first, last, activities) = self.task_activities(settings, id)?;
         let visible =
             |symbol: &str| !settings.is_excluded(symbol.split(" · ").next().unwrap_or(""));
 

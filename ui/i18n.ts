@@ -290,22 +290,26 @@ const en = {
     "Worked out on this Mac from what Sextant captured. Updates every 5 minutes.",
   couldGetBack: "you could get back",
   automatableWeek: "{hours} h in these workflows this week",
-  automatableTrend: "{hours} h in these workflows this week, {change}% on last week",
-  ideasTitle: "Ideas from your agent",
-  ideasFrom: "From {agent}, {time}",
-  ideasNone: "Your agent reads the shape of your workflows and suggests what to hand over.",
-  analyzeWith: "Analyze with {agent}",
-  analyzing: "Analyzing, this takes a minute or two",
-  pickAgent: "Pick Claude Code or Codex in Settings to get ideas.",
+  automatableTrend:
+    "{hours} h in these workflows this week, {change}% on last week",
+  routinesTitle: "Routines your agent found",
+  routinesFrom: "From {agent}, {time}",
+  routinesNone:
+    "Your agent reads your weeks in Sextant and saves the work it could take over. Sextant measures the hours from what it cites.",
+  routineStop: "Asks you before: {action}",
+  routineSeen: "{count} activities, {first} to {last}",
+  analyzeWith: "Find routines with {agent}",
+  analyzing: "Your agent is reading your weeks, this takes a few minutes",
+  pickAgent: "Pick Claude Code or Codex in Settings to find routines.",
   bridgeTitle: "Agent",
   bridgeBody:
     "Sextant runs your own Claude Code or Codex, signed in with your own plan. Sextant opens no connection itself: the agent does, only when it runs.",
   bridgeAgent: "Agent",
   bridgeOff: "Off",
   notInstalled: "{agent} (not installed)",
-  bridgeWeekly: "Analyze once a week",
+  bridgeWeekly: "Look for routines once a week",
   bridgeSent:
-    "It gets your workflows as numbered steps: the app or website, category, minutes and how steps follow each other. It gets no window titles, screen text or transcripts. Claude runs with no tools. Codex has no such mode, so it runs read-only and offline in an empty folder, without your config, plugins or web search.",
+    "It reads your weeks through Sextant's tools, as allowed under \"What agents can read\", and \"Sent to your agent\" lists every answer it gets. Claude gets no tools but Sextant's. Codex has no such mode, so it runs read-only and offline in an empty folder, without your config, plugins or web search.",
 } as const;
 
 export type Key = keyof typeof en;
@@ -608,22 +612,27 @@ const de: Record<Key, string> = {
     "Auf diesem Mac aus dem berechnet, was Sextant erfasst hat. Alle 5 Minuten neu.",
   couldGetBack: "könntest du zurückbekommen",
   automatableWeek: "{hours} Std. in diesen Abläufen diese Woche",
-  automatableTrend: "{hours} Std. in diesen Abläufen diese Woche, {change} % zur Vorwoche",
-  ideasTitle: "Ideen von deinem Agenten",
-  ideasFrom: "Von {agent}, {time}",
-  ideasNone: "Dein Agent liest die Form deiner Abläufe und schlägt vor, was du abgeben kannst.",
-  analyzeWith: "Mit {agent} analysieren",
-  analyzing: "Analysiert, das dauert ein, zwei Minuten",
-  pickAgent: "Wähle in den Einstellungen Claude Code oder Codex, um Ideen zu bekommen.",
+  automatableTrend:
+    "{hours} Std. in diesen Abläufen diese Woche, {change} % zur Vorwoche",
+  routinesTitle: "Routinen, die dein Agent gefunden hat",
+  routinesFrom: "Von {agent}, {time}",
+  routinesNone:
+    "Dein Agent liest deine Wochen in Sextant und speichert die Arbeit, die er übernehmen könnte. Sextant misst die Stunden an dem, was er belegt.",
+  routineStop: "Fragt dich vor: {action}",
+  routineSeen: "{count} Aktivitäten, {first} bis {last}",
+  analyzeWith: "Routinen mit {agent} finden",
+  analyzing: "Dein Agent liest deine Wochen, das dauert ein paar Minuten",
+  pickAgent:
+    "Wähle in den Einstellungen Claude Code oder Codex, um Routinen zu finden.",
   bridgeTitle: "Agent",
   bridgeBody:
     "Sextant startet dein eigenes Claude Code oder Codex, angemeldet mit deinem eigenen Abo. Sextant selbst baut keine Verbindung auf: Das tut der Agent, nur während er läuft.",
   bridgeAgent: "Agent",
   bridgeOff: "Aus",
   notInstalled: "{agent} (nicht installiert)",
-  bridgeWeekly: "Einmal pro Woche analysieren",
+  bridgeWeekly: "Einmal pro Woche nach Routinen suchen",
   bridgeSent:
-    "Er bekommt deine Abläufe als nummerierte Schritte: App oder Website, Kategorie, Minuten und wie Schritte aufeinander folgen. Er bekommt keine Fenstertitel, keinen Bildschirmtext und keine Mitschriften. Claude läuft ohne Werkzeuge. Codex kennt diesen Modus nicht und läuft deshalb nur lesend und offline in einem leeren Ordner, ohne deine Konfiguration, Plugins oder Websuche.",
+    "Er liest deine Wochen über die Werkzeuge von Sextant, so weit du es unter \"Was Agenten lesen dürfen\" erlaubst, und \"An deinen Agenten gesendet\" listet jede Antwort, die er bekommt. Claude bekommt nur die Werkzeuge von Sextant. Codex kennt diesen Modus nicht und läuft deshalb nur lesend und offline in einem leeren Ordner, ohne deine Konfiguration, Plugins oder Websuche.",
 };
 
 const strings: Record<Key, string> = navigator.language

@@ -107,6 +107,8 @@ fn the_handshake_lists_every_tool() {
             "get_workflow",
             "list_workflows",
             "report_handoff",
+            "routines",
+            "save_routine",
             "search",
             "task",
             "timeline",
@@ -385,7 +387,7 @@ fn every_tool_answers_from_the_fixture_week() {
 }
 
 #[test]
-fn only_report_handoff_is_not_read_only() {
+fn only_report_handoff_and_save_routine_write() {
     let (_db, mut client) = fixture_client("mcp-read-only");
     let reply = client.request("tools/list", json!({}));
     let writers: Vec<&str> = reply["result"]["tools"]
@@ -395,7 +397,58 @@ fn only_report_handoff_is_not_read_only() {
         .filter(|tool| tool["annotations"]["readOnlyHint"] == false)
         .map(|tool| tool["name"].as_str().expect("name"))
         .collect();
-    assert_eq!(writers, ["report_handoff"]);
+    assert_eq!(writers, ["save_routine", "report_handoff"]);
+}
+
+#[test]
+fn a_saved_routine_comes_back_measured_and_listed() {
+    let (_db, mut client) = fixture_client("mcp-routine");
+    let week = client.tool("week", json!({})).expect("week");
+    let ids = week["repeated_tasks"][0]["task_ids"].clone();
+    assert!(ids.as_array().is_some_and(|ids| ids.len() >= 2), "{week}");
+    let routine = json!({
+        "title": "Send invoices",
+        "task_ids": ids,
+        "how": "Draft the email from the sheet.",
+        "why": "Every weekday.",
+        "hours_week": 40,
+    });
+    let saved = client.tool("save_routine", routine.clone()).expect("saved");
+    let hours = saved["hours_week"].as_f64().expect("measured hours");
+    assert!(hours > 0.0 && hours < 40.0, "{saved}");
+
+    let listed = client.tool("routines", json!({})).expect("routines");
+    assert_eq!(listed["routines"][0]["id"], saved["id"]);
+    let refused = client.tool("save_routine", routine).expect_err("duplicate");
+    assert!(
+        refused.contains(&format!("routine {}", saved["id"])),
+        "{refused}"
+    );
+    let missing = client
+        .tool(
+            "save_routine",
+            json!({"title": "No evidence", "how": "-", "why": "-", "task_ids": [999_999]}),
+        )
+        .expect_err("unknown task");
+    assert!(missing.contains("999999"), "{missing}");
+}
+
+#[test]
+fn the_find_routines_prompt_follows_the_work_patterns_switch() {
+    let (_db, mut client) = fixture_client("mcp-prompt");
+    let listed = client.request("prompts/list", json!({}));
+    assert_eq!(listed["result"]["prompts"][0]["name"], "find_routines");
+    let got = client.request("prompts/get", json!({"name": "find_routines"}));
+    let text = got["result"]["messages"][0]["content"]["text"]
+        .as_str()
+        .expect("text");
+    assert!(text.contains("save_routine"), "{text}");
+
+    client.settings.borrow_mut().mcp_workflows = false;
+    let listed = client.request("prompts/list", json!({}));
+    assert_eq!(listed["result"]["prompts"], json!([]));
+    let got = client.request("prompts/get", json!({"name": "find_routines"}));
+    assert!(got["error"].is_object(), "{got}");
 }
 
 #[test]

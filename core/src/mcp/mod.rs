@@ -8,15 +8,15 @@ use std::io::{BufRead, Write};
 
 use serde_json::{Value, json};
 
-pub use self::tools::DEFAULT_LIMIT;
 use self::tools::{Ctx, Group, TOOLS};
+pub use self::tools::{DEFAULT_LIMIT, FIND_ROUTINES};
 use crate::settings::Settings;
 use crate::store::Store;
 use crate::time::Local;
 
 const LATEST: &str = "2025-06-18";
 const SUPPORTED: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const INSTRUCTIONS: &str = "Sextant holds what the user did on this Mac: activities, tasks, the text they saw on screen and what they said. To find work an agent could take over, read week first, then day and task. Use search, context_at and timeline to look back. list_workflows, get_workflow and get_skill show the workflows Sextant's rules found. Results are capped: pass next_offset as offset for the next page.";
+const INSTRUCTIONS: &str = "Sextant holds what the user did on this Mac: activities, tasks, the text they saw on screen and what they said. To find work an agent could take over, read week first, then day and task, and save each routine you find with save_routine; routines lists the saved ones, and the find_routines prompt walks through it. Use search, context_at and timeline to look back. list_workflows, get_workflow and get_skill show the workflows Sextant's rules found. Results are capped: pass next_offset as offset for the next page.";
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
@@ -88,6 +88,8 @@ impl Server {
             "ping" => Ok(json!({})),
             "tools/list" => Ok(list(&settings)),
             "tools/call" => self.call(&params, &settings),
+            "prompts/list" => Ok(tools::prompts(&settings)),
+            "prompts/get" => tools::prompt(&params, &settings).map_err(|m| (INVALID_PARAMS, m)),
             _ => Err((METHOD_NOT_FOUND, format!("unknown method {method}"))),
         };
         Some(
@@ -155,7 +157,7 @@ fn initialize(params: &Value) -> Value {
     let version = asked.filter(|v| SUPPORTED.contains(v)).unwrap_or(LATEST);
     json!({
         "protocolVersion": version,
-        "capabilities": {"tools": {"listChanged": false}},
+        "capabilities": {"tools": {"listChanged": false}, "prompts": {"listChanged": false}},
         "serverInfo": {"name": "sextant", "title": "Sextant", "version": env!("CARGO_PKG_VERSION")},
         "instructions": INSTRUCTIONS,
     })
