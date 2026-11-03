@@ -1,4 +1,4 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type Sources = {
@@ -113,27 +113,6 @@ export type SettingsPane =
   | "accessibility"
   | "automation";
 
-export type SearchPage = {
-  sessions: {
-    source: "screen" | "mic" | "system";
-    app: string;
-    title: string;
-    url: string;
-    start: number;
-    end: number;
-    lines: { ts: number; text: string }[];
-  }[];
-};
-
-export type Turn = { id: number; ts: number; question: string; answer: string };
-
-export type Asked = { turn: Turn; page: SearchPage };
-
-/** What `rewind_ask` streams: the sessions once found, then the answer text so far. */
-export type AskProgress =
-  | { kind: "sessions"; page: SearchPage }
-  | { kind: "answer"; text: string };
-
 export type ConnectInfo = {
   binary: string;
   claude_code_command: string;
@@ -186,20 +165,6 @@ export const api = {
   cancelDownload: () => invoke<void>("cancel_download"),
   setAudio: (on: boolean) => invoke<Settings>("set_audio", { on }),
   finishOnboarding: () => invoke<Settings>("finish_onboarding"),
-  rewindAsk: (
-    question: string,
-    onProgress: (progress: AskProgress) => void,
-  ) => {
-    const progress = new Channel<AskProgress>();
-    progress.onmessage = onProgress;
-    return invoke<Asked>("rewind_ask", { question, progress });
-  },
-  rewindResults: (question: string) =>
-    invoke<SearchPage>("rewind_results", { question }),
-  rewindHistory: (before: number | null) =>
-    invoke<Turn[]>("rewind_history", { before }),
-  rewindFit: (height: number) => invoke<void>("rewind_fit", { height }),
-  rewindHide: () => invoke<void>("rewind_hide"),
   storageUsed: () => invoke<{ bytes: number }>("storage_used"),
   debugReport: () => invoke<string>("debug_report"),
   setExcludedApps: (apps: string[]) =>
@@ -228,10 +193,6 @@ export const api = {
 /** Calls `handler` when the engine has started or failed to. Resolves once attached. */
 export const onReady = (handler: () => void): Promise<UnlistenFn> =>
   listen("ready", handler);
-
-/** Calls `handler` each time the shortcut or the menu bar shows the search panel. */
-export const onRewindOpen = (handler: () => void): Promise<UnlistenFn> =>
-  listen("rewind-open", handler);
 
 /** Calls `handler` each time the menu bar popover opens. */
 export const onPopoverOpen = (handler: () => void): Promise<UnlistenFn> =>

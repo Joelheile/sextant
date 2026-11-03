@@ -16,7 +16,6 @@ mod panel;
 mod platform;
 mod popover;
 mod prefs;
-mod rewind;
 mod screens;
 mod tray;
 
@@ -24,7 +23,6 @@ use std::thread;
 
 use anyhow::Context;
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
-use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::commands::AppState;
 use crate::engine::Engine;
@@ -69,20 +67,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     tauri::Builder::default()
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut(rewind::SHORTCUT)
-                .context("registering the search shortcut")?
-                .with_handler(|app, _, event| {
-                    if event.state() == ShortcutState::Pressed
-                        && let Err(err) = rewind::toggle(app)
-                    {
-                        eprintln!("opening search failed: {err}");
-                        debug::record("opening search");
-                    }
-                })
-                .build(),
-        )
         .invoke_handler(tauri::generate_handler![
             commands::engine_status,
             commands::get_state,
@@ -101,11 +85,6 @@ fn main() -> anyhow::Result<()> {
             commands::cancel_download,
             commands::set_audio,
             commands::finish_onboarding,
-            screens::rewind_ask,
-            screens::rewind_history,
-            screens::rewind_results,
-            screens::rewind_fit,
-            screens::rewind_hide,
             screens::storage_used,
             debug::debug_report,
             screens::set_excluded_apps,
@@ -128,7 +107,6 @@ fn main() -> anyhow::Result<()> {
             app.manage(AppState::new(dir));
             tray::build(app.handle())?;
             tray::open_window(app.handle())?;
-            rewind::build(app.handle())?;
             popover::build(app.handle())?;
             let handle = app.handle().clone();
             thread::Builder::new()

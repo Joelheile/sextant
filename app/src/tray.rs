@@ -1,6 +1,6 @@
 //! The menu bar icon (plan.md §9): filled while capturing, outline while paused, a dot while a call
 //! is transcribed and an exclamation mark when capture is on but macOS blocks it. A click opens the
-//! popover; a right-click opens a menu with the status line, "Pause 1 h", "Stop audio", Search,
+//! popover; a right-click opens a menu with the status line, "Pause 1 h", "Stop audio",
 //! Open and Quit. The status refreshes every few seconds.
 
 use std::thread;
@@ -24,26 +24,18 @@ const REFRESH_EVERY: Duration = Duration::from_secs(2);
 pub enum MenuAction {
     Pause,
     StopAudio,
-    Search,
     Open,
     Quit,
     Hide,
 }
 
 impl MenuAction {
-    const MENU: [Self; 5] = [
-        Self::Pause,
-        Self::StopAudio,
-        Self::Search,
-        Self::Open,
-        Self::Quit,
-    ];
+    const MENU: [Self; 4] = [Self::Pause, Self::StopAudio, Self::Open, Self::Quit];
 
     fn id(self) -> &'static str {
         match self {
             Self::Pause => "pause",
             Self::StopAudio => "stop-audio",
-            Self::Search => "search",
             Self::Open => "open",
             Self::Quit => "quit",
             Self::Hide => "hide",
@@ -66,7 +58,6 @@ pub fn perform(app: &AppHandle, action: MenuAction) -> tauri::Result<()> {
             turn_audio_off(app);
             refresh(app);
         }
-        MenuAction::Search => crate::rewind::show(app)?,
         MenuAction::Open => open_window(app)?,
         MenuAction::Quit => app.exit(0),
         MenuAction::Hide => crate::popover::hide(app)?,
@@ -98,13 +89,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
-    let search = MenuItem::with_id(
-        app,
-        MenuAction::Search.id(),
-        "Search",
-        true,
-        Some(crate::rewind::SHORTCUT),
-    )?;
     let open = MenuItem::with_id(
         app,
         MenuAction::Open.id(),
@@ -119,7 +103,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let menu = Menu::with_items(app, &[&status, &pause, &stop_audio, &search, &open, &quit])?;
+    let menu = Menu::with_items(app, &[&status, &pause, &stop_audio, &open, &quit])?;
     let icon = TrayIconBuilder::new()
         .icon(tauri::include_image!("icons/tray-paused.png"))
         .icon_as_template(true)

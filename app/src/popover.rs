@@ -1,6 +1,6 @@
 //! The menu bar popover: a click on the tray icon opens it under the icon. It shows what Sextant
 //! captures right now, your day, the automation ideas and the settings. It hides when it loses
-//! focus, like the rewind panel. Right-click keeps the native menu.
+//! focus. Right-click keeps the native menu.
 
 use serde::Serialize;
 use sextant_core::{Insights, Live};
@@ -142,11 +142,11 @@ pub async fn insights(app: AppHandle) -> Reply<InsightsView> {
     .await
 }
 
-/// The popover's buttons: `pause` (or resume), `search`, `open`, `quit`, and `hide` for Escape.
-/// Search and Open close the popover first. The popover has no Stop audio button.
+/// The popover's buttons: `pause` (or resume), `open`, `quit`, and `hide` for Escape.
+/// Open closes the popover first. The popover has no Stop audio button.
 #[tauri::command]
 pub fn menu_action(app: AppHandle, action: MenuAction) -> Reply<()> {
-    if matches!(action, MenuAction::Search | MenuAction::Open) {
+    if action == MenuAction::Open {
         hide(&app).map_err(msg)?;
     }
     perform(&app, action).map_err(msg)

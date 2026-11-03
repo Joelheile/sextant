@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import Popover from "./Popover";
-import Rewind from "./Rewind";
 import "./styles.css";
 
 const root = document.getElementById("root");
@@ -14,6 +13,6 @@ document.documentElement.classList.toggle("panel", label !== "main");
 
 createRoot(root).render(
   <StrictMode>
-    {label === "rewind" ? <Rewind /> : label === "popover" ? <Popover /> : <App />}
+    {label === "popover" ? <Popover /> : <App />}
   </StrictMode>,
 );

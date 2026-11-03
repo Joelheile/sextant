@@ -14,7 +14,7 @@ Everything stays on the device, encrypted, until your own agent reads it, and th
 - **Value in 60 seconds.** On install, Sextant reads history you already have and shows a first workflow map before recording anything.
 - **The agent is the main interface.** Rewind lives in Claude through MCP. The app window is small: a workflow map, a search box, privacy settings.
 - **Lean beats complete.** Text only, event driven, one process, one database file, two Rust crates. Every feature has to earn its CPU and its lines of code.
-- **Explain everything.** Every score shows its reasons and evidence. The only model inside Sextant is Apple's on-device one: it turns a search question into terms and a time span, writes a short cited answer and judges how much of each recurring step an agent could do. Keyword search and the category priors take over without it. The agent does the rest of the language work.
+- **Explain everything.** Every score shows its reasons and evidence. Sextant runs no language model besides speech recognition. The agent does the language work, and code checks it.
 - **Private by construction.** No pixels or audio on disk, no network except one consented model download, MIT license forever.
 
 ## 2. Stack
@@ -226,7 +226,7 @@ Done when: **(user)** a fresh Mac installs, grants permissions and shows a map w
 
 ## 14. macOS bundle
 
-`minimumSystemVersion` 26.0, so the search palette can use Apple's on-device model (Foundation Models).
+`minimumSystemVersion` 26.0, the version Sextant is tested on. The search palette that needed Apple's on-device model is gone (`docs/rewind-and-apple-model.md`).
 
 - `Info.plist`: `NSAudioCaptureUsageDescription`, `NSMicrophoneUsageDescription`, `NSAppleEventsUsageDescription`, `NSCalendarsFullAccessUsageDescription`, `NSRemindersFullAccessUsageDescription`, `LSUIElement`.
 - `Entitlements.plist`: `com.apple.security.device.audio-input`, `com.apple.security.automation.apple-events`, `com.apple.security.personal-information.calendars`.

@@ -84,16 +84,6 @@ const en = {
   durDays: "{n} d",
 
 
-  searchPlaceholder: "What were you writing, and to whom?",
-  searchEmpty: "Nothing found.",
-  showResults: "Show results",
-  searching: "Searching…",
-  source_screen: "Screen",
-  source_mic: "You",
-  source_system: "Other side",
-
-
-
   privacySources: "Sources and permissions",
   liveMetadata: "Window titles and app names",
   liveOcr: "Text on screen",
@@ -155,7 +145,6 @@ const en = {
   deleteWorking: "Deleting",
   tabToday: "Today",
   tabSettings: "Settings",
-  search: "Search",
   openWindow: "Open Sextant",
   quit: "Quit Sextant",
   pause: "Pause for 1 hour",
@@ -298,16 +287,6 @@ const de: Record<Key, string> = {
   durDays: "{n} Tg.",
 
 
-  searchPlaceholder: "Was hast du wem geschrieben?",
-  searchEmpty: "Nichts gefunden.",
-  showResults: "Ergebnisse zeigen",
-  searching: "Suche läuft…",
-  source_screen: "Bildschirm",
-  source_mic: "Du",
-  source_system: "Gegenseite",
-
-
-
   privacySources: "Quellen und Berechtigungen",
   liveMetadata: "Fenstertitel und App-Namen",
   liveOcr: "Text auf dem Bildschirm",
@@ -370,7 +349,6 @@ const de: Record<Key, string> = {
   deleteWorking: "Wird gelöscht",
   tabToday: "Heute",
   tabSettings: "Einstellungen",
-  search: "Suchen",
   openWindow: "Sextant öffnen",
   quit: "Sextant beenden",
   pause: "1 Stunde pausieren",

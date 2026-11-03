@@ -107,7 +107,7 @@
   }
 }
 
-/* The rewind search panel. The window draws the glass, so the page stays clear. */
+/* The popover panel. The window draws the glass, so the page stays clear. */
 html.panel,
 html.panel body {
   height: 100%;

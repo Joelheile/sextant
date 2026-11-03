@@ -1,4 +1,4 @@
-//! The hidden, translucent windows the popover and the rewind bar are: no frame, above other
+//! The hidden, translucent windows the popover is: no frame, above other
 //! windows on every desktop, and hidden again when they lose focus.
 
 use tauri::utils::config::WindowEffectsConfig;

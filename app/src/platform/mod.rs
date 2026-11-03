@@ -36,8 +36,6 @@ mod drag_panel;
 #[cfg(target_os = "macos")]
 mod eventkit;
 #[cfg(target_os = "macos")]
-pub mod language;
-#[cfg(target_os = "macos")]
 mod live;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -65,7 +63,7 @@ pub use macos::{
 #[cfg(target_os = "macos")]
 pub use speech::{Parakeet, silero};
 #[cfg(not(target_os = "macos"))]
-pub use unsupported::{Parakeet, language, silero};
+pub use unsupported::{Parakeet, silero};
 #[cfg(not(target_os = "macos"))]
 pub use unsupported::{
     System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,

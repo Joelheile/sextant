@@ -39,7 +39,7 @@ The script checks the disk image against the SHA-256 published with the release 
 - **Finds your routines.** Tasks you repeat become routines with their steps, how often you run them and the hours they take.
 - **Ranks what to automate.** Each routine gets a score from the hours it takes and how much of it an agent could do, such as values you copy by hand between apps.
 - **Writes the skill.** Every routine becomes a `SKILL.md` with its steps, example cases and rules, ready for Claude.
-- **Makes your work searchable.** Ask "Find the invoice number I saw yesterday" or "What did Anna say about pricing on Tuesday?"
+- **Makes your work searchable by your agent.** Ask it "Find the invoice number I saw yesterday" or "What did Anna say about pricing on Tuesday?"
 
 On first launch, Sextant reads history you already have (browser history, calendar, git commits, recent files) and draws a first map in under a minute.
 
@@ -95,7 +95,7 @@ No. It notes which labelled button you clicked and the text left in a field when
 Only you, on your Mac. The database is encrypted and nothing is uploaded. An agent sees the data only when you connect it and it calls Sextant.
 
 **Why macOS 26?**
-Sextant uses Apple's on-device model (Foundation Models) to answer questions and judge which steps an agent can do. Without Apple Intelligence, it falls back to keyword search and fixed estimates.
+Sextant is built and tested on macOS 26. It no longer uses Apple's on-device model, so a lower minimum may follow once it is tested.
 
 **How do I delete everything?**
 Open the menu bar popover, go to Settings, then Privacy, and press "Delete everything". You can also choose how long raw data stays: 30, 90 or 365 days, or forever.

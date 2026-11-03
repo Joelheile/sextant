@@ -69,7 +69,6 @@ This is TMI's latent task induction, done with rules first.
 2. An activity joins the task it shares the most identifiers with, among tasks seen in the last 7 days. Ties go to the most recent task.
 3. With no shared identifier, it joins the task active within 2 minutes in the same object, or else stays unassigned.
 4. A nightly pass merges tasks that share an identifier and splits tasks idle for over 14 days.
-5. **LLM only for leftovers:** unassigned activities over 5 minutes go in one batch per day to the on-device model (L1), which names the task or says "none". The batch holds window title templates and app names, never screen text.
 
 - This replaces cases (§7.5), which are the same idea with one identifier.
 - Output: `tasks(id, label, workflow_id, first_ts, last_ts, active_s)` and `task_episodes(task_id, episode_id)`.
@@ -135,13 +134,7 @@ Rule: the LLM judges, code computes (CLAUDE.md, code rule 9). It sees one compac
 
 ### L1. On-device model for small judgments
 
-- Apple's Foundation Models framework runs a local model on macOS 26 with Apple Intelligence on M1 or later. Typed output comes from `@Generable`, and the context is 4,096 tokens ([guide](https://www.atelier-socle.com/en/articles/foundation-models-api-guide)).
-- It is free, offline and fits Sextant's rule that no data leaves the Mac.
-- Use it for:
-  - labels for tasks and task types
-  - leftover activity assignment (T2.5)
-  - template, rule or decision for "derived" and "judgment" inputs
-- The framework is Swift-only. It needs a small Swift helper built into the app and called over a C interface. Without Apple Intelligence, these labels fall back to rules: shared title tokens, as today.
+Removed on 2026-11-02. It only ever answered questions in the rewind panel, which went with it. See `docs/rewind-and-apple-model.md`.
 
 ### L2. Claude and ChatGPT for skills and advice
 
@@ -207,7 +200,6 @@ Names, smallest first: an **action** is one press or edit, an **activity** is on
 | Job                                       | Who                                                  | Why                                                            |
 | ----------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------- |
 | Split, link, count, compile pages, verify | Code                                                 | Exact, testable, fast                                          |
-| Short labels for activities and tasks     | Apple Foundation Models (`app/swift/Language.swift`) | Free and private. One activity fits its 4,096-token window.    |
 | Search and "similar" edges                | Qwen3-Embedding-0.6B on the bundled ONNX Runtime     | Dense retrieval was the strongest single part in AgentMemBench |
 | Find routines across weeks, write skills  | Your Claude Code or Codex                            | Needs reasoning over many days                                 |
 
@@ -284,7 +276,7 @@ E1 first: it is the smallest step that lets an early adopter's own agent read th
 | E3   | The bridge runs Claude Code or Codex on the tools   | See E3                                                       |
 | E4   | Skills, old workflow path removed, episodes renamed | See E4                                                       |
 | E5   | Local embeddings, hybrid search, similar edges      | See E5                                                       |
-| L1   | On-device labels for activities and tasks           | Labels on the fixture without network                        |
+| L1   | Removed with the rewind panel                       | See `docs/rewind-and-apple-model.md`                         |
 | T1   | Activities with actions and identifiers             | The fixture shows actions per activity                       |
 | T2   | Tasks, "where time goes"                            | Pair agreement ≥ 0.9 on the interleaved fixture              |
 | T3   | Task types and procedures (deferred)                | The invoice type found with its steps and for-each           |
@@ -294,6 +286,6 @@ E1 first: it is the smallest step that lets an early adopter's own agent read th
 
 ## Open decisions
 
-1. **Swift helper for Apple's on-device model (L1):** decided, and shipped. `app/swift/Language.swift` is compiled by `app/build.rs` and called from `app/src/platform/language.rs`. Without Apple Intelligence it returns nothing and the caller falls back to rules.
+1. **Swift helper for Apple's on-device model (L1):** removed with the rewind panel on 2026-11-02 (`docs/rewind-and-apple-model.md`).
 2. **Keyboard monitor** for Enter, Tab, Escape and modifier shortcuts only. Without it, "send with Enter" and shortcut-only steps are missing from procedures. It changes the "never keyboard hooks" rule in §4 and needs Input Monitoring permission.
 3. **What the agent reads:** decided. The page tools in "What the agent can read and write" return labels, action symbols, value types and redacted identifiers. Field values, `search` and `context_at` follow the screen text switch in Settings.

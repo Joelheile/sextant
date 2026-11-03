@@ -7,7 +7,7 @@ import {
   type PermissionName,
 } from "./api";
 import { duration } from "./format";
-import { Pause, Play, Search, AppWindow, Power } from "lucide-react";
+import { Pause, Play, AppWindow, Power } from "lucide-react";
 import { t, type Key } from "./i18n";
 import { Failed } from "./layout";
 import { AgentBridge } from "./Routines";
@@ -253,11 +253,6 @@ export default function Popover() {
         </div>
       )}
       <footer className="flex shrink-0 items-center gap-1 border-t border-foreground/10 px-2 py-1.5">
-        <Button variant="ghost" size="sm" onClick={() => void act("search")}>
-          <Search />
-          {t("search")}
-          <kbd className="ml-1 text-xs text-muted-foreground">⌘⇧Space</kbd>
-        </Button>
         <Button variant="ghost" size="sm" onClick={() => void act("open")}>
           <AppWindow />
           {t("openWindow")}
