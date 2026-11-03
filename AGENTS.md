@@ -93,11 +93,11 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
 | Tasks (T2)         | Activities joined by shared identifiers. Answers "where does time go".                                                                        | `core/src/finder/tasks.rs`                | shipped                     |
 | Pages (E1)         | Week, day and task pages compiled by code, read through MCP tools                                                                             | `core/src/pages.rs`, `core/src/mcp`       | shipped                     |
 | Discovery (E2, E3) | Your agent finds routines through the tools and saves them. Code checks every cited id and computes the hours.                                | `core/src/routines.rs`, `app/src/agent.rs` | shipped                     |
-| Skills (E4)        | `SKILL.md` per routine with cited steps, copied to where Cowork and Codex load skills                                                         | `core/src/skill.rs`                       | exists for workflows        |
+| Skills (E4)        | `SKILL.md` per routine with cited steps, written by your agent and checked by `check_skill`                                                  | `core/src/routines.rs`, `core/src/mcp`    | shipped                     |
 | Search (E5)        | Local embeddings next to full-text search, and "similar" edges between activities                                                             | `app/src/models.rs`, `core/src/search.rs` | planned                     |
 | Input classes (T4) | Where each step's values come from: fixed, copied, derived or judgment                                                                        | not yet                                   | planned                     |
 
-Workflows and `score.rs` are the old path. They stay live until E4 works, then go.
+The workflow finder, its scores, corrections and the Results tab are gone (E4b, `schema_v9.sql`). `steps` stays only to name activities on the week and day pages.
 
 ## Quality bars
 
@@ -133,6 +133,6 @@ Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-d
 
 ## Status
 
-- **Shipped in the tree:** capture with AX-first text, actions v1, signals, popover, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), and skills from routines with `check_skill` (E4a).
-- **Next:** the engine in `docs/routines-plan.md`: E4b (move the screens to routines, then remove the old workflow path) and E5. Then input classes (T4) and incremental refresh (T5).
+- **Shipped in the tree:** capture with AX-first text, actions v1, signals, popover, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), and the main window and popover on routines in place of workflows (E4b).
+- **Next:** the engine in `docs/routines-plan.md`: rename episodes to activities, then E5. Then input classes (T4) and incremental refresh (T5).
 - **Deferred:** task types (T3). Your agent finds recurring work in E2 and E3, so nothing needs task types yet.

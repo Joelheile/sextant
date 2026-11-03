@@ -78,8 +78,6 @@ pub(crate) async fn blocking<T: Send + 'static>(
         .map_err(msg)?
 }
 
-pub(crate) const MAX_ROWS: usize = 200;
-
 /// `false` while the engine starts, `true` once it runs, an error if it could not start. The UI
 /// asks again whenever the `ready` event arrives.
 #[tauri::command]
@@ -208,57 +206,6 @@ pub async fn save_choices(
 #[tauri::command]
 pub async fn start_backfill(state: State<'_, AppState>) -> Reply<()> {
     state.engine()?.start_backfill().map_err(msg)
-}
-
-#[derive(Serialize)]
-pub struct MapRow {
-    id: i64,
-    name: String,
-    steps: Vec<String>,
-    hours_week: f64,
-    cases: usize,
-    action: &'static str,
-    rough: bool,
-}
-
-#[derive(Serialize)]
-pub struct FirstMap {
-    hours_back: f64,
-    total: usize,
-    rows: Vec<MapRow>,
-}
-
-/// The ranked workflows, one page at a time.
-#[tauri::command]
-pub async fn first_map(app: AppHandle, offset: usize, limit: usize) -> Reply<FirstMap> {
-    blocking(app, move |state| {
-        state
-            .engine()?
-            .read(|store| {
-                let all = store.workflows()?;
-                let rows = all
-                    .iter()
-                    .skip(offset)
-                    .take(limit.min(MAX_ROWS))
-                    .map(|w| MapRow {
-                        id: w.id,
-                        name: w.name.clone(),
-                        steps: w.steps.iter().map(|s| s.name.clone()).collect(),
-                        hours_week: w.hours_week,
-                        cases: w.task_count,
-                        action: w.action.as_str(),
-                        rough: w.rough,
-                    })
-                    .collect();
-                Ok(FirstMap {
-                    hours_back: store.hours_back()?,
-                    total: all.len(),
-                    rows,
-                })
-            })
-            .map_err(msg)
-    })
-    .await
 }
 
 #[derive(Serialize)]

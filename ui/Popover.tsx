@@ -10,7 +10,7 @@ import { duration } from "./format";
 import { Pause, Play, Search, AppWindow, Power } from "lucide-react";
 import { t, type Key } from "./i18n";
 import { Failed } from "./layout";
-import Ideas, { AgentBridge } from "./Ideas";
+import { AgentBridge } from "./Routines";
 import Privacy from "./Privacy";
 import Today from "./Today";
 import { Button } from "@/components/ui/button";
@@ -233,9 +233,6 @@ export default function Popover() {
           <TabsTrigger value="today" className="px-2">
             {t("tabToday")}
           </TabsTrigger>
-          <TabsTrigger value="ideas" className="px-2">
-            {t("tabIdeas")}
-          </TabsTrigger>
           <TabsTrigger value="settings" className="px-2">
             {t("tabSettings")}
           </TabsTrigger>
@@ -243,9 +240,6 @@ export default function Popover() {
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <TabsContent value="today" className="flex flex-col gap-5">
             <Today opened={opened} />
-          </TabsContent>
-          <TabsContent value="ideas" className="flex flex-col gap-5">
-            <Ideas opened={opened} />
           </TabsContent>
           <TabsContent value="settings" className="flex flex-col gap-6">
             <AgentBridge />

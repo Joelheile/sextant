@@ -15,7 +15,7 @@ fn loaded(label: &str) -> (TempDb, Store) {
 #[test]
 fn database_is_encrypted_and_versioned() {
     let (db, store) = loaded("encrypted");
-    assert_eq!(store.schema_version().expect("test setup"), 8);
+    assert_eq!(store.schema_version().expect("test setup"), 9);
     drop(store);
     let mut header = [0u8; 16];
     std::fs::File::open(&db.path)
@@ -32,7 +32,7 @@ fn database_is_encrypted_and_versioned() {
             .expect("test setup")
             .schema_version()
             .expect("test setup"),
-        8
+        9
     );
 }
 
@@ -45,7 +45,7 @@ fn raw_connection(db: &TempDb) -> rusqlite::Connection {
 }
 
 #[test]
-fn a_v5_database_upgrades_to_v6_with_empty_commitments_keyed_by_task() {
+fn a_v5_database_upgrades_to_v9_without_the_workflow_tables() {
     let db = TempDb::new("upgrade-v5");
     let conn = raw_connection(&db);
     for schema in [
@@ -60,23 +60,36 @@ fn a_v5_database_upgrades_to_v6_with_empty_commitments_keyed_by_task() {
     conn.pragma_update(None, "user_version", 5)
         .expect("test setup");
     conn.execute(
-        "INSERT INTO commitments(ts, source, text, due_ts, entity_id, overdue) VALUES (1, 'reminder', 'Send it', NULL, 42, 0)",
+        "INSERT INTO handoffs(workflow_id, ts, status, note) VALUES (1, 1, 'done', '')",
         [],
     )
     .expect("test setup");
     drop(conn);
 
     let store = Store::open(&db.path, &TEST_KEY, &TEST_SECRET).expect("upgrade");
-    assert_eq!(store.schema_version().expect("test setup"), 8);
+    assert_eq!(store.schema_version().expect("test setup"), 9);
     drop(store);
 
     let conn = raw_connection(&db);
-    let rows: i64 = conn
-        .query_row("SELECT count(*) FROM commitments", [], |row| row.get(0))
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+        .expect("test setup")
+        .query_map([], |row| row.get(0))
+        .expect("test setup")
+        .collect::<rusqlite::Result<_>>()
         .expect("test setup");
-    assert_eq!(rows, 0, "an old entity id would read as a task id");
-    conn.prepare("SELECT task_id FROM commitments")
-        .expect("commitments has task_id");
+    for gone in [
+        "workflows",
+        "follows",
+        "commitments",
+        "handoffs",
+        "judgments",
+    ] {
+        assert!(!tables.iter().any(|t| t == gone), "{gone} in {tables:?}");
+    }
+    conn.prepare("SELECT id, key, name FROM steps")
+        .expect("steps keep their names");
+    assert!(conn.prepare("SELECT workflow_id FROM tasks").is_err());
 }
 
 #[test]

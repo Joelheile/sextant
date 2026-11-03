@@ -1,6 +1,6 @@
 //! Actions (plan.md §4): what the user did to which control, read from the Accessibility tree.
 //! A press on a labelled control and the value left in a text field are the UI log that
-//! workflow mining reads. Never keystrokes, never a secure field.
+//! the finder reads. Never keystrokes, never a secure field.
 
 use serde_json::json;
 

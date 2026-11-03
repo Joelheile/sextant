@@ -27,9 +27,6 @@ pub(crate) struct Task {
     pub first: i64,
     pub last: i64,
     pub active_s: i64,
-    /// Step indexes in time order, consecutive repeats collapsed.
-    pub seq: Vec<usize>,
-    pub workflow: Option<usize>,
 }
 
 impl Task {
@@ -100,8 +97,6 @@ pub(crate) fn build(episodes: &[Episode], entities: &[Entity], acts: &[Vec<Act>]
                     first: episode.start,
                     last: episode.start,
                     active_s: 0,
-                    seq: Vec::new(),
-                    workflow: None,
                 });
                 open.len() - 1
             }
@@ -144,12 +139,6 @@ pub(crate) fn build(episodes: &[Episode], entities: &[Entity], acts: &[Vec<Act>]
     tasks.sort_by_key(|task| task.first);
     for task in &mut tasks {
         task.episodes.sort_unstable();
-        for &episode in &task.episodes {
-            let step = episodes[episode].step;
-            if task.seq.last() != Some(&step) {
-                task.seq.push(step);
-            }
-        }
     }
     tasks
 }

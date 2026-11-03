@@ -1,45 +1,30 @@
-//! The automation finder (plan.md §7): events to episodes, steps, entities, follows, tasks,
-//! workflows, commitments and scores. `refresh(now)` rebuilds everything from the last 90 days.
+//! Turns events into what the routine tools read (plan.md §7): episodes, steps that name them,
+//! entities and tasks. `refresh(now)` rebuilds everything from the last 90 days.
 
 mod actions;
-mod commitments;
 mod entities;
 mod episodes;
-mod graph;
-mod judgments;
-mod score;
-mod signals;
 mod steps;
 mod tasks;
 
-use std::collections::{BTreeSet, HashMap};
-
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, params};
 
 pub use self::entities::ValueType;
 use self::episodes::EventRow;
-use self::judgments::Judgment;
-pub use self::score::{Action, Kind};
-pub use self::steps::Category;
-use crate::backfill::UPCOMING_DAYS;
-use crate::corrections::Overrides;
-use crate::enjoyment::Enjoyment;
 use crate::error::Result;
 use crate::model::{EventKind, Payload};
 use crate::store::Store;
 use crate::text::fnv1a;
-use crate::time::{DAY, Local, day};
+use crate::time::{DAY, Local};
 
 const WINDOW_DAYS: i64 = 90;
 /// Commit and file events stay out on purpose: they feed the MCP timeline, not the map.
-const MAP_KINDS: [EventKind; 9] = [
+const MAP_KINDS: [EventKind; 7] = [
     EventKind::Focus,
     EventKind::Idle,
     EventKind::Pause,
     EventKind::Visit,
     EventKind::Calendar,
-    EventKind::Copy,
-    EventKind::Reminder,
     EventKind::Press,
     EventKind::Edit,
 ];
@@ -50,183 +35,27 @@ pub struct RefreshStats {
     pub episodes: usize,
     pub steps: usize,
     pub entities: usize,
-    pub follows: usize,
     pub tasks: usize,
-    pub workflows: usize,
-    pub commitments: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct StepInfo {
-    pub key: String,
-    pub name: String,
-    pub category: Category,
-    pub minutes: f64,
-    pub potential: f64,
-}
-
-/// A ranked workflow. Every score has a line in `reasons`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Workflow {
-    /// Stable for a given step sequence.
-    pub id: i64,
-    pub name: String,
-    /// Step keys joined with " > ". Corrections attach to it.
-    pub variant: String,
-    /// `tasks` (one step sequence, many tasks) or `chain` (routine without a shared entity).
-    pub basis: String,
-    pub steps: Vec<StepInfo>,
-    pub task_count: usize,
-    pub hours_week: f64,
-    pub potential: f64,
-    pub desire: f64,
-    pub benefit: f64,
-    pub procrastination: f64,
-    pub kind: Kind,
-    pub action: Action,
-    pub first_step: String,
-    pub enjoyment: Enjoyment,
-    pub client: bool,
-    pub rough: bool,
-    pub reasons: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CopyPoint {
-    pub from: String,
-    pub to: String,
-    pub copies: usize,
-    /// Times a value from `from` showed up in `to` with nothing copied.
-    pub retypes: usize,
-}
-
-/// How one step follows the next in a workflow.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StepLink {
-    pub from: String,
-    pub to: String,
-    pub from_key: String,
-    pub to_key: String,
-    pub count: usize,
-    pub median_gap_s: i64,
-    pub copies: usize,
-    pub days: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CaseExample {
-    pub entity: String,
-    pub first_ts: i64,
-    pub last_ts: i64,
-    /// Step names in time order, repeats collapsed.
-    pub path: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenCommitment {
-    pub ts: i64,
-    pub source: String,
-    pub text: String,
-    pub due_ts: Option<i64>,
-    pub overdue: bool,
-}
-
-/// Everything `get_workflow` and the `SKILL.md` builder need.
-#[derive(Debug, Clone, PartialEq)]
-pub struct WorkflowDetail {
-    pub workflow: Workflow,
-    pub copy_points: Vec<CopyPoint>,
-    pub examples: Vec<CaseExample>,
-    pub commitments: Vec<OpenCommitment>,
 }
 
 struct Analysis {
     episodes: Vec<episodes::Episode>,
     steps: Vec<steps::Step>,
-    step_scores: Vec<score::StepScore>,
     entities: Vec<entities::Entity>,
-    follows: Vec<graph::Follow>,
     tasks: Vec<tasks::Task>,
-    workflows: Vec<(graph::Workflow, score::Scored)>,
-    commitments: Vec<commitments::Commitment>,
 }
 
-fn analyze(
-    events: &[EventRow],
-    spoken: &[(i64, String)],
-    overrides: &Overrides,
-    judged: &HashMap<String, Judgment>,
-    now: i64,
-    utc_offset_s: i32,
-) -> Analysis {
-    let past = &events[..events.partition_point(|e| e.ts <= now)];
-    let mut episodes = episodes::build(past, now);
-    let steps = steps::build(
-        &mut episodes,
-        &overrides.field("merge_into"),
-        &overrides.field("name"),
-    );
-    let step_scores = score::score_steps(&steps, &episodes, judged, utc_offset_s);
+fn analyze(events: &[EventRow], now: i64) -> Analysis {
+    let mut episodes = episodes::build(events, now);
+    let steps = steps::build(&mut episodes);
     let entities = entities::build(&episodes);
-    let acts = episode_actions(past, &episodes);
-    let mut tasks = tasks::build(&episodes, &entities, &acts);
-    let observed_days = episodes
-        .iter()
-        .map(|e| day(e.start, utc_offset_s))
-        .collect::<BTreeSet<_>>()
-        .len();
-    let copies: Vec<(i64, &str)> = past
-        .iter()
-        .filter(|e| e.kind == "copy")
-        .map(|e| (e.ts, e.payload.app.as_str()))
-        .collect();
-    let mut by_episode: Vec<Vec<usize>> = vec![Vec::new(); episodes.len()];
-    for (index, entity) in entities.iter().enumerate() {
-        for &episode in &entity.episodes {
-            by_episode[episode].push(index);
-        }
-    }
-    let follows = graph::follows(&episodes, &copies, &by_episode, utc_offset_s);
-    let mut workflows = graph::from_tasks(&mut tasks, &steps, &overrides.keys_with("split"));
-    let routines = graph::from_chains(
-        graph::chains(&follows),
-        &follows,
-        &episodes,
-        &steps,
-        &workflows,
-    );
-    workflows.extend(routines);
-    let linker = commitments::Linker::new(&tasks, &episodes);
-    let commitments = commitments::build(events, spoken, &linker, now);
-    let signals = signals::build(&episodes, &steps, spoken, &linker, utc_offset_s);
-    let cx = score::Context {
-        episodes: &episodes,
-        steps: &steps,
-        step_scores: &step_scores,
-        follows: &follows,
-        tasks: &tasks,
-        commitments: &commitments,
-        signals: &signals,
-        overrides,
-        observed_days,
-        now,
-    };
-    let workflows = workflows
-        .into_iter()
-        .map(|w| {
-            let scored = score::score_workflow(&w, &cx);
-            (w, scored)
-        })
-        .collect();
+    let acts = episode_actions(events, &episodes);
+    let tasks = tasks::build(&episodes, &entities, &acts);
     Analysis {
         episodes,
         steps,
-        step_scores,
         entities,
-        follows,
         tasks,
-        workflows,
-        commitments,
     }
 }
 
@@ -266,13 +95,6 @@ fn load_events(conn: &Connection, from: i64, to: i64) -> Result<Vec<EventRow>> {
     Ok(rows.collect::<std::result::Result<_, _>>()?)
 }
 
-fn load_spoken(conn: &Connection, from: i64, to: i64) -> Result<Vec<(i64, String)>> {
-    let mut statement =
-        conn.prepare_cached("SELECT start_ts, text FROM utterances WHERE source = 'mic' AND start_ts BETWEEN ?1 AND ?2 ORDER BY start_ts")?;
-    let rows = statement.query_map(params![from, to], |row| Ok((row.get(0)?, row.get(1)?)))?;
-    Ok(rows.collect::<std::result::Result<_, _>>()?)
-}
-
 fn id(index: usize) -> i64 {
     index as i64 + 1
 }
@@ -308,11 +130,8 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
         "steps",
         "entities",
         "mentions",
-        "follows",
         "tasks",
         "task_episodes",
-        "workflows",
-        "commitments",
     ] {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
@@ -330,20 +149,9 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 e.live
             ])?;
         }
-        let mut insert = tx.prepare("INSERT INTO steps(id, key, name, category, episode_count, minutes, days, potential, reasons) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")?;
-        for (i, (s, score)) in analysis.steps.iter().zip(&analysis.step_scores).enumerate() {
-            let reasons = serde_json::to_string(&score.reasons)?;
-            insert.execute(params![
-                id(i),
-                s.key,
-                s.name,
-                s.category.as_str(),
-                n(s.episodes.len()),
-                score.minutes,
-                n(score.days),
-                score.potential,
-                reasons
-            ])?;
+        let mut insert = tx.prepare("INSERT INTO steps(id, key, name) VALUES (?1, ?2, ?3)")?;
+        for (i, s) in analysis.steps.iter().enumerate() {
+            insert.execute(params![id(i), s.key, s.name])?;
         }
         let mut insert = tx.prepare(
             "INSERT INTO entities(id, kind, value, episode_count) VALUES (?1, ?2, ?3, ?4)",
@@ -361,102 +169,17 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
                 mention.execute(params![id(i), activity_ids[*episode]])?;
             }
         }
-        let mut insert = tx.prepare("INSERT INTO follows(from_step_id, to_step_id, count, median_gap_s, copies, days) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
-        for f in &analysis.follows {
-            insert.execute(params![
-                id(f.from),
-                id(f.to),
-                n(f.count),
-                f.median_gap_s,
-                n(f.copies),
-                n(f.days)
-            ])?;
-        }
         let mut insert = tx.prepare(
-            "INSERT INTO tasks(id, label, workflow_id, first_ts, last_ts, active_s) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO tasks(id, label, first_ts, last_ts, active_s) VALUES (?1, ?2, ?3, ?4, ?5)",
         )?;
         let mut episode_link =
             tx.prepare("INSERT INTO task_episodes(task_id, episode_id) VALUES (?1, ?2)")?;
-        let task_ids: Vec<i64> = analysis
-            .tasks
-            .iter()
-            .map(|t| activity_ids[t.episodes[0]])
-            .collect();
-        for (t, &task_id) in analysis.tasks.iter().zip(&task_ids) {
-            let workflow = t
-                .workflow
-                .map(|w| stable_id(&analysis.workflows[w].0.variant));
-            insert.execute(params![
-                task_id,
-                t.label(),
-                workflow,
-                t.first,
-                t.last,
-                t.active_s
-            ])?;
+        for t in &analysis.tasks {
+            let task_id = activity_ids[t.episodes[0]];
+            insert.execute(params![task_id, t.label(), t.first, t.last, t.active_s])?;
             for &episode in &t.episodes {
                 episode_link.execute(params![task_id, activity_ids[episode]])?;
             }
-        }
-        let mut insert = tx.prepare(
-            "INSERT OR IGNORE INTO workflows(id, variant, basis, name, sequence, task_count, hours_week, potential, desire, benefit, procrastination, kind, action, first_step, copies, enjoyment, client, hidden, rough, reasons)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
-        )?;
-        for (w, s) in &analysis.workflows {
-            let sequence: Vec<&str> = w
-                .sequence
-                .iter()
-                .map(|&i| analysis.steps[i].key.as_str())
-                .collect();
-            let copies: Vec<(&str, &str, usize, usize)> = s
-                .copies
-                .iter()
-                .map(|&(a, b, copied, retyped)| {
-                    (
-                        analysis.steps[a].key.as_str(),
-                        analysis.steps[b].key.as_str(),
-                        copied,
-                        retyped,
-                    )
-                })
-                .collect();
-            insert.execute(params![
-                stable_id(&w.variant),
-                w.variant,
-                if matches!(w.basis, graph::Basis::Tasks) {
-                    "tasks"
-                } else {
-                    "chain"
-                },
-                s.name,
-                serde_json::to_string(&sequence)?,
-                n(w.count),
-                s.hours_week,
-                s.potential,
-                s.desire,
-                s.benefit,
-                s.procrastination,
-                s.kind.as_str(),
-                s.action.as_str(),
-                s.first_step,
-                serde_json::to_string(&copies)?,
-                s.enjoyment.as_str(),
-                s.client,
-                s.hidden,
-                s.rough,
-                serde_json::to_string(&s.reasons)?,
-            ])?;
-        }
-        let mut insert = tx.prepare("INSERT INTO commitments(ts, source, text, due_ts, task_id, overdue) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
-        for c in &analysis.commitments {
-            insert.execute(params![
-                c.ts,
-                c.source,
-                c.text,
-                c.due,
-                c.task.map(|t| task_ids[t]),
-                c.overdue
-            ])?;
         }
     }
     tx.commit()?;
@@ -464,234 +187,17 @@ fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
 }
 
 impl Store {
-    /// Rebuilds episodes, steps, entities, follows, tasks, workflows, commitments and scores
-    /// from the last 90 days. Only events up to `when.now` make episodes; upcoming reminders (next
-    /// 14 days) still become commitments. Corrections apply here.
+    /// Rebuilds episodes, steps, entities and tasks from the last 90 days. Only events up to
+    /// `when.now` count.
     pub fn refresh(&mut self, when: Local) -> Result<RefreshStats> {
-        let Local { now, utc_offset_s } = when;
-        let from = now - WINDOW_DAYS * DAY;
-        let events = load_events(&self.conn, from, now + UPCOMING_DAYS * DAY)?;
-        let spoken = load_spoken(&self.conn, from, now)?;
-        let overrides = Overrides::load(&self.conn)?;
-        let judged = judgments::load(&self.conn)?;
-        let analysis = analyze(&events, &spoken, &overrides, &judged, now, utc_offset_s);
+        let events = load_events(&self.conn, when.now - WINDOW_DAYS * DAY, when.now)?;
+        let analysis = analyze(&events, when.now);
         persist(&mut self.conn, &analysis)?;
         Ok(RefreshStats {
             episodes: analysis.episodes.len(),
             steps: analysis.steps.len(),
             entities: analysis.entities.len(),
-            follows: analysis.follows.len(),
             tasks: analysis.tasks.len(),
-            workflows: analysis.workflows.len(),
-            commitments: analysis.commitments.len(),
         })
-    }
-
-    /// Visible workflows, best estimated benefit first. Procrastination raises the rank: work that
-    /// is put off or fled from costs more than its hours.
-    pub fn workflows(&self) -> Result<Vec<Workflow>> {
-        self.read_workflows(
-            "WHERE hidden = 0 ORDER BY benefit * (1 + procrastination) DESC, hours_week DESC, id",
-            params![],
-        )
-    }
-
-    /// Hours a week the visible workflows could give back: the estimated benefit of those
-    /// worth handing to an agent (automate or assist).
-    pub fn hours_back(&self) -> Result<f64> {
-        Ok(self.conn.query_row(
-            "SELECT COALESCE(SUM(benefit), 0) FROM workflows WHERE hidden = 0 AND action IN ('automate', 'assist')",
-            [],
-            |row| row.get(0),
-        )?)
-    }
-
-    pub fn workflow(&self, id: i64) -> Result<Option<Workflow>> {
-        Ok(self
-            .read_workflows("WHERE id = ?1", params![id])?
-            .into_iter()
-            .next())
-    }
-
-    /// §7.11 The 3 biggest visible workflows whose enjoyment is still unknown.
-    pub fn ask_first(&self) -> Result<Vec<Workflow>> {
-        self.read_workflows(
-            "WHERE hidden = 0 AND enjoyment = 'unknown' ORDER BY hours_week DESC, id LIMIT 3",
-            params![],
-        )
-    }
-
-    fn read_workflows(&self, clause: &str, args: impl rusqlite::Params) -> Result<Vec<Workflow>> {
-        let steps = self.step_infos()?;
-        let mut statement = self.conn.prepare(&format!(
-            "SELECT id, name, variant, basis, sequence, task_count, hours_week, potential, desire, benefit, procrastination,
-                    kind, action, first_step, enjoyment, client, rough, reasons FROM workflows {clause}"
-        ))?;
-        let rows = statement.query_map(args, |row| {
-            let text = |i: usize| row.get::<_, String>(i);
-            Ok((
-                Workflow {
-                    id: row.get(0)?,
-                    name: text(1)?,
-                    variant: text(2)?,
-                    basis: text(3)?,
-                    steps: Vec::new(),
-                    task_count: row.get::<_, i64>(5)? as usize,
-                    hours_week: row.get(6)?,
-                    potential: row.get(7)?,
-                    desire: row.get(8)?,
-                    benefit: row.get(9)?,
-                    procrastination: row.get(10)?,
-                    kind: Kind::parse(&text(11)?).unwrap_or(Kind::LongTail),
-                    action: Action::parse(&text(12)?).unwrap_or(Action::Watch),
-                    first_step: text(13)?,
-                    enjoyment: Enjoyment::parse(&text(14)?).unwrap_or(Enjoyment::Unknown),
-                    client: row.get(15)?,
-                    rough: row.get(16)?,
-                    reasons: Vec::new(),
-                },
-                text(4)?,
-                text(17)?,
-            ))
-        })?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (mut workflow, sequence, reasons) = row?;
-            let keys: Vec<String> = serde_json::from_str(&sequence)?;
-            workflow.steps = keys.iter().filter_map(|k| steps.get(k).cloned()).collect();
-            workflow.reasons = serde_json::from_str(&reasons)?;
-            out.push(workflow);
-        }
-        Ok(out)
-    }
-
-    fn step_infos(&self) -> Result<HashMap<String, StepInfo>> {
-        let mut statement = self
-            .conn
-            .prepare_cached("SELECT key, name, category, minutes, potential FROM steps")?;
-        let rows = statement.query_map([], |row| {
-            let key: String = row.get(0)?;
-            Ok((
-                key.clone(),
-                StepInfo {
-                    key,
-                    name: row.get(1)?,
-                    category: Category::parse(&row.get::<_, String>(2)?).unwrap_or(Category::Other),
-                    minutes: row.get(3)?,
-                    potential: row.get(4)?,
-                },
-            ))
-        })?;
-        Ok(rows.collect::<std::result::Result<_, _>>()?)
-    }
-
-    /// For each pair of neighbouring steps that follow each other in the data: how often, how long
-    /// the gap is and how often data was copied by hand.
-    pub fn step_links(&self, workflow: &Workflow) -> Result<Vec<StepLink>> {
-        let mut statement = self.conn.prepare_cached(
-            "SELECT f.count, f.median_gap_s, f.copies, f.days FROM follows f
-             JOIN steps a ON a.id = f.from_step_id JOIN steps b ON b.id = f.to_step_id
-             WHERE a.key = ?1 AND b.key = ?2",
-        )?;
-        let mut links = Vec::new();
-        for pair in workflow.steps.windows(2) {
-            let found = statement
-                .query_row(params![pair[0].key, pair[1].key], |row| {
-                    Ok(StepLink {
-                        from: pair[0].name.clone(),
-                        to: pair[1].name.clone(),
-                        from_key: pair[0].key.clone(),
-                        to_key: pair[1].key.clone(),
-                        count: row.get::<_, i64>(0)? as usize,
-                        median_gap_s: row.get(1)?,
-                        copies: row.get::<_, i64>(2)? as usize,
-                        days: row.get::<_, i64>(3)? as usize,
-                    })
-                })
-                .optional()?;
-            links.extend(found);
-        }
-        Ok(links)
-    }
-
-    /// Steps, copy points, up to 3 example cases and linked commitments of one workflow.
-    pub fn workflow_detail(&self, id: i64) -> Result<Option<WorkflowDetail>> {
-        let Some(workflow) = self.workflow(id)? else {
-            return Ok(None);
-        };
-        let steps = self.step_infos()?;
-        let name = |key: &str| {
-            steps
-                .get(key)
-                .map_or_else(|| key.to_string(), |s| s.name.clone())
-        };
-        let copies: String = self.conn.query_row(
-            "SELECT copies FROM workflows WHERE id = ?1",
-            params![id],
-            |row| row.get(0),
-        )?;
-        let copies: Vec<(String, String, usize, usize)> = serde_json::from_str(&copies)?;
-        let copy_points = copies
-            .iter()
-            .map(|(a, b, copied, retyped)| CopyPoint {
-                from: name(a),
-                to: name(b),
-                copies: *copied,
-                retypes: *retyped,
-            })
-            .collect();
-
-        let mut examples = Vec::new();
-        let mut tasks = self.conn.prepare(
-            "SELECT t.id, t.label, t.first_ts, t.last_ts FROM tasks t
-             WHERE t.workflow_id = ?1 ORDER BY t.first_ts, t.id LIMIT 3",
-        )?;
-        let mut path = self.conn.prepare(
-            "SELECT s.name FROM task_episodes te JOIN episodes ep ON ep.id = te.episode_id JOIN steps s ON s.id = ep.step_id
-             WHERE te.task_id = ?1 ORDER BY ep.start_ts, ep.id",
-        )?;
-        let rows = tasks.query_map(params![id], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, i64>(3)?,
-            ))
-        })?;
-        for row in rows {
-            let (task_id, label, first_ts, last_ts) = row?;
-            let mut names: Vec<String> = path
-                .query_map(params![task_id], |r| r.get(0))?
-                .collect::<std::result::Result<_, _>>()?;
-            names.dedup();
-            examples.push(CaseExample {
-                entity: label,
-                first_ts,
-                last_ts,
-                path: names,
-            });
-        }
-
-        let mut statement = self.conn.prepare(
-            "SELECT m.ts, m.source, m.text, m.due_ts, m.overdue FROM commitments m JOIN tasks t ON t.id = m.task_id
-             WHERE t.workflow_id = ?1 ORDER BY m.ts, m.id",
-        )?;
-        let commitments = statement
-            .query_map(params![id], |row| {
-                Ok(OpenCommitment {
-                    ts: row.get(0)?,
-                    source: row.get(1)?,
-                    text: row.get(2)?,
-                    due_ts: row.get(3)?,
-                    overdue: row.get(4)?,
-                })
-            })?
-            .collect::<std::result::Result<_, _>>()?;
-        Ok(Some(WorkflowDetail {
-            workflow,
-            copy_points,
-            examples,
-            commitments,
-        }))
     }
 }

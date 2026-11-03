@@ -6,13 +6,13 @@ use std::time::{Duration, Instant};
 use sextant_core::backfill::{self, CalendarRecord, ReminderRecord, Stage};
 use sextant_core::fixtures::*;
 use sextant_core::profile_fixture::{FakePlatform, ProfileSpec, profile};
-use sextant_core::{Item, Sources, Store, Workflow, Writer};
+use sextant_core::{Item, Sources, Store, Writer};
 
 const FIRST_MAP: Duration = Duration::from_secs(60);
 const DAY: i64 = 86_400;
 
 struct Map {
-    workflows: Vec<Workflow>,
+    tasks: usize,
     events: usize,
     took: Duration,
 }
@@ -38,41 +38,26 @@ fn first_map(store: &mut Store, weeks: u32, sources: &Sources, calendar_denied: 
         writer.push(Item::Event(event));
     }
     writer.flush(store, now).expect("test setup");
-    store.refresh(local(now)).expect("test setup");
-    let workflows = store.workflows().expect("test setup");
+    let stats = store.refresh(local(now)).expect("test setup");
     Map {
-        workflows,
+        tasks: stats.tasks,
         events,
         took: started.elapsed(),
     }
 }
 
 #[test]
-fn a_backfill_only_map_finds_the_invoice_routine_and_calls_it_rough() {
+fn a_backfill_only_map_finds_the_invoice_tasks() {
     let db = TempDb::new("first-map");
     let mut store = db.open().expect("test setup");
     let map = first_map(&mut store, 4, &Sources::default(), false);
 
     assert!(
-        !map.workflows.is_empty(),
-        "no workflows from {} events",
+        map.tasks >= 15,
+        "{} tasks from {} events",
+        map.tasks,
         map.events
     );
-    assert!(
-        map.workflows.iter().all(|w| w.rough),
-        "backfill-only workflows are rough"
-    );
-    let invoices = map
-        .workflows
-        .iter()
-        .find(|w| {
-            w.steps
-                .iter()
-                .any(|s| s.name.to_lowercase().contains("lexoffice"))
-        })
-        .unwrap_or_else(|| panic!("no invoice workflow in {:#?}", map.workflows));
-    assert!(invoices.task_count >= 15, "{invoices:#?}");
-    assert!(store.hours_back().expect("test setup") > 0.0);
 }
 
 #[test]
@@ -155,12 +140,10 @@ fn first_map_of_a_90_day_profile_takes_under_60_s() {
     let mut store = db.open().expect("test setup");
     let map = first_map(&mut store, 13, &Sources::default(), false);
     println!(
-        "first map over 90 days: {:?} for {} backfill events, {} workflows (budget {FIRST_MAP:?})",
-        map.took,
-        map.events,
-        map.workflows.len()
+        "first map over 90 days: {:?} for {} backfill events, {} tasks (budget {FIRST_MAP:?})",
+        map.took, map.events, map.tasks
     );
-    assert!(!map.workflows.is_empty());
+    assert!(map.tasks > 0);
     assert!(
         map.took < FIRST_MAP,
         "first map {:?} is over the {FIRST_MAP:?} budget",
@@ -246,20 +229,13 @@ fn upcoming_events_are_not_worked_time() {
             writer.push(Item::Event(event));
         }
         writer.flush(&mut store, now).expect("test setup");
-        let stats = store.refresh(local(now)).expect("test setup");
-        (stats, store.hours_back().expect("test setup"))
+        store.refresh(local(now)).expect("test setup")
     };
-    let (with, hours) = run(true);
-    let (without, hours_without) = run(false);
+    let (with, without) = (run(true), run(false));
 
     assert_eq!(
         with.episodes, without.episodes,
         "no episode from the future"
     );
-    assert_eq!(hours, hours_without);
-    assert_eq!(
-        with.commitments,
-        without.commitments + 1,
-        "the upcoming reminder"
-    );
+    assert_eq!(with.tasks, without.tasks);
 }

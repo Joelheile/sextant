@@ -22,10 +22,4 @@ pub enum Error {
     Platform(String),
     #[error("{0}")]
     Invalid(String),
-    #[error("no workflow with id {0}")]
-    NoWorkflow(i64),
-    #[error("no correction rule matches this phrase")]
-    UnknownCorrection,
-    #[error("correction needs {0}")]
-    BadTarget(&'static str),
 }

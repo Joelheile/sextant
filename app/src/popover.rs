@@ -112,17 +112,14 @@ pub struct InsightsView {
     longest_focus_minutes: f64,
     lines: usize,
     call_minutes: f64,
-    automatable_hours: f64,
-    automatable_hours_last_week: f64,
-    hours_back: f64,
 }
 
 #[tauri::command]
 pub async fn insights(app: AppHandle) -> Reply<InsightsView> {
     blocking(app, move |state| {
-        let (found, hours_back): (Insights, f64) = state
+        let found: Insights = state
             .engine()?
-            .read(|store| Ok((store.insights(clock::local())?, store.hours_back()?)))
+            .read(|store| store.insights(clock::local()))
             .map_err(msg)?;
         Ok(InsightsView {
             active_minutes: found.active_minutes,
@@ -140,9 +137,6 @@ pub async fn insights(app: AppHandle) -> Reply<InsightsView> {
             longest_focus_minutes: found.longest_focus_minutes,
             lines: found.lines,
             call_minutes: found.call_minutes,
-            automatable_hours: found.automatable_hours,
-            automatable_hours_last_week: found.automatable_hours_last_week,
-            hours_back,
         })
     })
     .await

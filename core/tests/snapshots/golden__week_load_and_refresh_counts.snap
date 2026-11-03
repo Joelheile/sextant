@@ -13,8 +13,5 @@ RefreshStats {
     episodes: 135,
     steps: 32,
     entities: 15,
-    follows: 49,
     tasks: 5,
-    workflows: 2,
-    commitments: 5,
 }

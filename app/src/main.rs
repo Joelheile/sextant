@@ -9,7 +9,6 @@ mod data;
 mod debug;
 mod engine;
 mod home;
-mod judge;
 mod keys;
 mod mcp;
 mod models;
@@ -94,7 +93,6 @@ fn main() -> anyhow::Result<()> {
             commands::pick_folder,
             commands::save_choices,
             commands::start_backfill,
-            commands::first_map,
             commands::connect_info,
             commands::connect_claude_desktop,
             commands::set_mcp_switches,
@@ -103,21 +101,11 @@ fn main() -> anyhow::Result<()> {
             commands::cancel_download,
             commands::set_audio,
             commands::finish_onboarding,
-            screens::workflow_overview,
-            screens::answer_enjoyment,
-            screens::workflow_detail,
-            screens::correct_workflow,
-            screens::automation_plan,
-            screens::write_skill,
-            screens::report_handoff,
-            screens::results,
             screens::rewind_ask,
             screens::rewind_history,
             screens::rewind_results,
             screens::rewind_fit,
             screens::rewind_hide,
-            screens::weekly_report,
-            screens::save_report_image,
             screens::storage_used,
             debug::debug_report,
             screens::set_excluded_apps,
@@ -147,7 +135,6 @@ fn main() -> anyhow::Result<()> {
                 .name("sextant-start".into())
                 .spawn(move || start_engine(&handle))
                 .context("starting the start-up thread")?;
-            judge::spawn(app.handle().clone())?;
             agent::spawn_weekly(app.handle().clone())?;
             Ok(())
         })

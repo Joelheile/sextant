@@ -82,8 +82,8 @@ pub struct Settings {
     pub excluded_sites: Vec<String>,
     /// Switch for `search`, `context_at` and `timeline`.
     pub mcp_rewind: bool,
-    /// Switch for `week`, `day`, `task`, `list_workflows`, `get_workflow`, `get_skill` and
-    /// `report_handoff`. The typed values in `task` also need `mcp_rewind`.
+    /// Switch for `week`, `day`, `task` and the routine tools and prompts. The typed values in
+    /// `task` also need `mcp_rewind`.
     pub mcp_workflows: bool,
     pub onboarded: bool,
     pub sources: Sources,

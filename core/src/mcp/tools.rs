@@ -7,14 +7,12 @@ use rusqlite::params;
 use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
-use crate::finder::Workflow;
 use crate::model::Speaker;
-use crate::redact::{redact, redact_json};
+use crate::redact::redact_json;
 use crate::routines::Routine;
 use crate::search::HitSource;
 use crate::settings::Settings;
 use crate::store::Store;
-use crate::text::round2;
 use crate::time::{self, DAY, Local, WEEK_DAYS, iso};
 use crate::writer::unpack;
 
@@ -187,48 +185,6 @@ pub const TOOLS: &[Tool] = &[
             }})
         },
     },
-    Tool {
-        name: "list_workflows",
-        group: Group::Workflows,
-        description: "The user's recurring workflows across apps, ranked by estimated hours a week an agent could save. Each has hours, automation potential, rough (backfill only) and the reasons behind its scores.",
-        read_only: true,
-        schema: || page_schema(json!({}), &[]),
-    },
-    Tool {
-        name: "get_workflow",
-        group: Group::Workflows,
-        description: "One workflow in detail: steps, how steps follow each other, data copied by hand, example cases and open promises.",
-        read_only: true,
-        schema: || {
-            json!({"type": "object", "required": ["id"], "properties": {
-                "id": {"type": "integer", "description": "Workflow id from list_workflows."},
-            }})
-        },
-    },
-    Tool {
-        name: "get_skill",
-        group: Group::Workflows,
-        description: "A ready SKILL.md in Markdown that tells an agent how to run one workflow.",
-        read_only: true,
-        schema: || {
-            json!({"type": "object", "required": ["id"], "properties": {
-                "id": {"type": "integer", "description": "Workflow id from list_workflows."},
-            }})
-        },
-    },
-    Tool {
-        name: "report_handoff",
-        group: Group::Workflows,
-        description: "Record that an agent took over a workflow, so Sextant can compare the hours before and after. This is the only tool that writes.",
-        read_only: false,
-        schema: || {
-            json!({"type": "object", "required": ["id", "status"], "properties": {
-                "id": {"type": "integer", "description": "Workflow id from list_workflows."},
-                "status": {"type": "string", "description": "For example started, done or abandoned."},
-                "note": {"type": "string", "description": "One sentence on what the agent now does."},
-            }})
-        },
-    },
 ];
 
 /// The `find_routines` prompt. The agent bridge sends the same text.
@@ -333,10 +289,6 @@ pub fn call(ctx: &Ctx, name: &str, args: &Value) -> std::result::Result<String, 
             let skill = text_arg(args, "skill").ok_or_else(|| bad("skill is required"))?;
             ctx.store.check_skill(ctx.settings, id, skill)
         }),
-        "list_workflows" => list_workflows(ctx, args),
-        "get_workflow" => get_workflow(ctx, args),
-        "get_skill" => return get_skill(ctx, args).map_err(|e| e.to_string()),
-        "report_handoff" => report_handoff(ctx, args),
         _ => return Err(format!("unknown tool {name}")),
     };
     run.map(|mut value| {
@@ -612,124 +564,4 @@ fn timeline(ctx: &Ctx, args: &Value) -> Result<Value> {
         })).collect::<Vec<_>>(),
         "next_offset": next_offset(items.len() > offset + limit, offset, limit),
     }))
-}
-
-/// Workflows with a step in an excluded app are hidden. A step key starts with its app, or
-/// with the host for web pages.
-fn shown(ctx: &Ctx, workflow: &Workflow) -> bool {
-    !workflow.steps.iter().any(|step| {
-        ctx.settings
-            .is_excluded(step.key.split('|').next().unwrap_or(""))
-    })
-}
-
-fn workflow_row(workflow: &Workflow) -> Value {
-    json!({
-        "id": workflow.id,
-        "name": workflow.name,
-        "hours_week": round2(workflow.hours_week),
-        "potential": round2(workflow.potential),
-        "benefit": round2(workflow.benefit),
-        "kind": workflow.kind.as_str(),
-        "action": workflow.action.as_str(),
-        "enjoyment": workflow.enjoyment.as_str(),
-        "rough": workflow.rough,
-        "cases": workflow.task_count,
-        "first_step": workflow.first_step,
-        "steps": workflow.steps.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
-        "reasons": workflow.reasons,
-    })
-}
-
-fn list_workflows(ctx: &Ctx, args: &Value) -> Result<Value> {
-    let (limit, offset) = page(args)?;
-    let all: Vec<Workflow> = ctx
-        .store
-        .workflows()?
-        .into_iter()
-        .filter(|w| shown(ctx, w))
-        .collect();
-    Ok(json!({
-        "total": all.len(),
-        "hours_back": round2(ctx.store.hours_back()?),
-        "workflows": all.iter().skip(offset).take(limit).map(workflow_row).collect::<Vec<_>>(),
-        "next_offset": next_offset(all.len() > offset + limit, offset, limit),
-    }))
-}
-
-fn workflow_id(args: &Value) -> Result<i64> {
-    int(args, "id")?.ok_or_else(|| bad("id is required"))
-}
-
-/// The workflow if it exists and shows no excluded app.
-fn visible(ctx: &Ctx, id: i64) -> Result<()> {
-    match ctx.store.workflow(id)? {
-        Some(workflow) if shown(ctx, &workflow) => Ok(()),
-        _ => Err(Error::NoWorkflow(id)),
-    }
-}
-
-fn get_workflow(ctx: &Ctx, args: &Value) -> Result<Value> {
-    let id = workflow_id(args)?;
-    visible(ctx, id)?;
-    let detail = ctx
-        .store
-        .workflow_detail(id)?
-        .ok_or(Error::NoWorkflow(id))?;
-    let mut row = workflow_row(&detail.workflow);
-    row["steps"] = detail
-        .workflow
-        .steps
-        .iter()
-        .map(|s| json!({"name": s.name, "category": s.category.as_str(), "minutes": round2(s.minutes), "potential": round2(s.potential)}))
-        .collect();
-
-    row["follows"] = ctx
-        .store
-        .step_links(&detail.workflow)?
-        .iter()
-        .map(|l| json!({"from": l.from, "to": l.to, "count": l.count, "median_gap_s": l.median_gap_s, "copies": l.copies, "days": l.days}))
-        .collect();
-    row["copy_points"] = detail
-        .copy_points
-        .iter()
-        .map(|c| json!({"from": c.from, "to": c.to, "copies": c.copies, "retypes": c.retypes}))
-        .collect();
-    row["examples"] = detail
-        .examples
-        .iter()
-        .map(|c| json!({"case": c.entity, "from": at(ctx, c.first_ts), "to": at(ctx, c.last_ts), "path": c.path}))
-        .collect();
-    row["commitments"] = detail
-        .commitments
-        .iter()
-        .map(|c| {
-            json!({"time": at(ctx, c.ts), "source": c.source, "text": c.text,
-                        "due": c.due_ts.map(|d| at(ctx, d)), "overdue": c.overdue})
-        })
-        .collect();
-    Ok(row)
-}
-
-fn get_skill(ctx: &Ctx, args: &Value) -> Result<String> {
-    let id = workflow_id(args)?;
-    visible(ctx, id)?;
-    Ok(redact(
-        &ctx.store.skill_md(id, ctx.when.utc_offset_s)?,
-        &ctx.store.secret,
-    ))
-}
-
-fn report_handoff(ctx: &Ctx, args: &Value) -> Result<Value> {
-    let id = workflow_id(args)?;
-    let status = text_arg(args, "status").ok_or_else(|| bad("status is required"))?;
-    let note = text_arg(args, "note").unwrap_or("");
-    visible(ctx, id)?;
-    let handoff = ctx.store.record_handoff(
-        id,
-        ctx.when.now,
-        &status.chars().take(40).collect::<String>(),
-        &note.chars().take(500).collect::<String>(),
-    )?;
-    Ok(json!({"recorded": true, "handoff_id": handoff}))
 }

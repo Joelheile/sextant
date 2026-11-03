@@ -76,10 +76,7 @@ fn serves_every_tool_group_over_stdio() {
     .expect("notify");
 
     let tools = session.call("tools/list", json!({}));
-    assert_eq!(
-        tools["result"]["tools"].as_array().expect("tools").len(),
-        13
-    );
+    assert_eq!(tools["result"]["tools"].as_array().expect("tools").len(), 9);
 
     let week = session.call(
         "tools/call",
@@ -93,15 +90,8 @@ fn serves_every_tool_group_over_stdio() {
             .contains("\"repeated_tasks\"")
     );
 
-    let list = session.call(
-        "tools/call",
-        json!({"name": "list_workflows", "arguments": {}}),
-    );
-    assert_eq!(list["result"]["isError"], false);
-    let rows: Value =
-        serde_json::from_str(list["result"]["content"][0]["text"].as_str().expect("text"))
-            .expect("json");
-    assert!(rows["total"].as_i64().expect("total") >= 1);
+    let routines = session.call("tools/call", json!({"name": "routines", "arguments": {}}));
+    assert_eq!(routines["result"]["isError"], false);
 
     let found = session.call(
         "tools/call",

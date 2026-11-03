@@ -39,12 +39,6 @@ pub(crate) fn weekday(day: i64) -> &'static str {
     ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"][day.rem_euclid(7) as usize]
 }
 
-/// `Mon 2026-03-02` for a timestamp.
-pub(crate) fn label(ts: i64, utc_offset_s: i32) -> String {
-    let d = day(ts, utc_offset_s);
-    format!("{} {}", weekday(d), date(d))
-}
-
 /// Inverse of `date`: local day number of a civil date (Hinnant's days_from_civil).
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let y = if month <= 2 { year - 1 } else { year };
@@ -133,8 +127,16 @@ mod tests {
     #[test]
     fn formats_the_fixture_monday() {
         // 2026-03-02 00:00 +01:00
-        assert_eq!(label(1_772_406_000, 3600), "Mon 2026-03-02");
-        assert_eq!(label(1_772_406_000 - 1, 3600), "Sun 2026-03-01");
+        let monday = day(1_772_406_000, 3600);
+        assert_eq!(
+            (weekday(monday), date(monday)),
+            ("Mon", "2026-03-02".into())
+        );
+        let sunday = day(1_772_406_000 - 1, 3600);
+        assert_eq!(
+            (weekday(sunday), date(sunday)),
+            ("Sun", "2026-03-01".into())
+        );
     }
 
     #[test]

@@ -132,14 +132,12 @@ fn an_empty_day_has_no_switch_rate() {
 }
 
 #[test]
-fn automatable_time_compares_this_week_with_last() {
-    let db = TempDb::new("automatable");
+fn a_morning_before_any_capture_counts_no_lines_today() {
+    let db = TempDb::new("morning");
     let mut store = db.open().expect("test setup");
     load(&mut store, &week(), WEEK_NOW).expect("test setup");
     store.refresh(local(WEEK_NOW)).expect("test setup");
     let insights = store.insights(local(WEEK_NOW)).expect("insights");
-    assert!(insights.automatable_hours > 0.5, "{insights:?}");
-    assert_eq!(insights.automatable_hours_last_week, 0.0);
     assert_eq!(
         insights.lines, 0,
         "Saturday morning: nothing captured yet today"

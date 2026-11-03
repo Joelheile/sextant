@@ -39,13 +39,6 @@ pub fn show(app: &AppHandle) -> tauri::Result<()> {
     window.emit_to(LABEL, "rewind-open", ())
 }
 
-/// True while the panel shows, so background model work can wait and leave the model free.
-pub fn is_open(app: &AppHandle) -> bool {
-    panel::get(app, LABEL)
-        .and_then(|window| window.is_visible())
-        .unwrap_or(false)
-}
-
 /// Sizes the panel to its content, `height` logical pixels, keeping it at the bottom centre of
 /// the screen under the pointer.
 pub fn fit(window: &WebviewWindow, height: f64) -> tauri::Result<()> {

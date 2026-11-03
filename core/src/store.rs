@@ -8,7 +8,7 @@ use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 
 use crate::error::{Error, Result};
 use crate::model::EventKind;
-use crate::redact::{Secret, redact};
+use crate::redact::Secret;
 use crate::time::{DAY, Local};
 use crate::writer::unpack;
 
@@ -21,6 +21,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("schema_v6.sql"),
     include_str!("schema_v7.sql"),
     include_str!("schema_v8.sql"),
+    include_str!("schema_v9.sql"),
 ];
 
 const EMAIL_SECRET: &str = "email_secret";
@@ -160,34 +161,6 @@ impl Store {
         Ok(self
             .conn
             .execute("DELETE FROM events WHERE source = 'backfill'", [])?)
-    }
-
-    /// Appends one `handoffs` row (plan.md §8 `report_handoff`) on a short-lived write
-    /// connection, so a read-only reader can report. Returns the row id.
-    pub fn record_handoff(
-        &self,
-        workflow_id: i64,
-        ts: i64,
-        status: &str,
-        note: &str,
-    ) -> Result<i64> {
-        let workflow = self
-            .workflow(workflow_id)?
-            .ok_or(Error::NoWorkflow(workflow_id))?;
-        let sequence: Vec<&str> = workflow.steps.iter().map(|s| s.key.as_str()).collect();
-        let conn = self.write_conn()?;
-        conn.execute(
-            "INSERT INTO handoffs(workflow_id, ts, status, note, name, sequence) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                workflow_id,
-                ts,
-                redact(status, &self.secret),
-                redact(note, &self.secret),
-                workflow.name,
-                serde_json::to_string(&sequence)?
-            ],
-        )?;
-        Ok(conn.last_insert_rowid())
     }
 
     /// A short-lived keyed write connection, so a read-only reader can append a row.
@@ -413,14 +386,7 @@ mod tests {
         let mut store = db.open().expect("test setup");
         load(&mut store, &week(), WEEK_NOW).expect("test setup");
         store.refresh(local(WEEK_NOW)).expect("test setup");
-        let tables = [
-            "episodes",
-            "entities",
-            "mentions",
-            "tasks",
-            "task_episodes",
-            "commitments",
-        ];
+        let tables = ["episodes", "entities", "mentions", "tasks", "task_episodes"];
         for table in tables {
             assert!(count(&store, &format!("SELECT count(*) FROM {table}")) > 0);
         }
@@ -433,7 +399,6 @@ mod tests {
         let newer = |sql: &str| count(&store, &format!("{sql} {cutoff}"));
         assert_eq!(newer("SELECT count(*) FROM events WHERE ts <"), 0);
         assert_eq!(newer("SELECT count(*) FROM episodes WHERE end_ts <"), 0);
-        assert_eq!(newer("SELECT count(*) FROM commitments WHERE ts <"), 0);
         assert_eq!(newer("SELECT count(*) FROM tasks WHERE last_ts <"), 0);
         assert_eq!(
             count(

@@ -166,21 +166,6 @@ pub(crate) fn host_path(url: &str) -> String {
     }
 }
 
-pub(crate) fn slug(text: &str) -> String {
-    let mut out = String::new();
-    for word in words(text) {
-        if !out.is_empty() {
-            out.push('-');
-        }
-        out.push_str(&word);
-    }
-    out.chars()
-        .take(48)
-        .collect::<String>()
-        .trim_end_matches('-')
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

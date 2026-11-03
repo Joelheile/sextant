@@ -63,9 +63,6 @@ export type Insights = {
   longest_focus_minutes: number;
   lines: number;
   call_minutes: number;
-  automatable_hours: number;
-  automatable_hours_last_week: number;
-  hours_back: number;
 };
 
 /** A routine your agent saved, with the hours Sextant measured from what it cites. */
@@ -116,122 +113,6 @@ export type SettingsPane =
   | "accessibility"
   | "automation";
 
-export type MapRow = {
-  id: number;
-  name: string;
-  steps: string[];
-  hours_week: number;
-  cases: number;
-  action: string;
-  rough: boolean;
-};
-
-export type Enjoyment =
-  | "hate"
-  | "dislike"
-  | "neutral"
-  | "unknown"
-  | "like"
-  | "love";
-
-export type Category =
-  | "meeting"
-  | "email"
-  | "spreadsheet"
-  | "crm"
-  | "finance"
-  | "chat"
-  | "planning"
-  | "coding"
-  | "design"
-  | "writing"
-  | "slides"
-  | "calendar"
-  | "social"
-  | "media"
-  | "web"
-  | "other";
-
-export type StepView = {
-  key: string;
-  name: string;
-  gap_s: number | null;
-  copies: number;
-};
-
-export type WorkflowRow = {
-  id: number;
-  name: string;
-  steps: StepView[];
-  hours_week: number;
-  cases: number;
-  benefit: number;
-  procrastination: number;
-  action: "automate" | "assist" | "protect" | "ignore" | "watch";
-  kind: "friction" | "promise_gap" | "routine" | "long_tail";
-  enjoyment: Enjoyment;
-  client: boolean;
-  rough: boolean;
-  handed_off: boolean;
-};
-
-export type Overview = {
-  hours_back: number;
-  total: number;
-  ask: WorkflowRow[];
-  ranked: WorkflowRow[];
-  promises: WorkflowRow[];
-  protect: WorkflowRow[];
-};
-
-export type Detail = {
-  workflow: WorkflowRow;
-  reasons: string[];
-  copy_points: { from: string; to: string; copies: number }[];
-  examples: {
-    entity: string;
-    first_ts: number;
-    last_ts: number;
-    path: string[];
-  }[];
-  commitments: {
-    ts: number;
-    source: string;
-    text: string;
-    due_ts: number | null;
-    overdue: boolean;
-  }[];
-};
-
-export type RuleName =
-  | "enjoyment"
-  | "client"
-  | "not_automatable"
-  | "rename"
-  | "hide"
-  | "merge"
-  | "split";
-export type Understood = { rule: RuleName; arg: string | null };
-
-export type AutomationPlan = { path: string; prompt: string };
-
-export type ResultRow = {
-  handoff_id: number;
-  workflow_id: number;
-  name: string;
-  ts: number;
-  status: string;
-  note: string;
-  days_before: number;
-  days_after: number;
-  hours_before: number | null;
-  hours_after: number | null;
-  saved: number | null;
-  progress: number;
-};
-
-export type Results = { min_days: number; rows: ResultRow[] };
-
 export type SearchPage = {
   sessions: {
     source: "screen" | "mic" | "system";
@@ -253,17 +134,6 @@ export type AskProgress =
   | { kind: "sessions"; page: SearchPage }
   | { kind: "answer"; text: string };
 
-export type WeeklyReport = {
-  from_ts: number;
-  to_ts: number;
-  hours_back: number;
-  hours_saved: number;
-  handoffs: number;
-  top: { categories: Category[]; hours_week: number; action: string }[];
-};
-
-export type FirstMap = { hours_back: number; total: number; rows: MapRow[] };
-
 export type ConnectInfo = {
   binary: string;
   claude_code_command: string;
@@ -282,8 +152,7 @@ export type Stage =
 
 export type BackfillDone = {
   events: number;
-  workflows: number;
-  hours_back: number;
+  tasks: number;
   sources: { stage: Stage; events: number; errors: string[] }[];
 };
 
@@ -308,8 +177,6 @@ export const api = {
   saveChoices: (sources: Sources, gitFolders: string[]) =>
     invoke<Settings>("save_choices", { sources, gitFolders }),
   startBackfill: () => invoke<void>("start_backfill"),
-  firstMap: (offset: number, limit: number) =>
-    invoke<FirstMap>("first_map", { offset, limit }),
   connectInfo: () => invoke<ConnectInfo>("connect_info"),
   connectClaudeDesktop: () => invoke<Written>("connect_claude_desktop"),
   setMcpSwitches: (rewind: boolean, workflows: boolean) =>
@@ -319,20 +186,6 @@ export const api = {
   cancelDownload: () => invoke<void>("cancel_download"),
   setAudio: (on: boolean) => invoke<Settings>("set_audio", { on }),
   finishOnboarding: () => invoke<Settings>("finish_onboarding"),
-  workflowOverview: (offset: number, limit: number) =>
-    invoke<Overview>("workflow_overview", { offset, limit }),
-  answerEnjoyment: (id: number, enjoyment: Enjoyment) =>
-    invoke<void>("answer_enjoyment", { id, enjoyment }),
-  workflowDetail: (id: number) =>
-    invoke<Detail | null>("workflow_detail", { id }),
-  correctWorkflow: (id: number, phrase: string, steps: string[]) =>
-    invoke<Understood | null>("correct_workflow", { id, phrase, steps }),
-  automationPlan: (id: number, folder: string | null) =>
-    invoke<AutomationPlan>("automation_plan", { id, folder }),
-  writeSkill: (id: number, folder: string | null) =>
-    invoke<string>("write_skill", { id, folder }),
-  reportHandoff: (id: number) => invoke<void>("report_handoff", { id }),
-  results: () => invoke<Results>("results"),
   rewindAsk: (
     question: string,
     onProgress: (progress: AskProgress) => void,
@@ -347,9 +200,6 @@ export const api = {
     invoke<Turn[]>("rewind_history", { before }),
   rewindFit: (height: number) => invoke<void>("rewind_fit", { height }),
   rewindHide: () => invoke<void>("rewind_hide"),
-  weeklyReport: () => invoke<WeeklyReport>("weekly_report"),
-  saveReportImage: (day: string, png: number[]) =>
-    invoke<string>("save_report_image", { day, png }),
   storageUsed: () => invoke<{ bytes: number }>("storage_used"),
   debugReport: () => invoke<string>("debug_report"),
   setExcludedApps: (apps: string[]) =>

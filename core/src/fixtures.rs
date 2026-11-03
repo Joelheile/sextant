@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use serde_json::{Value, json};
 
 use crate::error::Result;
-use crate::finder::Workflow;
 use crate::model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
 use crate::redact::Secret;
 use crate::store::{Key, Store};
@@ -276,16 +275,6 @@ pub fn refreshed(label: &str) -> (TempDb, Store) {
     load(&mut store, &week(), WEEK_NOW).expect("test setup");
     store.refresh(local(WEEK_NOW)).expect("test setup");
     (db, store)
-}
-
-/// The workflow built from the invoice tasks. Panics when there is none, for tests.
-pub fn invoice(store: &Store) -> Workflow {
-    store
-        .workflows()
-        .expect("test setup")
-        .into_iter()
-        .find(|w| w.basis == "tasks")
-        .expect("test setup")
 }
 
 /// A unique temp database path that cleans up after itself.

@@ -1,6 +1,6 @@
 //! A fake macOS profile for backfill tests, the first-map budget and `sextant bench`: Chromium and
 //! Safari History files (real SQLite bytes), a git log, calendar entries, reminders and recent files.
-//! Dates and invoice numbers follow `fixtures`, so the invoice workflow is recoverable.
+//! Dates and invoice numbers follow `fixtures`, so the invoice tasks are recoverable.
 
 use rusqlite::{Connection, MAIN_DB, params};
 

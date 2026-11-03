@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
-import { api, type AgentName, type AgentStatus, type Insights } from "./api";
+import { api, type AgentName, type AgentStatus, type Routine } from "./api";
 import { dateTime, hours } from "./format";
-import { Check, Copy, LoaderCircle, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { Check, Copy, LoaderCircle, Sparkles } from "lucide-react";
 import { t } from "./i18n";
 import { Failed, List, Muted, Section } from "./layout";
 import { Button } from "@/components/ui/button";
@@ -61,52 +61,34 @@ function SkillPrompt({ agent, id }: { agent: AgentName; id: number }) {
   );
 }
 
-/** Hours a week to get back, and how this week's automatable time compares with last week. */
-function Potential({ insights }: { insights: Insights }) {
-  const now = insights.automatable_hours;
-  const before = insights.automatable_hours_last_week;
-  const change =
-    before > 0 ? Math.round(((now - before) / before) * 100) : null;
+/** Hours a week your saved routines take, as Sextant measured them. */
+function Total({ routines }: { routines: Routine[] }) {
+  const total = routines.reduce((sum, routine) => sum + routine.hours_week, 0);
   return (
     <div className="flex flex-col gap-1">
       <span className="text-3xl font-semibold tracking-tight tabular-nums">
-        {t("hoursWeek", { hours: hours(insights.hours_back) })}
+        {t("hoursWeek", { hours: hours(total) })}
       </span>
-      <span className="text-sm text-muted-foreground">{t("couldGetBack")}</span>
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {change !== null &&
-          (change >= 0 ? (
-            <TrendingUp className="size-3.5" />
-          ) : (
-            <TrendingDown className="size-3.5" />
-          ))}
-        {change === null
-          ? t("automatableWeek", { hours: hours(now) })
-          : t("automatableTrend", {
-              hours: hours(now),
-              change: `${change >= 0 ? "+" : ""}${change}`,
-            })}
-      </span>
+      <span className="text-sm text-muted-foreground">{t("routinesTotal")}</span>
     </div>
   );
 }
 
-/** The Ideas tab: automation potential and the routines your own agent found. */
-export default function Ideas({ opened }: { opened: number }) {
-  const [insights, setInsights] = useState<Insights | null>(null);
+/** The main window: the routines your own agent found and the hours they take. */
+export default function Routines() {
   const [agent, setAgent] = useState<AgentStatus | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.insights(), api.agentStatus()])
-      .then(([found, status]) => {
-        setInsights(found);
+    api
+      .agentStatus()
+      .then((status) => {
         setAgent(status);
         setRunning(status.running);
       })
       .catch((err) => setError(String(err)));
-  }, [opened]);
+  }, []);
 
   const analyze = async () => {
     setRunning(true);
@@ -120,12 +102,12 @@ export default function Ideas({ opened }: { opened: number }) {
     }
   };
 
-  if (!insights || !agent)
+  if (!agent)
     return error ? <Failed>{error}</Failed> : <Muted>{t("loading")}</Muted>;
 
   return (
     <>
-      <Potential insights={insights} />
+      {agent.routines.length > 0 && <Total routines={agent.routines} />}
 
       <Section
         title={t("routinesTitle")}

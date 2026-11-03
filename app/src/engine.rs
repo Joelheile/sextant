@@ -136,18 +136,6 @@ impl Engine {
         Ok(result?)
     }
 
-    /// Like [`Engine::write`], then refreshes, so the next read shows the change.
-    pub fn change<T: Send + 'static>(
-        &self,
-        job: impl FnOnce(&mut Store) -> sextant_core::Result<T> + Send + 'static,
-    ) -> Result<T> {
-        self.write(move |store| {
-            let out = job(store)?;
-            store.refresh(clock::local())?;
-            Ok(out)
-        })
-    }
-
     /// Saves a settings change and hands it to the running capture.
     pub fn change_settings(&self, change: impl Fn(&mut Settings)) -> Result<Settings> {
         self.control.update(&change);
@@ -567,7 +555,7 @@ fn backfill_and_refresh(
     ingest.flush(store, now)?;
 
     emit("backfill-progress", json!({"stage": "analyzing"}));
-    store.refresh(when)?;
+    let stats = store.refresh(when)?;
     let reports: Vec<Value> = collected
         .reports
         .iter()
@@ -575,8 +563,7 @@ fn backfill_and_refresh(
         .collect();
     Ok(json!({
         "events": events,
-        "workflows": store.workflows()?.len(),
-        "hours_back": store.hours_back()?,
+        "tasks": stats.tasks,
         "sources": reports,
     }))
 }

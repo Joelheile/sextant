@@ -232,7 +232,7 @@ fn routine_count(engine: &Engine) -> Result<usize> {
 fn analyze(engine: &Engine, settings: &Settings, agent: AgentName) -> Result<()> {
     if !settings.mcp_workflows {
         bail!(
-            "turn on \"Agents can read my activities, tasks and workflows\" in Privacy first: your agent reads your weeks through it"
+            "turn on \"Agents can read my activities, tasks and routines\" in Privacy first: your agent reads your weeks through it"
         );
     }
     if RUNNING.swap(true, Ordering::SeqCst) {

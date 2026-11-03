@@ -167,7 +167,7 @@ Rule: the LLM judges, code computes (CLAUDE.md, code rule 9). It sees one compac
 
 ## Engine: a memory your agent can read
 
-Status: decided 2026-11-01. E1, D1, E2, E3 and E4a are built. It replaces the agent bridge's brief and answer in `core/src/agent.rs`, and the earlier plan of a one-shot task digest. Today the brief holds app, category and minutes per step of the workflows the rules found. That is too little for an agent to judge, and it hides every routine the rules miss.
+Status: decided 2026-11-01. E1, D1, E2, E3, E4a and E4b are built. It replaces the agent bridge's brief and answer in `core/src/agent.rs`, and the earlier plan of a one-shot task digest. Today the brief holds app, category and minutes per step of the workflows the rules found. That is too little for an agent to judge, and it hides every routine the rules miss.
 
 Code builds the graph and the day pages, local models label and embed, your Claude Code or Codex reasons over them through MCP tools, and code checks every claim. The model proposes, code measures.
 
@@ -259,7 +259,8 @@ One MCP server is the whole engine interface. The bridge, Claude Code, Claude De
 E4 ships in two steps, because the old path still drives the Workflows and Results tabs, the popover's hours, insights, the share image and corrections.
 
 - **E4a, built:** each routine on the Ideas tab shows a one-line prompt to copy: `/mcp__sextant__write_skill <id>` for Claude Code, and a plain request for Codex, whose support for MCP prompts is unclear. The `write_skill` prompt has the agent read the routine's evidence through `task`, check its draft with `check_skill` and save a `SKILL.md` where it loads skills. Every step cites a task id and an action symbol. An ignored test runs real Claude on the fixture, and every citation resolves.
-- **E4b, next:** decide what replaces each screen that reads workflows, move it to routines, then delete workflows, steps, `score.rs`, follows, step categories, the `agent_ideas` table, `list_workflows`, `get_workflow` and `get_skill`. Rename episodes to activities in code and in `schema_v9.sql` after the removal, when fewer files mention them.
+- **E4b, built:** the main window shows the routines list in place of the Workflows and Results tabs, and the popover drops its Ideas tab. The routines list shows the sum of the routines' hours a week. `schema_v9.sql` drops workflows, follows, commitments, overrides, corrections, handoffs, judgments and `agent_ideas`, along with `list_workflows`, `get_workflow`, `get_skill`, `report_handoff`, the judge and the share image. The `steps` table stays without categories, because its names label activities on the week and day pages. Copy and Reminder events no longer reach the finder. Before/after results can come back once E5 matches new tasks to a routine.
+- **Next:** rename episodes to activities in code and schema, as its own change.
 - Done when a fixture routine yields a skill whose citations all resolve, and every test passes after the removal.
 
 ### E5. Search with local embeddings

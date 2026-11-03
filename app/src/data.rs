@@ -120,7 +120,7 @@ mod tests {
         assert!(!vault.0.get(), "the key is gone");
         assert_eq!(storage_used(&dir), 0);
         assert!(
-            engine.read(|store| store.workflows()).is_err(),
+            engine.read(|store| store.routines(0)).is_err(),
             "the database is closed"
         );
         assert!(

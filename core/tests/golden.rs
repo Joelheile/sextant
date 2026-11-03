@@ -2,61 +2,7 @@ use std::fmt::Write;
 
 use insta::assert_snapshot;
 use sextant_core::fixtures::*;
-use sextant_core::{Workflow, parse_correction, redact};
-
-fn show(w: &Workflow) -> String {
-    let mut out = String::new();
-    let _ = writeln!(out, "{} [{}] id={}", w.name, w.basis, w.id);
-    let _ = writeln!(out, "variant: {}", w.variant);
-    let _ = writeln!(
-        out,
-        "cases={} hours/week={:.3} potential={:.3} desire={:.3} benefit={:.3} procrastination={:.3}",
-        w.task_count, w.hours_week, w.potential, w.desire, w.benefit, w.procrastination
-    );
-    let _ = writeln!(
-        out,
-        "kind={} action={} enjoyment={} client={} rough={}",
-        w.kind.as_str(),
-        w.action.as_str(),
-        w.enjoyment.as_str(),
-        w.client,
-        w.rough
-    );
-    let _ = writeln!(out, "first step: {}", w.first_step);
-    for step in &w.steps {
-        let _ = writeln!(
-            out,
-            "step {} ({}) minutes={:.1} potential={:.3}",
-            step.name,
-            step.category.as_str(),
-            step.minutes,
-            step.potential
-        );
-    }
-    for reason in &w.reasons {
-        let _ = writeln!(out, "reason: {reason}");
-    }
-    out
-}
-
-#[test]
-fn week_workflows() {
-    let (_db, store) = refreshed("golden-workflows");
-    let text: Vec<String> = store
-        .workflows()
-        .expect("test setup")
-        .iter()
-        .map(show)
-        .collect();
-    assert_snapshot!(text.join("\n"));
-}
-
-#[test]
-fn invoice_skill_md() {
-    let (_db, store) = refreshed("golden-skill");
-    let id = store.workflows().expect("test setup")[0].id;
-    assert_snapshot!(store.skill_md(id, UTC_OFFSET_S).expect("test setup"));
-}
+use sextant_core::redact;
 
 #[test]
 fn week_load_and_refresh_counts() {
@@ -115,34 +61,4 @@ fn redaction_samples() {
         .map(|s| format!("{s}\n=> {}", redact(s, &TEST_SECRET)))
         .collect();
     assert_snapshot!(out.join("\n\n"));
-}
-
-#[test]
-fn correction_phrases() {
-    let phrases = [
-        "I hate this",
-        "Ich hasse das",
-        "I don't like it",
-        "ich mag das nicht",
-        "I like this",
-        "Ich liebe das",
-        "It's for a client",
-        "Das ist Kundenarbeit",
-        "This can't be automated",
-        "Das lässt sich nicht automatisieren",
-        "Rename to Invoice run",
-        "Benenne das um in Rechnungslauf",
-        "hide this",
-        "Bitte ausblenden",
-        "These belong together",
-        "Das gehört zusammen",
-        "This is not one workflow",
-        "Das sind zwei Workflows",
-        "Nice weather today",
-    ];
-    let out: Vec<String> = phrases
-        .iter()
-        .map(|p| format!("{p:?} => {:?}", parse_correction(p)))
-        .collect();
-    assert_snapshot!(out.join("\n"));
 }

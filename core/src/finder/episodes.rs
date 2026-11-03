@@ -22,18 +22,11 @@ pub(crate) struct Episode {
     pub scope: String,
     pub key: String,
     pub tokens: Vec<String>,
-    pub web: bool,
     pub doc: String,
     /// Title, URL path and heading, for entity extraction.
     pub text: String,
     pub live: bool,
     pub step: usize,
-}
-
-impl Episode {
-    pub fn seconds(&self) -> i64 {
-        self.end - self.start
-    }
 }
 
 struct Segment<'a> {
@@ -106,7 +99,7 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Episode> {
 
     let mut episodes: Vec<Episode> = Vec::new();
     for segment in segments {
-        let (scope, key, tokens, web) = object_key(&segment);
+        let (scope, key, tokens) = object_key(&segment);
         let text = format!(
             "{}\n{}\n{}",
             segment.payload.title, segment.payload.url, segment.payload.text
@@ -132,7 +125,6 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Episode> {
             scope,
             key,
             tokens,
-            web,
             doc,
             text,
             live: segment.live,
@@ -142,14 +134,14 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Episode> {
     episodes
 }
 
-/// Returns scope, key, key tokens and whether the object is a web page.
+/// Returns scope, key and key tokens.
 /// Web page: host + first 2 path segments + 3 title tokens. Else app + document.
 /// Else app + title template, refined by the OCR heading when there is one.
-fn object_key(segment: &Segment) -> (String, String, Vec<String>, bool) {
+fn object_key(segment: &Segment) -> (String, String, Vec<String>) {
     let payload = segment.payload;
     if segment.meeting {
         let key = format!("meeting|{}", template(&payload.title));
-        return ("meeting".into(), key, tokens(&payload.title), false);
+        return ("meeting".into(), key, tokens(&payload.title));
     }
     let (host, path) = split_url(&payload.url);
     if !host.is_empty() {
@@ -158,7 +150,7 @@ fn object_key(segment: &Segment) -> (String, String, Vec<String>, bool) {
         let key = format!("{host}/{}|{}", path.join("/"), title.join(" "));
         let mut key_tokens: Vec<String> = path.iter().flat_map(|p| tokens(p)).collect();
         key_tokens.extend(title);
-        return (host, key, key_tokens, true);
+        return (host, key, key_tokens);
     }
     let app = segment.app.to_string();
     if !payload.doc.is_empty() {
@@ -166,7 +158,6 @@ fn object_key(segment: &Segment) -> (String, String, Vec<String>, bool) {
             app.clone(),
             format!("{app}|{}", payload.doc),
             tokens(&payload.doc),
-            false,
         );
     }
     let mut key = format!("{app}|{}", template(&payload.title));
@@ -175,7 +166,7 @@ fn object_key(segment: &Segment) -> (String, String, Vec<String>, bool) {
         key = format!("{key}|{}", template(&payload.text));
         key_tokens.extend(tokens(&payload.text));
     }
-    (app, key, key_tokens, false)
+    (app, key, key_tokens)
 }
 
 fn path_part(part: &str) -> String {
@@ -234,7 +225,7 @@ mod tests {
     #[test]
     fn episodes_are_capped_at_two_hours() {
         let episodes = build(&[focus(0, "Code", "main.rs", "")], 10 * 3600);
-        assert_eq!(episodes[0].seconds(), 7200);
+        assert_eq!(episodes[0].end - episodes[0].start, 7200);
     }
 
     #[test]

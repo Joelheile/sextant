@@ -46,7 +46,7 @@ impl Store {
         );
         let _ = writeln!(
             out,
-            "- Agent access: screen text {}, workflows {}",
+            "- Agent access: screen text {}, routines {}",
             on(settings.mcp_rewind),
             on(settings.mcp_workflows)
         );

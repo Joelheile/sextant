@@ -77,11 +77,6 @@ fn fixture_client(label: &str) -> (TempDb, Client) {
     (db, Client::new(reader))
 }
 
-fn first_workflow_id(client: &mut Client) -> i64 {
-    let list = client.tool("list_workflows", json!({})).expect("list");
-    list["workflows"][0]["id"].as_i64().expect("a workflow")
-}
-
 #[test]
 fn the_handshake_lists_every_tool() {
     let (_db, mut client) = fixture_client("mcp-handshake");
@@ -104,10 +99,6 @@ fn the_handshake_lists_every_tool() {
             "check_skill",
             "context_at",
             "day",
-            "get_skill",
-            "get_workflow",
-            "list_workflows",
-            "report_handoff",
             "routines",
             "save_routine",
             "search",
@@ -220,7 +211,7 @@ fn the_server_loop_answers_one_line_per_request_over_pipes() {
         json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
         json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
         json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
-        json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "list_workflows", "arguments": {}}}),
+        json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "routines", "arguments": {}}}),
     ]
     .map(|m| m.to_string())
     .join("\n\n");
@@ -336,59 +327,10 @@ fn every_tool_answers_from_the_fixture_week() {
     );
     assert!(client.tool("task", json!({})).is_err());
     assert!(client.tool("day", json!({"date": "yesterday"})).is_err());
-
-    let list = client.tool("list_workflows", json!({})).expect("list");
-    assert!(list["total"].as_i64().expect("total") >= 1);
-    assert!(list["hours_back"].as_f64().expect("hours") >= 0.0);
-    let id = list["workflows"][0]["id"].as_i64().expect("id");
-    assert!(
-        list["workflows"][0]["steps"]
-            .as_array()
-            .expect("steps")
-            .len()
-            >= 2
-    );
-
-    let detail = client
-        .tool("get_workflow", json!({"id": id}))
-        .expect("get_workflow");
-    assert_eq!(detail["id"], id);
-    assert!(detail["steps"][0]["name"].is_string());
-    assert!(detail["follows"].is_array() && detail["examples"].is_array());
-
-    let skill = client
-        .tool("get_skill", json!({"id": id}))
-        .expect("get_skill");
-    let skill = skill.as_str().expect("markdown");
-    assert!(
-        skill.starts_with("---") && skill.contains("## Steps"),
-        "{skill}"
-    );
-
-    let first = client
-        .tool(
-            "report_handoff",
-            json!({"id": id, "status": "started", "note": "Drafts the invoice"}),
-        )
-        .expect("report_handoff");
-    let second = client
-        .tool("report_handoff", json!({"id": id, "status": "done"}))
-        .expect("report_handoff");
-    assert_eq!(first["recorded"], true);
-    assert_eq!(
-        second["handoff_id"].as_i64(),
-        first["handoff_id"].as_i64().map(|n| n + 1)
-    );
-    assert!(
-        client
-            .tool("report_handoff", json!({"id": 999_999, "status": "done"}))
-            .is_err()
-    );
-    assert!(client.tool("get_workflow", json!({"id": 999_999})).is_err());
 }
 
 #[test]
-fn only_report_handoff_and_save_routine_write() {
+fn only_save_routine_writes() {
     let (_db, mut client) = fixture_client("mcp-read-only");
     let reply = client.request("tools/list", json!({}));
     let writers: Vec<&str> = reply["result"]["tools"]
@@ -398,7 +340,7 @@ fn only_report_handoff_and_save_routine_write() {
         .filter(|tool| tool["annotations"]["readOnlyHint"] == false)
         .map(|tool| tool["name"].as_str().expect("name"))
         .collect();
-    assert_eq!(writers, ["save_routine", "report_handoff"]);
+    assert_eq!(writers, ["save_routine"]);
 }
 
 #[test]
@@ -466,15 +408,14 @@ fn the_prompts_follow_the_work_patterns_switch() {
 #[test]
 fn numbers_must_be_whole_numbers() {
     let (_db, mut client) = fixture_client("mcp-strict-ints");
-    let id = first_workflow_id(&mut client);
     for (name, arguments) in [
-        ("list_workflows", json!({"limit": 2.5})),
-        ("list_workflows", json!({"limit": "2"})),
-        ("list_workflows", json!({"limit": 0})),
-        ("list_workflows", json!({"offset": -1})),
-        ("list_workflows", json!({"offset": "1"})),
-        ("get_workflow", json!({"id": id as f64 + 0.5})),
-        ("get_workflow", json!({"id": id.to_string()})),
+        ("search", json!({"query": "invoice", "limit": 2.5})),
+        ("search", json!({"query": "invoice", "limit": "2"})),
+        ("search", json!({"query": "invoice", "limit": 0})),
+        ("search", json!({"query": "invoice", "offset": -1})),
+        ("search", json!({"query": "invoice", "offset": "1"})),
+        ("task", json!({"id": 1.5})),
+        ("task", json!({"id": "1"})),
         (
             "context_at",
             json!({"time": "2026-03-02T09:40", "window": "60"}),
@@ -485,12 +426,15 @@ fn numbers_must_be_whole_numbers() {
     }
     assert!(
         client
-            .tool("list_workflows", json!({"limit": 2, "offset": 0}))
+            .tool(
+                "search",
+                json!({"query": "invoice", "limit": 2, "offset": 0})
+            )
             .is_ok()
     );
     assert!(
         client
-            .tool("list_workflows", json!({"limit": null}))
+            .tool("search", json!({"query": "invoice", "limit": null}))
             .is_ok()
     );
 }
@@ -541,10 +485,6 @@ fn results_are_capped_and_paginated() {
         .tool("search", json!({"query": "invoice", "limit": 100_000}))
         .expect("search");
     assert!(huge["lines"].as_i64().expect("lines") <= 200);
-    let one = client
-        .tool("list_workflows", json!({"limit": 1}))
-        .expect("list");
-    assert_eq!(one["workflows"].as_array().expect("rows").len(), 1);
 }
 
 #[test]
@@ -554,18 +494,6 @@ fn excluded_apps_never_reach_the_output() {
         .tool("search", json!({"query": "invoice"}))
         .expect("search");
     assert!(before.to_string().contains("\"app\":\"Mail\""));
-    let ids = |client: &mut Client| -> BTreeSet<i64> {
-        let list = client
-            .tool("list_workflows", json!({"limit": 200}))
-            .expect("list");
-        list["workflows"]
-            .as_array()
-            .expect("rows")
-            .iter()
-            .map(|w| w["id"].as_i64().expect("id"))
-            .collect()
-    };
-    let all_ids = ids(&mut client);
 
     client.settings.borrow_mut().excluded_apps = vec!["mail".into()];
     let after = client
@@ -586,19 +514,6 @@ fn excluded_apps_never_reach_the_output() {
         let page = client.tool(name, args).expect(name);
         assert!(!page.to_string().contains("Mail"), "{page}");
     }
-
-    let visible = ids(&mut client);
-    let hidden: Vec<i64> = all_ids.difference(&visible).copied().collect();
-    assert!(!hidden.is_empty(), "the invoice workflow has a Mail step");
-    for id in hidden {
-        assert!(client.tool("get_workflow", json!({"id": id})).is_err());
-        assert!(client.tool("get_skill", json!({"id": id})).is_err());
-        assert!(
-            client
-                .tool("report_handoff", json!({"id": id, "status": "done"}))
-                .is_err()
-        );
-    }
 }
 
 #[test]
@@ -617,18 +532,17 @@ fn private_data_is_redacted_in_every_answer() {
 }
 
 #[test]
-fn rewind_and_workflow_tools_switch_off_separately() {
+fn rewind_and_routine_tools_switch_off_separately() {
     let (_db, mut client) = fixture_client("mcp-switches");
-    let id = first_workflow_id(&mut client);
 
     client.settings.borrow_mut().mcp_rewind = false;
     let names = client.tool_names();
     assert!(
         !names.contains("search") && !names.contains("context_at") && !names.contains("timeline")
     );
-    assert!(names.contains("list_workflows"));
+    assert!(names.contains("routines"));
     assert!(client.tool("search", json!({"query": "invoice"})).is_err());
-    assert!(client.tool("get_workflow", json!({"id": id})).is_ok());
+    assert!(client.tool("routines", json!({})).is_ok());
 
     *client.settings.borrow_mut() = Settings {
         mcp_workflows: false,
@@ -636,12 +550,8 @@ fn rewind_and_workflow_tools_switch_off_separately() {
     };
     let names = client.tool_names();
     assert_eq!(names.len(), 3, "{names:?}");
-    assert!(client.tool("list_workflows", json!({})).is_err());
-    assert!(
-        client
-            .tool("report_handoff", json!({"id": id, "status": "done"}))
-            .is_err()
-    );
+    assert!(client.tool("routines", json!({})).is_err());
+    assert!(client.tool("week", json!({})).is_err());
     assert!(client.tool("search", json!({"query": "invoice"})).is_ok());
 }
 
@@ -665,7 +575,10 @@ fn every_tool_stays_under_200_ms_p95() {
     load(&mut store, &generate(&spec), now).expect("test setup");
     store.refresh(local(now)).expect("test setup");
     let mut client = Client::new(store.reader().expect("test setup"));
-    let id = first_workflow_id(&mut client);
+    let week = client
+        .tool("week", json!({"start": "2026-03-09"}))
+        .expect("week");
+    let task = week["repeated_tasks"][0]["task_ids"][0].clone();
 
     let calls: Vec<(&str, Value)> = vec![
         ("search", json!({"query": "pricing"})),
@@ -680,9 +593,8 @@ fn every_tool_stays_under_200_ms_p95() {
         ),
         ("week", json!({"start": "2026-03-09"})),
         ("day", json!({"date": "2026-03-10"})),
-        ("list_workflows", json!({})),
-        ("get_workflow", json!({"id": id})),
-        ("get_skill", json!({"id": id})),
+        ("task", json!({"id": task})),
+        ("routines", json!({})),
     ];
     let mut worst = Duration::ZERO;
     for (name, args) in calls {
@@ -697,19 +609,6 @@ fn every_tool_stays_under_200_ms_p95() {
         println!("mcp {name:15} {args:60} p95 {p:?}");
         worst = worst.max(p);
     }
-    let writing = (0..50)
-        .map(|_| {
-            let started = Instant::now();
-            client
-                .tool("report_handoff", json!({"id": id, "status": "started"}))
-                .expect("handoff");
-            started.elapsed()
-        })
-        .collect::<Vec<_>>();
-    let mut writing = writing;
-    let p = p95(&mut writing);
-    println!("mcp {:15} {:60} p95 {p:?}", "report_handoff", "");
-    worst = worst.max(p);
     assert!(
         worst < MCP_P95,
         "worst tool p95 {worst:?} is over the {MCP_P95:?} budget"

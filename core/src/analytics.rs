@@ -1,13 +1,11 @@
-//! What the menu bar shows about your day: active time, apps, switching, calls and how much time
-//! went into workflows an agent could take. Computed from live episodes only, so backfill never
-//! counts as time at the computer. Shown to the user on this Mac, never sent anywhere.
+//! What the menu bar shows about your day: active time, apps, switching and calls. Computed from
+//! live episodes only, so backfill never counts as time at the computer. Shown to the user on this Mac, never sent anywhere.
 
 use std::collections::{HashMap, HashSet};
 
 use rusqlite::params;
 
 use crate::error::Result;
-use crate::finder::Action;
 use crate::store::Store;
 use crate::time::{DAY, Local, WEEK_DAYS, day};
 use crate::writer::unpack;
@@ -42,24 +40,19 @@ pub struct Insights {
     pub call_minutes: f64,
     /// When the last screen was captured.
     pub last_capture: Option<i64>,
-    /// Hours in the steps of workflows to automate or assist, the last 7 days.
-    pub automatable_hours: f64,
-    /// The same for the 7 days before.
-    pub automatable_hours_last_week: f64,
 }
 
 struct Span {
     start: i64,
     end: i64,
     app: String,
-    step: i64,
 }
 
 impl Store {
     pub fn insights(&self, when: Local) -> Result<Insights> {
         let Local { now, utc_offset_s } = when;
         let today = day(now, utc_offset_s) * DAY - i64::from(utc_offset_s);
-        let spans = self.live_spans(now - 2 * WEEK_DAYS * DAY, now)?;
+        let spans = self.live_spans(now - WEEK_DAYS * DAY, now)?;
         let in_range = |from: i64, to: i64| {
             spans.iter().filter_map(move |s| {
                 let (start, end) = (s.start.max(from), s.end.min(to));
@@ -95,15 +88,6 @@ impl Store {
         let (switches, longest_s) = focus(&today_spans);
         let active_minutes = minutes(today, now);
 
-        let automatable = self.automatable_steps()?;
-        let automatable_hours = |from: i64, to: i64| {
-            in_range(from, to)
-                .filter(|(s, _)| automatable.contains(&s.step))
-                .map(|(_, seconds)| seconds)
-                .sum::<i64>() as f64
-                / 3600.0
-        };
-
         Ok(Insights {
             active_minutes,
             days,
@@ -115,17 +99,12 @@ impl Store {
             lines: self.lines_since(today)?,
             call_minutes: self.call_seconds(today, now)? as f64 / 60.0,
             last_capture: self.last_capture()?.map(|(ts, _)| ts),
-            automatable_hours: automatable_hours(now - WEEK_DAYS * DAY, now),
-            automatable_hours_last_week: automatable_hours(
-                now - 2 * WEEK_DAYS * DAY,
-                now - WEEK_DAYS * DAY,
-            ),
         })
     }
 
     fn live_spans(&self, from: i64, to: i64) -> Result<Vec<Span>> {
         let mut statement = self.conn.prepare(
-            "SELECT start_ts, end_ts, app, step_id FROM episodes
+            "SELECT start_ts, end_ts, app FROM episodes
              WHERE live = 1 AND end_ts > ?1 AND start_ts < ?2 ORDER BY start_ts",
         )?;
         let rows = statement.query_map(params![from, to], |row| {
@@ -133,32 +112,9 @@ impl Store {
                 start: row.get(0)?,
                 end: row.get(1)?,
                 app: row.get(2)?,
-                step: row.get(3)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
-    }
-
-    /// Step ids of the workflows the finder marks to automate or assist.
-    fn automatable_steps(&self) -> Result<HashSet<i64>> {
-        let keys: HashSet<String> = self
-            .workflows()?
-            .into_iter()
-            .filter(|w| matches!(w.action, Action::Automate | Action::Assist))
-            .flat_map(|w| w.steps.into_iter().map(|s| s.key))
-            .collect();
-        let mut statement = self.conn.prepare("SELECT id, key FROM steps")?;
-        let rows = statement.query_map([], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })?;
-        let mut ids = HashSet::new();
-        for row in rows {
-            let (id, key) = row?;
-            if keys.contains(&key) {
-                ids.insert(id);
-            }
-        }
-        Ok(ids)
     }
 
     /// Reads the line ids packed into each frame since `from`, so it seeks `frames_ts` instead of

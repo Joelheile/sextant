@@ -18,7 +18,6 @@ unsafe extern "C" {
         forward: Forward,
         context: *mut c_void,
     ) -> *mut c_char;
-    fn sextant_language_judge(input: *const c_char) -> *mut c_char;
     fn sextant_language_free(pointer: *mut c_char);
 }
 
@@ -42,21 +41,6 @@ pub struct Answer {
     pub text: String,
     /// Counts from 1; 0 when no note supports the answer.
     pub note: usize,
-}
-
-/// What the model sees of a recurring step: no screen text, only templated keys.
-#[derive(Debug, Serialize)]
-pub struct Step<'a> {
-    pub name: &'a str,
-    pub category: &'a str,
-    pub apps: &'a [String],
-    pub objects: &'a [String],
-}
-
-#[derive(Debug, Deserialize)]
-struct Judgment {
-    share: String,
-    reason: String,
 }
 
 #[derive(Serialize)]
@@ -124,22 +108,6 @@ unsafe extern "C" fn forward(context: *mut c_void, text: *const c_char) {
     }
 }
 
-/// The share of `step` an agent could do, 0.1 to 0.9, and why.
-pub fn judge(step: &Step) -> Option<(f64, String)> {
-    let input = serde_json::to_string(step).ok()?;
-    // SAFETY: `call` passes a valid C string.
-    let judgment: Judgment = call(|input| unsafe { sextant_language_judge(input) }, &input)?;
-    let share = match judgment.share.as_str() {
-        "not at all" => 0.1,
-        "a little" => 0.3,
-        "half" => 0.5,
-        "most" => 0.7,
-        "nearly all" => 0.9,
-        _ => return None,
-    };
-    Some((share, format!("{}: {}", judgment.share, judgment.reason)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,17 +155,5 @@ mod tests {
         println!("{answer:?}");
         assert_eq!(answer.note, 2);
         assert!(answer.text.contains("40"));
-
-        let apps = ["Mail".to_string(), "Numbers".to_string()];
-        let objects = ["invoice <n>.pdf".to_string(), "Re: Invoice <n>".to_string()];
-        let judged = judge(&Step {
-            name: "Copy invoice totals into a sheet",
-            category: "spreadsheet",
-            apps: &apps,
-            objects: &objects,
-        })
-        .expect("judge");
-        println!("{judged:?}");
-        assert!(judged.0 >= 0.5, "copying is mostly automatable");
     }
 }

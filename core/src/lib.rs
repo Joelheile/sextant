@@ -1,4 +1,4 @@
-//! Sextant logic without OS APIs: storage, work graph, finder. See plan.md §7.
+//! Sextant logic without OS APIs: storage, work graph, routines. See plan.md §7.
 
 pub mod agent;
 mod analytics;
@@ -6,9 +6,7 @@ pub mod audio;
 pub mod backfill;
 pub mod capture;
 pub mod connect;
-mod corrections;
 mod debug;
-mod enjoyment;
 mod error;
 mod finder;
 pub mod fixtures;
@@ -18,30 +16,24 @@ mod pages;
 pub mod profile_fixture;
 mod recall;
 mod redact;
-mod report;
-mod results;
 mod rewind;
 mod routines;
 mod search;
 mod sent;
 mod sessions;
 pub mod settings;
-pub mod skill;
 mod store;
 mod text;
 mod time;
 mod writer;
 
 pub use analytics::Insights;
-pub use corrections::{Rule, Target, parse as parse_correction};
 pub use debug::Facts;
-pub use enjoyment::Enjoyment;
 pub use error::{Error, Result};
-pub use finder::{Action, Category, Kind, ValueType, Workflow, WorkflowDetail};
+pub use finder::ValueType;
 pub use model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
 pub use recall::keywords;
 pub use redact::{Secret, redact};
-pub use results::{MIN_DAYS, Measurement};
 pub use rewind::Turn;
 pub use routines::Routine;
 pub use search::HitSource;

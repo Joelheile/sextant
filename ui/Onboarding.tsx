@@ -11,7 +11,6 @@ import {
 } from "./api";
 import { t, type Key } from "./i18n";
 import { Done, Failed, List } from "./layout";
-import MapList from "./MapList";
 import { AllowButton, PERMISSION_LABEL, PermissionNotes, usePermissions } from "./Permissions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -196,7 +195,9 @@ function FirstMap({ onNext }: { onNext: () => void }) {
       {backfill.state === "failed" && <Failed>{t("mapFailed", { message: backfill.message })}</Failed>}
       {backfill.state === "done" && (
         <>
-          <MapList headline />
+          <p className="text-sm">
+            {t("mapDone", { events: backfill.summary.events, tasks: backfill.summary.tasks })}
+          </p>
           <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
             {backfill.summary.sources.flatMap((source) =>
               source.errors.map((message) => (
