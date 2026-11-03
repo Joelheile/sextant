@@ -12,17 +12,8 @@ use crate::redact::Secret;
 use crate::time::{DAY, Local};
 use crate::writer::unpack;
 
-const MIGRATIONS: &[&str] = &[
-    include_str!("schema_v1.sql"),
-    include_str!("schema_v2.sql"),
-    include_str!("schema_v3.sql"),
-    include_str!("schema_v4.sql"),
-    include_str!("schema_v5.sql"),
-    include_str!("schema_v6.sql"),
-    include_str!("schema_v7.sql"),
-    include_str!("schema_v8.sql"),
-    include_str!("schema_v9.sql"),
-];
+/// The 0.1.0 schema. A later change appends a migration here.
+const MIGRATIONS: &[&str] = &[include_str!("schema.sql")];
 
 const EMAIL_SECRET: &str = "email_secret";
 const LAST_VACUUM: &str = "last_vacuum";
@@ -54,8 +45,6 @@ pub struct Retained {
     pub events: usize,
     pub lines: usize,
     pub windows: usize,
-    /// Rewind search questions and answers.
-    pub turns: usize,
 }
 
 /// Row counts of the raw tables. Numbers only, safe for logs and tests.
@@ -244,7 +233,6 @@ impl Store {
             range,
         )?;
         gone.events = tx.execute("DELETE FROM events WHERE ts >= ?1 AND ts < ?2", range)?;
-        gone.turns = tx.execute("DELETE FROM turns WHERE ts >= ?1 AND ts < ?2", range)?;
         tx.execute("DELETE FROM sent WHERE ts >= ?1 AND ts < ?2", range)?;
         {
             let mut line = tx.prepare(
@@ -392,13 +380,7 @@ mod tests {
         let mut store = db.open().expect("test setup");
         load(&mut store, &week(), WEEK_NOW).expect("test setup");
         store.refresh(local(WEEK_NOW)).expect("test setup");
-        let tables = [
-            "activities",
-            "entities",
-            "mentions",
-            "tasks",
-            "task_activities",
-        ];
+        let tables = ["activities", "tasks", "task_activities"];
         for table in tables {
             assert!(count(&store, &format!("SELECT count(*) FROM {table}")) > 0);
         }
@@ -412,13 +394,6 @@ mod tests {
         assert_eq!(newer("SELECT count(*) FROM events WHERE ts <"), 0);
         assert_eq!(newer("SELECT count(*) FROM activities WHERE end_ts <"), 0);
         assert_eq!(newer("SELECT count(*) FROM tasks WHERE last_ts <"), 0);
-        assert_eq!(
-            count(
-                &store,
-                "SELECT count(*) FROM mentions WHERE activity_id NOT IN (SELECT id FROM activities)"
-            ),
-            0
-        );
         assert_eq!(
             count(
                 &store,

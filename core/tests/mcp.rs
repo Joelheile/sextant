@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use sextant_core::fixtures::*;
 use sextant_core::mcp::Server;
-use sextant_core::{Event, EventKind, Item, Settings, Source, Store, Writer};
+use sextant_core::{Settings, Store};
 
 const MCP_P95: Duration = Duration::from_millis(200);
 const DAY: i64 = 86_400;
@@ -139,40 +139,6 @@ fn every_answer_is_logged_with_its_client_and_size_before_it_goes_out() {
 }
 
 #[test]
-fn the_timeline_lists_upcoming_meetings_at_their_real_time() {
-    let db = TempDb::new("mcp-upcoming");
-    let mut store = db.open().expect("test setup");
-    load(&mut store, &week(), WEEK_NOW).expect("test setup");
-    let start = WEEK_NOW + 2 * DAY;
-    let mut writer = Writer::new();
-    writer.push(Item::Event(Event {
-        ts: start,
-        kind: EventKind::Calendar,
-        source: Source::Backfill,
-        json: json!({"title": "Planning soon", "end_ts": start + 3600}),
-    }));
-    writer.flush(&mut store, WEEK_NOW).expect("test setup");
-    store.refresh(local(WEEK_NOW)).expect("test setup");
-    let mut client = Client::new(store.reader().expect("test setup"));
-
-    let ahead = client
-        .tool(
-            "timeline",
-            json!({"from": "2026-03-08", "to": "2026-03-10"}),
-        )
-        .expect("timeline");
-    let items = ahead["items"].as_array().expect("items");
-    assert_eq!(items.len(), 1, "{ahead}");
-    assert_eq!(items[0]["what"], "Planning soon");
-    assert!(
-        items[0]["start"]
-            .as_str()
-            .expect("start")
-            .starts_with("2026-03-09T08:00")
-    );
-}
-
-#[test]
 fn bad_requests_get_json_rpc_errors() {
     let (_db, mut client) = fixture_client("mcp-errors");
     let parse: Value =
@@ -296,11 +262,7 @@ fn every_tool_answers_from_the_fixture_week() {
         .iter()
         .map(|i| i["kind"].as_str().expect("kind"))
         .collect();
-    assert!(
-        kinds.contains("activity") && kinds.contains("meeting"),
-        "{kinds:?}"
-    );
-    assert!(week["items"].to_string().contains("Weekly sync"));
+    assert_eq!(kinds, BTreeSet::from(["activity"]));
 
     let page = client
         .tool("week", json!({"start": "2026-03-02"}))

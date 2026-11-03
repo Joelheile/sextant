@@ -3,15 +3,15 @@ source: core/tests/golden.rs
 expression: "format!(\"{flushed:#?}\\n{stats:#?}\")"
 ---
 Flushed {
-    events: 284,
+    events: 266,
     frames: 122,
     duplicate_frames: 11,
     utterances: 6,
     new_lines: 62,
 }
 RefreshStats {
-    activities: 135,
-    steps: 32,
+    activities: 133,
+    steps: 31,
     entities: 15,
     tasks: 5,
 }

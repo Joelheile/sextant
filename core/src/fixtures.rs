@@ -2,7 +2,7 @@
 //!
 //! The week is Monday 2026-03-02 to Friday 2026-03-06 at UTC+01:00. It holds 5 invoices that each
 //! run through Mail, Excel and lexoffice over 2 to 4 days, a daily calendar, Slack and Linear routine,
-//! two meetings, promises, a reminder and noise between. No images or audio.
+//! promises said on calls, and noise between. No images or audio.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use serde_json::{Value, json};
 
 use crate::error::Result;
-use crate::model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
+use crate::model::{Event, EventKind, Frame, Item, OcrLine, Speaker, Utterance, Window};
 use crate::redact::Secret;
 use crate::store::{Key, Store};
 use crate::time::{DAY, Local};
@@ -78,7 +78,6 @@ pub fn generate(spec: &Spec) -> Fixture {
         for day in 0..5 {
             routine(&mut fixture, &mut planned, monday + day * DAY, day);
         }
-        meetings(&mut fixture, monday, &mut planned);
         promises(&mut fixture, monday, week);
         for day in 0..5 {
             noise(
@@ -114,7 +113,7 @@ pub fn actions_week() -> (Fixture, Vec<(i64, String)>) {
     for (index, (number, german, visits)) in INVOICES.iter().enumerate() {
         let id = format!("{}-2026-{number:04}", if *german { "RE" } else { "INV" });
         let (_, amount) = CLIENTS[index];
-        for &(day, hour, minute, part, seconds, _) in *visits {
+        for &(day, hour, minute, part, seconds) in *visits {
             let start = at(WEEK_START + day * DAY, hour, minute);
             truth.push((start, id.clone()));
             visit_actions(
@@ -145,7 +144,6 @@ pub fn actions_week() -> (Fixture, Vec<(i64, String)>) {
             ),
             "",
             Vec::new(),
-            false,
         );
         act(
             &mut fixture,
@@ -178,7 +176,6 @@ pub fn actions_week() -> (Fixture, Vec<(i64, String)>) {
         window("Slack", "Slack | #lunch", "", ""),
         "",
         Vec::new(),
-        false,
     );
     act(
         &mut fixture,
@@ -245,12 +242,7 @@ fn act(f: &mut Fixture, ts: i64, app: &str, label: &str, value: Option<&str>) {
     if let Some(value) = value {
         json["value"] = Value::String(value.into());
     }
-    f.events.push(Event {
-        ts,
-        kind,
-        source: Source::Live,
-        json,
-    });
+    f.events.push(Event { ts, kind, json });
 }
 
 /// Pushes everything through a `Writer`, in the order a live session would, and flushes once.
@@ -342,7 +334,6 @@ fn focus(ts: i64, app: &str, title: &str, doc: &str, url: &str, text: &str) -> E
     Event {
         ts,
         kind: EventKind::Focus,
-        source: Source::Live,
         json,
     }
 }
@@ -351,21 +342,11 @@ fn idle(ts: i64) -> Event {
     Event {
         ts,
         kind: EventKind::Idle,
-        source: Source::Live,
         json: json!({}),
     }
 }
 
-fn copy(ts: i64, app: &str) -> Event {
-    Event {
-        ts,
-        kind: EventKind::Copy,
-        source: Source::Live,
-        json: json!({"app": app}),
-    }
-}
-
-/// One activity: focus, optional copy event 20 s before the end, idle, and one OCR frame.
+/// One activity: focus, idle, and one OCR frame.
 #[allow(clippy::too_many_arguments)]
 fn activity(
     f: &mut Fixture,
@@ -375,7 +356,6 @@ fn activity(
     window: Window,
     text: &str,
     lines: Vec<String>,
-    copied: bool,
 ) {
     f.events.push(focus(
         start,
@@ -385,9 +365,6 @@ fn activity(
         &window.url,
         text,
     ));
-    if copied {
-        f.events.push(copy(start + seconds - 20, &window.app));
-    }
     f.events.push(idle(start + seconds));
     if !lines.is_empty() {
         let lines = lines
@@ -424,56 +401,56 @@ pub(crate) enum Part {
     Lex,
 }
 
-pub(crate) type Visit = (i64, i64, i64, Part, i64, bool);
+pub(crate) type Visit = (i64, i64, i64, Part, i64);
 
-/// Per invoice: number offset, German, then (day, hour, minute, part, seconds, copy-event) visits.
+/// Per invoice: number offset, German, then (day, hour, minute, part, seconds) visits.
 pub(crate) const INVOICES: [(u32, bool, &[Visit]); 5] = [
     (
         412,
         false,
         &[
-            (0, 9, 40, Part::Mail, 240, true),
-            (0, 9, 46, Part::Excel, 360, false),
-            (1, 10, 20, Part::Lex, 420, false),
+            (0, 9, 40, Part::Mail, 240),
+            (0, 9, 46, Part::Excel, 360),
+            (1, 10, 20, Part::Lex, 420),
         ],
     ),
     (
         415,
         true,
         &[
-            (0, 11, 5, Part::Mail, 200, false),
-            (1, 11, 30, Part::Excel, 330, true),
-            (1, 11, 38, Part::Lex, 400, false),
-            (2, 15, 0, Part::Lex, 180, false),
+            (0, 11, 5, Part::Mail, 200),
+            (1, 11, 30, Part::Excel, 330),
+            (1, 11, 38, Part::Lex, 400),
+            (2, 15, 0, Part::Lex, 180),
         ],
     ),
     (
         418,
         false,
         &[
-            (1, 15, 45, Part::Mail, 260, true),
-            (1, 15, 51, Part::Excel, 300, false),
-            (2, 10, 10, Part::Excel, 150, false),
-            (3, 9, 30, Part::Lex, 450, false),
+            (1, 15, 45, Part::Mail, 260),
+            (1, 15, 51, Part::Excel, 300),
+            (2, 10, 10, Part::Excel, 150),
+            (3, 9, 30, Part::Lex, 450),
         ],
     ),
     (
         420,
         true,
         &[
-            (1, 16, 30, Part::Mail, 180, false),
-            (2, 16, 0, Part::Excel, 340, false),
-            (3, 11, 20, Part::Excel, 200, false),
-            (4, 10, 0, Part::Lex, 410, false),
+            (1, 16, 30, Part::Mail, 180),
+            (2, 16, 0, Part::Excel, 340),
+            (3, 11, 20, Part::Excel, 200),
+            (4, 10, 0, Part::Lex, 410),
         ],
     ),
     (
         423,
         false,
         &[
-            (2, 13, 0, Part::Mail, 220, false),
-            (3, 14, 30, Part::Excel, 350, true),
-            (3, 14, 38, Part::Lex, 430, false),
+            (2, 13, 0, Part::Mail, 220),
+            (3, 14, 30, Part::Excel, 350),
+            (3, 14, 38, Part::Lex, 430),
         ],
     ),
 ];
@@ -494,7 +471,7 @@ fn invoices(f: &mut Fixture, monday: i64, week: u32, planned: &mut Planned) {
             number + 20 * week
         );
         let (client, amount) = CLIENTS[index];
-        for &(day, hour, minute, part, seconds, copied) in *visits {
+        for &(day, hour, minute, part, seconds) in *visits {
             let start = at(monday + day * DAY, hour, minute);
             let (win, text, lines) = match part {
                 Part::Mail if *german => (
@@ -550,7 +527,7 @@ fn invoices(f: &mut Fixture, monday: i64, week: u32, planned: &mut Planned) {
                     ],
                 ),
             };
-            activity(f, planned, start, seconds, win, &text, lines, copied);
+            activity(f, planned, start, seconds, win, &text, lines);
         }
     }
 }
@@ -574,7 +551,6 @@ fn routine(f: &mut Fixture, planned: &mut Planned, midnight: i64, day: i64) {
         window("Calendar", "Calendar - Today", "", ""),
         "",
         vec!["Today".into(), "Weekly sync at 14:00".into()],
-        false,
     );
     activity(
         f,
@@ -584,7 +560,6 @@ fn routine(f: &mut Fixture, planned: &mut Planned, midnight: i64, day: i64) {
         window("Slack", "Slack | #standup", "", ""),
         "",
         slack,
-        false,
     );
     activity(
         f,
@@ -594,22 +569,7 @@ fn routine(f: &mut Fixture, planned: &mut Planned, midnight: i64, day: i64) {
         window("Linear", "Linear | My issues", "", ""),
         "",
         vec!["My issues".into(), "3 in progress".into()],
-        false,
     );
-}
-
-fn meetings(f: &mut Fixture, monday: i64, planned: &mut Planned) {
-    for (day, hour, minute, minutes) in [(2, 14, 0, 45), (4, 15, 0, 30)] {
-        let start = at(monday + day * DAY, hour, minute);
-        let end = start + minutes * 60;
-        f.events.push(Event {
-            ts: start,
-            kind: EventKind::Calendar,
-            source: Source::Backfill,
-            json: json!({"title": "Weekly sync", "end_ts": end}),
-        });
-        planned.push((start, end));
-    }
 }
 
 fn promises(f: &mut Fixture, monday: i64, week: u32) {
@@ -664,12 +624,6 @@ fn promises(f: &mut Fixture, monday: i64, week: u32) {
             "Jonas: Die Preisliste ist noch nicht fertig.".into(),
         ),
     ]);
-    f.events.push(Event {
-        ts: at(monday + 2 * DAY, 13, 10),
-        kind: EventKind::Reminder,
-        source: Source::Backfill,
-        json: json!({"title": format!("Send reminder for {}", id(423)), "due_ts": at(monday + 3 * DAY, 17, 0), "done": false}),
-    });
 }
 
 /// (app, url, title, doc). `{n}` becomes a random number, which the title template removes again.
@@ -833,7 +787,6 @@ fn noise(f: &mut Fixture, midnight: i64, per_day: u32, planned: &Planned, rng: &
             window(app, &fill(title), doc, &fill(url)),
             "",
             lines,
-            rng.below(12) == 0,
         );
         cursor = end;
         placed += 1;

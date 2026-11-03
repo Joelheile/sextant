@@ -15,7 +15,7 @@ fn loaded(label: &str) -> (TempDb, Store) {
 #[test]
 fn database_is_encrypted_and_versioned() {
     let (db, store) = loaded("encrypted");
-    assert_eq!(store.schema_version().expect("test setup"), 9);
+    assert_eq!(store.schema_version().expect("test setup"), 1);
     drop(store);
     let mut header = [0u8; 16];
     std::fs::File::open(&db.path)
@@ -32,7 +32,7 @@ fn database_is_encrypted_and_versioned() {
             .expect("test setup")
             .schema_version()
             .expect("test setup"),
-        9
+        1
     );
 }
 
@@ -45,51 +45,49 @@ fn raw_connection(db: &TempDb) -> rusqlite::Connection {
 }
 
 #[test]
-fn a_v5_database_upgrades_to_v9_without_the_workflow_tables() {
-    let db = TempDb::new("upgrade-v5");
-    let conn = raw_connection(&db);
-    for schema in [
-        include_str!("../src/schema_v1.sql"),
-        include_str!("../src/schema_v2.sql"),
-        include_str!("../src/schema_v3.sql"),
-        include_str!("../src/schema_v4.sql"),
-        include_str!("../src/schema_v5.sql"),
-    ] {
-        conn.execute_batch(schema).expect("test setup");
-    }
-    conn.pragma_update(None, "user_version", 5)
-        .expect("test setup");
-    conn.execute(
-        "INSERT INTO handoffs(workflow_id, ts, status, note) VALUES (1, 1, 'done', '')",
-        [],
-    )
-    .expect("test setup");
-    drop(conn);
-
-    let store = Store::open(&db.path, &TEST_KEY, &TEST_SECRET).expect("upgrade");
-    assert_eq!(store.schema_version().expect("test setup"), 9);
+fn the_schema_holds_raw_capture_derived_tables_and_yours() {
+    let (db, store) = loaded("schema");
     drop(store);
-
     let conn = raw_connection(&db);
     let tables: Vec<String> = conn
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+        .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%STRICT%' ORDER BY name",
+        )
         .expect("test setup")
         .query_map([], |row| row.get(0))
         .expect("test setup")
         .collect::<rusqlite::Result<_>>()
         .expect("test setup");
-    for gone in [
-        "workflows",
-        "follows",
-        "commitments",
-        "handoffs",
-        "judgments",
-    ] {
-        assert!(!tables.iter().any(|t| t == gone), "{gone} in {tables:?}");
-    }
-    conn.prepare("SELECT id, key, name FROM steps")
-        .expect("steps keep their names");
-    assert!(conn.prepare("SELECT workflow_id FROM tasks").is_err());
+    assert_eq!(
+        tables,
+        [
+            "activities",
+            "agent_runs",
+            "events",
+            "frame_lines",
+            "frames",
+            "lines",
+            "meta",
+            "routine_spans",
+            "routines",
+            "sent",
+            "steps",
+            "task_activities",
+            "tasks",
+            "utterances",
+            "windows",
+        ]
+    );
+    let wrong_type = conn.execute(
+        "INSERT INTO events(ts, kind, json) VALUES ('soon', 'focus', '{}')",
+        [],
+    );
+    assert!(wrong_type.is_err(), "STRICT rejects text in a time column");
+    let unknown_kind = conn.execute(
+        "INSERT INTO events(ts, kind, json) VALUES (1, 'copy', '{}')",
+        [],
+    );
+    assert!(unknown_kind.is_err(), "only captured kinds are allowed");
 }
 
 #[test]

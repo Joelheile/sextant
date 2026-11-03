@@ -10,7 +10,6 @@ const MERGE_GAP_S: i64 = 120;
 pub(crate) struct EventRow {
     pub ts: i64,
     pub kind: String,
-    pub live: bool,
     pub payload: Payload,
 }
 
@@ -25,7 +24,6 @@ pub(crate) struct Activity {
     pub doc: String,
     /// Title, URL path and heading, for entity extraction.
     pub text: String,
-    pub live: bool,
     pub step: usize,
 }
 
@@ -33,9 +31,7 @@ struct Segment<'a> {
     start: i64,
     end: i64,
     app: &'a str,
-    meeting: bool,
     payload: &'a Payload,
-    live: bool,
 }
 
 fn close<'a>(open: &mut Option<Segment<'a>>, segments: &mut Vec<Segment<'a>>, at: i64) {
@@ -58,38 +54,10 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Activity> {
                     start: event.ts,
                     end: event.ts,
                     app: &payload.app,
-                    meeting: false,
                     payload,
-                    live: event.live,
                 });
             }
             "idle" | "pause" => close(&mut open, &mut segments, event.ts),
-            "visit" => {
-                let app = if payload.app.is_empty() {
-                    "Browser"
-                } else {
-                    &payload.app
-                };
-                let end = event.ts + payload.dur_s;
-                segments.push(Segment {
-                    start: event.ts,
-                    end,
-                    app,
-                    meeting: false,
-                    payload,
-                    live: event.live,
-                });
-            }
-            "calendar" => {
-                segments.push(Segment {
-                    start: event.ts,
-                    end: payload.end_ts.min(now),
-                    app: "Calendar",
-                    meeting: true,
-                    payload,
-                    live: event.live,
-                });
-            }
             _ => {}
         }
     }
@@ -111,7 +79,6 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Activity> {
                 && end - last.start <= MAX_ACTIVITY_S
             {
                 last.end = end;
-                last.live |= segment.live;
                 last.text.push('\n');
                 last.text.push_str(&text);
                 continue;
@@ -127,7 +94,6 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Activity> {
             tokens,
             doc,
             text,
-            live: segment.live,
             step: 0,
         });
     }
@@ -139,10 +105,6 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Activity> {
 /// Else app + title template, refined by the OCR heading when there is one.
 fn object_key(segment: &Segment) -> (String, String, Vec<String>) {
     let payload = segment.payload;
-    if segment.meeting {
-        let key = format!("meeting|{}", template(&payload.title));
-        return ("meeting".into(), key, tokens(&payload.title));
-    }
     let (host, path) = split_url(&payload.url);
     if !host.is_empty() {
         let path: Vec<String> = path.iter().take(2).map(|part| path_part(part)).collect();
@@ -185,7 +147,6 @@ mod tests {
         EventRow {
             ts,
             kind: "focus".into(),
-            live: true,
             payload: Payload {
                 app: app.into(),
                 title: title.into(),
@@ -199,7 +160,6 @@ mod tests {
         EventRow {
             ts,
             kind: "idle".into(),
-            live: true,
             payload: Payload::default(),
         }
     }

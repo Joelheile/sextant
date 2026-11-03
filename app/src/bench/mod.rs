@@ -208,7 +208,6 @@ fn report(
             blocked.join(", ")
         }
     );
-    println!("copies seen            {}", Stats::get(&stats.copies));
     println!("presses seen           {}", Stats::get(&stats.presses));
     println!("field edits seen       {}", Stats::get(&stats.edits));
     if Stats::get(&stats.captured) == 0 && Stats::get(&stats.capture_errors) > 0 {

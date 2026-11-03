@@ -8,7 +8,7 @@ use std::ptr::NonNull;
 use std::thread::Thread;
 
 use anyhow::Result;
-use objc2_app_kit::{NSPasteboard, NSWorkspace};
+use objc2_app_kit::NSWorkspace;
 use objc2_application_services::{AXError, AXUIElement};
 use objc2_core_foundation::{CFRetained, CFString, CFType};
 use objc2_core_graphics::{
@@ -136,10 +136,6 @@ impl Sensors for Mac {
             locked,
             asleep,
         }
-    }
-
-    fn clipboard_count(&mut self) -> i64 {
-        NSPasteboard::generalPasteboard().changeCount() as i64
     }
 
     fn focused_app(&mut self) -> Option<App> {

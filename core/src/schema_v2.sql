@@ -1,4 +1,0 @@
-CREATE TABLE meta(
-    key TEXT PRIMARY KEY,
-    value BLOB NOT NULL
-) WITHOUT ROWID;

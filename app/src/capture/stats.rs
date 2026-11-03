@@ -37,7 +37,6 @@ pub struct Stats {
     pub dropped: AtomicU64,
     pub capture_errors: AtomicU64,
     pub ocr_errors: AtomicU64,
-    pub copies: AtomicU64,
     pub presses: AtomicU64,
     pub edits: AtomicU64,
     /// Windows that needed a screenshot while Low Power Mode was on, so none was taken.

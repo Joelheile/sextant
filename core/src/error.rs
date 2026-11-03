@@ -8,7 +8,9 @@ pub enum Error {
     Db(#[from] rusqlite::Error),
     #[error("wrong key or not a Sextant database")]
     BadKey,
-    #[error("database schema version {found} is newer than this build supports ({supported})")]
+    #[error(
+        "database schema version {found} is newer than this build supports ({supported}); run `sextant privacy delete-everything` to start fresh"
+    )]
     SchemaTooNew { found: i32, supported: i32 },
     #[error(
         "database schema version {found} is older than {expected}; open it with the writer first"

@@ -12,22 +12,12 @@ use rusqlite::{Connection, params};
 use self::activities::EventRow;
 pub use self::entities::ValueType;
 use crate::error::Result;
-use crate::model::{EventKind, Payload};
+use crate::model::Payload;
 use crate::store::Store;
 use crate::text::fnv1a;
 use crate::time::{DAY, Local};
 
 const WINDOW_DAYS: i64 = 90;
-/// Commit and file events stay out on purpose: they feed the MCP timeline, not the map.
-const MAP_KINDS: [EventKind; 7] = [
-    EventKind::Focus,
-    EventKind::Idle,
-    EventKind::Pause,
-    EventKind::Visit,
-    EventKind::Calendar,
-    EventKind::Press,
-    EventKind::Edit,
-];
 
 /// Row counts of one refresh, for logs. Never text.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -80,18 +70,14 @@ fn activity_actions(
 }
 
 fn load_events(conn: &Connection, from: i64, to: i64) -> Result<Vec<EventRow>> {
-    let kinds = MAP_KINDS
-        .map(|kind| format!("'{}'", kind.as_str()))
-        .join(", ");
-    let mut statement = conn.prepare_cached(&format!(
-        "SELECT ts, kind, source, json FROM events WHERE ts BETWEEN ?1 AND ?2 AND kind IN ({kinds}) ORDER BY ts, id"
-    ))?;
+    let mut statement = conn.prepare_cached(
+        "SELECT ts, kind, json FROM events WHERE ts BETWEEN ?1 AND ?2 ORDER BY ts, id",
+    )?;
     let rows = statement.query_map(params![from, to], |row| {
-        let json: String = row.get(3)?;
+        let json: String = row.get(2)?;
         Ok(EventRow {
             ts: row.get(0)?,
             kind: row.get(1)?,
-            live: row.get::<_, String>(2)? == "live",
             payload: serde_json::from_str::<Payload>(&json).unwrap_or_default(),
         })
     })?;
@@ -100,10 +86,6 @@ fn load_events(conn: &Connection, from: i64, to: i64) -> Result<Vec<EventRow>> {
 
 fn id(index: usize) -> i64 {
     index as i64 + 1
-}
-
-fn n(count: usize) -> i64 {
-    count as i64
 }
 
 /// Fits a JS number, so MCP clients can hold it.
@@ -128,49 +110,18 @@ fn find(parent: &mut [usize], mut index: usize) -> usize {
 
 fn persist(conn: &mut Connection, analysis: &Analysis) -> Result<()> {
     let tx = conn.transaction()?;
-    for table in [
-        "activities",
-        "steps",
-        "entities",
-        "mentions",
-        "tasks",
-        "task_activities",
-    ] {
+    for table in ["activities", "steps", "tasks", "task_activities"] {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
     {
         let activity_ids: Vec<i64> = analysis.activities.iter().map(activity_id).collect();
-        let mut insert = tx.prepare("INSERT INTO activities(id, start_ts, end_ts, app, object_key, step_id, live) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")?;
+        let mut insert = tx.prepare("INSERT INTO activities(id, start_ts, end_ts, app, object_key, step_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
         for (e, &activity) in analysis.activities.iter().zip(&activity_ids) {
-            insert.execute(params![
-                activity,
-                e.start,
-                e.end,
-                e.app,
-                e.key,
-                id(e.step),
-                e.live
-            ])?;
+            insert.execute(params![activity, e.start, e.end, e.app, e.key, id(e.step)])?;
         }
         let mut insert = tx.prepare("INSERT INTO steps(id, key, name) VALUES (?1, ?2, ?3)")?;
         for (i, s) in analysis.steps.iter().enumerate() {
             insert.execute(params![id(i), s.key, s.name])?;
-        }
-        let mut insert = tx.prepare(
-            "INSERT INTO entities(id, kind, value, activity_count) VALUES (?1, ?2, ?3, ?4)",
-        )?;
-        let mut mention =
-            tx.prepare("INSERT INTO mentions(entity_id, activity_id) VALUES (?1, ?2)")?;
-        for (i, e) in analysis.entities.iter().enumerate() {
-            insert.execute(params![
-                id(i),
-                e.kind.as_str(),
-                e.value,
-                n(e.activities.len())
-            ])?;
-            for activity in &e.activities {
-                mention.execute(params![id(i), activity_ids[*activity]])?;
-            }
         }
         let mut insert = tx.prepare(
             "INSERT INTO tasks(id, label, first_ts, last_ts, active_s) VALUES (?1, ?2, ?3, ?4, ?5)",

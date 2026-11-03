@@ -55,7 +55,7 @@ Usage: sextant <command>
   privacy forget 15m|1h|1d             Delete what was captured recently
   privacy exclude-app|include-app <name>
   privacy exclude-site|include-site <domain>
-  privacy capture metadata|ocr|copy|actions|browsers on|off
+  privacy capture metadata|ocr|actions|browsers on|off
   privacy agents screen-text|activities on|off
   privacy delete-everything
   debug                  The debug report, to paste into a GitHub issue
@@ -171,10 +171,9 @@ fn privacy(dir: &Path, words: &[&str]) -> Result<()> {
             match *source {
                 "metadata" => live.metadata = on,
                 "ocr" => live.ocr = on,
-                "copy" => live.copy = on,
                 "actions" => live.actions = on,
                 "browsers" => live.opaque_browsers = on,
-                _ => bail!("choose metadata, ocr, copy, actions or browsers"),
+                _ => bail!("choose metadata, ocr, actions or browsers"),
             }
             change(Request::Capture { live })?;
         }
@@ -532,17 +531,15 @@ pub fn privacy_lines(settings: &Settings, used: Option<u64>) -> Vec<String> {
     let Live {
         metadata,
         ocr,
-        copy,
         actions,
         audio,
         opaque_browsers,
     } = settings.live;
     let mut lines = vec![
         format!(
-            "Capture: apps and windows {}, screen text {}, copies {}, actions {}, call audio {}, browsers without private-window info {}",
+            "Capture: apps and windows {}, screen text {}, actions {}, call audio {}, browsers without private-window info {}",
             on_off(metadata),
             on_off(ocr),
-            on_off(copy),
             on_off(actions),
             on_off(audio),
             on_off(opaque_browsers)

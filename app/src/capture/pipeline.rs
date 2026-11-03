@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use crossbeam_queue::ArrayQueue;
 use sextant_core::capture::{
-    self, Blocked, DiffGate, Edits, IDLE_LIMIT_S, Sample, Signal, Triggers, classify, copy_event,
-    focus_event, idle_event, pause_event, press_event,
+    self, Blocked, DiffGate, Edits, IDLE_LIMIT_S, Sample, Signal, Triggers, classify, focus_event,
+    idle_event, pause_event, press_event,
 };
 use sextant_core::{Event, Frame, Item, OcrLine, Settings, Window};
 
@@ -124,7 +124,6 @@ pub struct Capturer<S: Sensors> {
     last_tree: Option<(u64, u64)>,
     /// A `focus` event is open: the next gate or absence has to close it.
     open: bool,
-    clipboard: Option<i64>,
     /// The focused app and window of this poll.
     focus: u64,
     /// The focus that last passed every gate. Presses and fields are read only while it holds.
@@ -152,7 +151,6 @@ impl<S: Sensors> Capturer<S> {
             last_window: None,
             last_tree: None,
             open: false,
-            clipboard: None,
             focus: 0,
             allowed: None,
             edits: Edits::new(),
@@ -168,7 +166,6 @@ impl<S: Sensors> Capturer<S> {
         if let Err(blocked) = capture::session(&settings, paused) {
             // No OS call at all while paused or with every source off.
             self.close(now_s, blocked == Blocked::Paused);
-            self.clipboard = None;
             return AWAY_POLL;
         }
 
@@ -193,7 +190,6 @@ impl<S: Sensors> Capturer<S> {
             _ => {}
         }
         self.act(app.as_ref(), now_s, &settings);
-        self.watch_clipboard(app.as_ref(), now_s, &settings);
 
         if self.triggers.away().is_some() {
             AWAY_POLL
@@ -358,25 +354,6 @@ impl<S: Sensors> Capturer<S> {
         if let Some(event) = event {
             Stats::add(counter);
             (self.sink)(Item::Event(event), Instant::now());
-        }
-    }
-
-    fn watch_clipboard(&mut self, app: Option<&App>, now_s: i64, settings: &Settings) {
-        if !settings.live.copy || self.triggers.away().is_some() {
-            self.clipboard = None;
-            return;
-        }
-        let count = self.sensors.clipboard_count();
-        let previous = self.clipboard.replace(count);
-        let Some(app) = app.filter(|_| previous.is_some_and(|p| p != count)) else {
-            return;
-        };
-        match self.gates(app, settings, false) {
-            Ok(_) => {
-                Stats::add(&self.stats.copies);
-                (self.sink)(Item::Event(copy_event(now_s, &app.name)), Instant::now());
-            }
-            Err(blocked) => self.stats.block(blocked),
         }
     }
 }

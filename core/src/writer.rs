@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::error::Result;
-use crate::model::{Event, Frame, Item, Source, Utterance, Window};
+use crate::model::{Event, Frame, Item, Utterance, Window};
 use crate::redact::{Secret, redact, redact_json};
 use crate::store::Store;
 use crate::text::{fnv1a, host_path};
@@ -84,23 +84,14 @@ impl Writer {
     }
 }
 
-/// Live events cannot be from the future. Backfill bounds its own range, and its calendar and
-/// reminders reach 14 days ahead.
-fn stamp(event: &Event, now: i64) -> i64 {
-    match event.source {
-        Source::Live => event.ts.min(now),
-        Source::Backfill => event.ts,
-    }
-}
-
 fn write_event(tx: &Transaction, event: &Event, now: i64, secret: &Secret) -> Result<()> {
     let mut json = event.json.clone();
     redact_json(&mut json, secret);
-    tx.prepare_cached("INSERT INTO events(ts, kind, source, json) VALUES (?1, ?2, ?3, ?4)")?
+    // Capture cannot see the future.
+    tx.prepare_cached("INSERT INTO events(ts, kind, json) VALUES (?1, ?2, ?3)")?
         .execute(params![
-            stamp(event, now),
+            event.ts.min(now),
             event.kind.as_str(),
-            event.source.as_str(),
             json.to_string()
         ])?;
     Ok(())

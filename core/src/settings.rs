@@ -14,8 +14,6 @@ pub struct Live {
     pub metadata: bool,
     /// OCR text of the focused window.
     pub ocr: bool,
-    /// Which app copied, never what.
-    pub copy: bool,
     /// Presses on labelled controls and the values left in text fields, never keystrokes.
     pub actions: bool,
     /// Mic and system audio transcripts during calls.
@@ -30,7 +28,6 @@ impl Default for Live {
         Self {
             metadata: true,
             ocr: true,
-            copy: true,
             actions: true,
             audio: false,
             opaque_browsers: false,
@@ -41,7 +38,7 @@ impl Default for Live {
 impl Live {
     /// The screen sources. Audio has its own switch and its own pipeline.
     pub fn any(&self) -> bool {
-        self.metadata || self.ocr || self.copy || self.actions
+        self.metadata || self.ocr || self.actions
     }
 }
 

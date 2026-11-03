@@ -90,7 +90,7 @@ pub const TOOLS: &[Tool] = &[
         name: "timeline",
         group: Group::Rewind,
         description: concat!(
-            "What the user worked on in a time range: activities per app, meetings, reminders, commits and files, oldest first. Activities are rebuilt every few minutes, so the last minutes can be missing. ",
+            "What the user worked on in a time range: activities per app, oldest first. Activities are rebuilt every few minutes, so the last minutes can be missing. ",
             time_note!()
         ),
         read_only: true,
@@ -489,12 +489,12 @@ fn timeline(ctx: &Ctx, args: &Value) -> Result<Value> {
     let from = time_arg(ctx, args, "from", false)?.ok_or_else(|| bad("from is required"))?;
     let to = time_arg(ctx, args, "to", true)?.ok_or_else(|| bad("to is required"))?;
     let (limit, offset) = page(args)?;
-    let want = (limit + offset) as i64;
+    let want = (limit + offset + 1) as i64;
 
     let mut items: Vec<Item> = Vec::new();
     let mut activities = ctx.store.conn.prepare_cached(
         "SELECT e.start_ts, e.end_ts, e.app, s.name FROM activities e JOIN steps s ON s.id = e.step_id
-         WHERE e.start_ts BETWEEN ?1 AND ?2 AND e.object_key NOT LIKE 'meeting|%'
+         WHERE e.start_ts BETWEEN ?1 AND ?2
          ORDER BY e.start_ts, e.id LIMIT ?3",
     )?;
     for row in activities.query_map(params![from, to, want], |row| {
@@ -507,51 +507,6 @@ fn timeline(ctx: &Ctx, args: &Value) -> Result<Value> {
         })
     })? {
         items.push(row?);
-    }
-    let mut events = ctx.store.conn.prepare_cached(
-        "SELECT ts, kind, json FROM events WHERE ts BETWEEN ?1 AND ?2
-         AND kind IN ('calendar', 'reminder', 'commit', 'file') ORDER BY ts, id LIMIT ?3",
-    )?;
-    let mut rows = events.query(params![from, to, want])?;
-    while let Some(row) = rows.next()? {
-        let kind: String = row.get(1)?;
-        let payload: Value = serde_json::from_str(&row.get::<_, String>(2)?)?;
-        let field = |key: &str| payload[key].as_str().unwrap_or("").to_string();
-        let ts: i64 = row.get(0)?;
-        items.push(match kind.as_str() {
-            "calendar" => Item {
-                start: ts,
-                end: payload["end_ts"].as_i64().unwrap_or(ts),
-                kind: "meeting",
-                app: "Calendar".into(),
-                what: field("title"),
-            },
-            "reminder" => Item {
-                start: ts,
-                end: ts,
-                kind: "reminder",
-                app: "Reminders".into(),
-                what: if payload["done"].as_bool().unwrap_or(false) {
-                    format!("{} (done)", field("title"))
-                } else {
-                    field("title")
-                },
-            },
-            "commit" => Item {
-                start: ts,
-                end: ts,
-                kind: "commit",
-                app: "git".into(),
-                what: format!("{}: {}", field("repo"), field("subject")),
-            },
-            _ => Item {
-                start: ts,
-                end: ts,
-                kind: "file",
-                app: "Files".into(),
-                what: field("name"),
-            },
-        });
     }
     items.retain(|item| !ctx.settings.is_excluded(&item.app));
     items.sort_by_key(|item| (item.start, item.end));

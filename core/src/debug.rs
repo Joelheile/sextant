@@ -70,24 +70,18 @@ impl Store {
 
         let _ = writeln!(
             out,
-            "\n### Events\n\n| Kind | Source | Rows | Latest |\n| --- | --- | --- | --- |"
+            "\n### Events\n\n| Kind | Rows | Latest |\n| --- | --- | --- |"
         );
-        let mut events = self.conn.prepare(
-            "SELECT kind, source, COUNT(*), MAX(ts) FROM events GROUP BY kind, source ORDER BY kind, source",
-        )?;
+        let mut events = self
+            .conn
+            .prepare("SELECT kind, COUNT(*), MAX(ts) FROM events GROUP BY kind ORDER BY kind")?;
         let mut rows = events.query([])?;
         let mut live = None;
         while let Some(row) = rows.next()? {
-            let (kind, source): (String, String) = (row.get(0)?, row.get(1)?);
-            let (count, latest): (i64, i64) = (row.get(2)?, row.get(3)?);
-            if source == "live" {
-                live = live.max(Some(latest));
-            }
-            let _ = writeln!(
-                out,
-                "| {kind} | {source} | {count} | {} |",
-                time(Some(latest))
-            );
+            let kind: String = row.get(0)?;
+            let (count, latest): (i64, i64) = (row.get(1)?, row.get(2)?);
+            live = live.max(Some(latest));
+            let _ = writeln!(out, "| {kind} | {count} | {} |", time(Some(latest)));
         }
 
         // Both columns are indexed, so each MAX is one index lookup.
@@ -160,7 +154,7 @@ fn switches(value: &Value) -> String {
 mod tests {
     use super::*;
     use crate::fixtures::{self, TempDb, UTC_OFFSET_S, WEEK_NOW, local};
-    use crate::model::{Source, Speaker, Utterance};
+    use crate::model::{Speaker, Utterance};
 
     fn facts() -> Facts {
         Facts {
@@ -219,14 +213,8 @@ mod tests {
         assert!(report.contains(&format!("| events | {} |", counts.events)));
         assert!(report.contains(&format!("| frames | {} |", counts.frames)));
         assert!(report.contains(&format!("| utterances | {} |", counts.utterances)));
-        assert!(report.contains("| focus | live |"));
-        let live = fixture
-            .events
-            .iter()
-            .filter(|e| e.source == Source::Live)
-            .map(|e| e.ts)
-            .max()
-            .expect("live events");
+        assert!(report.contains("| focus |"));
+        let live = fixture.events.iter().map(|e| e.ts).max().expect("events");
         assert!(report.contains(&format!("- Live event: {}", iso(live, UTC_OFFSET_S))));
         assert!(report.contains("- accessibility: granted"));
         assert!(report.contains("- refresh ms: 120.0"));

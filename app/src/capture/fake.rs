@@ -31,7 +31,6 @@ pub struct Scene {
     pub lines: Vec<String>,
     /// What the Accessibility tree says, one line per row.
     pub tree: Vec<String>,
-    pub clipboard: i64,
     pub window: u64,
     /// The focused element and its value.
     pub field: Option<Field>,
@@ -57,7 +56,6 @@ impl Scene {
             picture: 0,
             lines: Vec::new(),
             tree: Vec::new(),
-            clipboard: 0,
             window: 0,
             field: None,
             click: None,
@@ -69,7 +67,6 @@ impl Scene {
 #[derive(Debug, Default, Clone)]
 pub struct Calls {
     pub presence: u32,
-    pub clipboard: u32,
     pub focused_app: u32,
     pub secure_input: u32,
     pub window_text: u32,
@@ -87,8 +84,7 @@ pub struct Calls {
 impl Calls {
     /// Every call except `presence` and `focused_app`, which the triggers need on every poll.
     pub fn reads_beyond_triggers(&self) -> u32 {
-        self.clipboard
-            + self.secure_input
+        self.secure_input
             + self.window_text
             + self.browser_tab
             + self.tree
@@ -153,11 +149,6 @@ impl Sensors for Fake {
             locked: scene.locked,
             asleep: scene.asleep,
         }
-    }
-
-    fn clipboard_count(&mut self) -> i64 {
-        self.log(|calls| calls.clipboard += 1);
-        self.scene().clipboard
     }
 
     fn focused_app(&mut self) -> Option<App> {

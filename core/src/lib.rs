@@ -25,7 +25,7 @@ mod writer;
 pub use debug::Facts;
 pub use error::{Error, Result};
 pub use finder::ValueType;
-pub use model::{Event, EventKind, Frame, Item, OcrLine, Source, Speaker, Utterance, Window};
+pub use model::{Event, EventKind, Frame, Item, OcrLine, Speaker, Utterance, Window};
 pub use redact::{Secret, redact};
 pub use routines::Routine;
 pub use search::HitSource;

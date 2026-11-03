@@ -58,8 +58,6 @@ pub trait Sensors: Send + 'static {
     type Image: Send + 'static;
 
     fn presence(&mut self) -> Presence;
-    /// A number that changes whenever something is copied.
-    fn clipboard_count(&mut self) -> i64;
     fn focused_app(&mut self) -> Option<App>;
     /// Identifies the focused window of `app`, 0 when it has none. Read on every poll while the
     /// user is present, so a new window passes the gates before anything in it is read.

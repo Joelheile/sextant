@@ -292,7 +292,6 @@ fn gated_cases() -> Vec<Gated> {
             tweak(|s| {
                 s.live.metadata = false;
                 s.live.ocr = false;
-                s.live.copy = false;
                 s.live.actions = false;
             }),
             false,
@@ -350,12 +349,6 @@ fn gated_sources_write_zero_rows_and_never_reach_the_capture_call() {
         let (store, _db) = run.database();
         let counts = store.counts().expect("counts");
         assert!(nothing_stored(&counts), "{}: {counts:?}", case.name);
-        assert_eq!(
-            store.event_count(EventKind::Copy).expect("count"),
-            0,
-            "{}",
-            case.name
-        );
         assert_eq!(run.queue.len(), 0, "{}", case.name);
     }
 }
@@ -583,34 +576,6 @@ fn pausing_stops_capture_and_resuming_starts_it_again() {
         (1, 0, 1)
     );
     assert_eq!(store.event_count(EventKind::Pause).expect("count"), 1);
-}
-
-#[test]
-fn copy_events_name_the_app_and_respect_the_gates() {
-    let mut copied_in_mail = working(0);
-    copied_in_mail.clipboard = 1;
-    let mut copied_again = working(5_000);
-    copied_again.clipboard = 2;
-    let mut copied_in_vault =
-        working(10_000).in_app(app("1Password 8", "com.1password.1password", 300), "Vault");
-    copied_in_vault.clipboard = 3;
-    let mut copied_in_private = working(15_000)
-        .in_app(chrome(), "News")
-        .tab("https://example.com", true);
-    copied_in_private.clipboard = 4;
-
-    let mut run = session(vec![
-        working(0),
-        copied_in_mail,
-        copied_again,
-        copied_in_vault,
-        copied_in_private,
-    ]);
-    run.run(25_000);
-    let (store, _db) = run.database();
-    // The first poll only reads the count. Changes 1 to 2 happen in Mail; the vault and the
-    // private window copy nothing into the database.
-    assert_eq!(store.event_count(EventKind::Copy).expect("count"), 1);
 }
 
 fn control(role: &str, title: &str) -> Element {
@@ -906,9 +871,6 @@ fn a_failed_capture_is_counted_and_nothing_is_written() {
         type Image = Vec<String>;
         fn presence(&mut self) -> super::sensors::Presence {
             self.0.presence()
-        }
-        fn clipboard_count(&mut self) -> i64 {
-            self.0.clipboard_count()
         }
         fn focused_app(&mut self) -> Option<App> {
             self.0.focused_app()

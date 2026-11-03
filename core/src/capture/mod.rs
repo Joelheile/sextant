@@ -13,7 +13,7 @@ mod triggers;
 
 use serde_json::{Value, json};
 
-use crate::model::{Event, EventKind, Source, Window};
+use crate::model::{Event, EventKind, Window};
 use crate::text::host_path;
 
 pub use act::{
@@ -41,11 +41,6 @@ pub fn focus_event(ts: i64, window: &Window) -> Event {
     event(ts, EventKind::Focus, json)
 }
 
-/// Which app copied. Never the content.
-pub fn copy_event(ts: i64, app: &str) -> Event {
-    event(ts, EventKind::Copy, json!({"app": app}))
-}
-
 /// Ends the open activity. Written when the user goes away, pauses or a gate closes, so the
 /// previous window is not credited with the time and nothing about the gated window is kept.
 pub fn idle_event(ts: i64) -> Event {
@@ -57,12 +52,7 @@ pub fn pause_event(ts: i64) -> Event {
 }
 
 fn event(ts: i64, kind: EventKind, json: Value) -> Event {
-    Event {
-        ts,
-        kind,
-        source: Source::Live,
-        json,
-    }
+    Event { ts, kind, json }
 }
 
 #[cfg(test)]
@@ -81,6 +71,5 @@ mod tests {
         let event = focus_event(10, &window);
         assert_eq!(event.json["url"], "app.lexoffice.de/vouchers/INV-1");
         assert!(event.json.get("doc").is_none());
-        assert_eq!(event.source, Source::Live);
     }
 }

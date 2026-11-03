@@ -37,7 +37,6 @@ pub(crate) struct Activity {
     pub(crate) end: i64,
     pub(crate) app: String,
     pub(crate) label: String,
-    meeting: bool,
     task: Option<(i64, String)>,
 }
 
@@ -50,7 +49,7 @@ fn clock(ts: i64, utc_offset_s: i32) -> String {
     iso(ts, utc_offset_s)[11..16].to_string()
 }
 
-/// Seconds covered by at least one activity, so a meeting and the screen during it count once.
+/// Seconds covered by at least one activity, so overlapping activities count once.
 fn active_s(activities: &[&Activity]) -> i64 {
     covered_s(activities.iter().map(|a| (a.start, a.end)).collect())
 }
@@ -90,7 +89,6 @@ impl Store {
              WHERE e.start_ts >= ?1 AND e.start_ts < ?2 ORDER BY e.start_ts, e.id",
         )?;
         let rows = statement.query_map(params![from, to], |row| {
-            let object: String = row.get(4)?;
             let step_key: String = row.get(5)?;
             let task = match row.get::<_, Option<i64>>(7)? {
                 Some(id) => Some((id, row.get(8)?)),
@@ -104,7 +102,6 @@ impl Store {
                     end: row.get(2)?,
                     app: row.get(3)?,
                     label: row.get(6)?,
-                    meeting: object.starts_with("meeting|"),
                     task,
                 },
             ))
@@ -155,9 +152,6 @@ impl Store {
         tasks.sort_by_key(|(id, (_, seconds, _))| (-seconds, *id));
 
         let actions = |a: &Activity| {
-            if a.meeting {
-                return 0;
-            }
             times.partition_point(|&t| t < a.end) - times.partition_point(|&t| t < a.start)
         };
         let (in_tasks, other): (Vec<&Activity>, Vec<&Activity>) =

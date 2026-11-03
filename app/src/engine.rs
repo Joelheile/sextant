@@ -401,7 +401,6 @@ impl Engine {
             ("frames dropped", &stats.dropped),
             ("capture errors", &stats.capture_errors),
             ("OCR errors", &stats.ocr_errors),
-            ("copies", &stats.copies),
             ("presses", &stats.presses),
             ("edits", &stats.edits),
         ];

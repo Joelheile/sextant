@@ -113,7 +113,6 @@ mod tests {
         assert_eq!(session(&settings, false), Ok(()));
         settings.live.metadata = false;
         settings.live.ocr = false;
-        settings.live.copy = false;
         settings.live.actions = false;
         assert_eq!(session(&settings, false), Err(Blocked::SourceOff));
 

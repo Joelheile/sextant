@@ -20,20 +20,6 @@ pub(crate) enum EntityKind {
     Amount,
 }
 
-impl EntityKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Invoice => "invoice",
-            Self::Ticket => "ticket",
-            Self::Email => "email",
-            Self::Doc => "doc",
-            Self::Company => "company",
-            Self::Person => "person",
-            Self::Amount => "amount",
-        }
-    }
-}
-
 static INVOICE: LazyLock<Regex> = LazyLock::new(|| pattern(r"(?i)\b(?:INV|RE|RG)-\d{4}-\d{3,6}\b"));
 static TICKET: LazyLock<Regex> = LazyLock::new(|| pattern(r"\b[A-Z][A-Z0-9]{1,5}-\d{1,6}\b"));
 static EMAIL: LazyLock<Regex> = LazyLock::new(|| pattern(r"<email:([0-9a-f]{16})>"));
@@ -179,18 +165,15 @@ mod tests {
         let found = find(
             "Rechnung INV-2026-0412 Acme GmbH ACME-77 €1,250.00 und 1.250,00 € <email:0a1b2c3d4e5f6071>",
         );
-        let kinds: Vec<_> = found
-            .iter()
-            .map(|(k, v)| format!("{}:{v}", k.as_str()))
-            .collect();
+        let kinds: Vec<_> = found.iter().map(|(k, v)| format!("{k:?}:{v}")).collect();
         assert_eq!(
             kinds,
             [
-                "invoice:INV-2026-0412",
-                "ticket:ACME-77",
-                "email:0a1b2c3d4e5f6071",
-                "company:Acme GmbH",
-                "amount:125000 EUR",
+                "Invoice:INV-2026-0412",
+                "Ticket:ACME-77",
+                "Email:0a1b2c3d4e5f6071",
+                "Company:Acme GmbH",
+                "Amount:125000 EUR",
             ]
         );
     }

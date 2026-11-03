@@ -39,7 +39,6 @@ enum Key {
 enum Switch {
     Metadata,
     Ocr,
-    Copy,
     Actions,
     Browsers,
     ScreenText,
@@ -48,10 +47,9 @@ enum Switch {
     StorageCap,
 }
 
-const SWITCHES: [Switch; 9] = [
+const SWITCHES: [Switch; 8] = [
     Switch::Metadata,
     Switch::Ocr,
-    Switch::Copy,
     Switch::Actions,
     Switch::Browsers,
     Switch::ScreenText,
@@ -67,7 +65,6 @@ impl Switch {
         match self {
             Self::Metadata => format!("Apps and windows: {}", on(live.metadata)),
             Self::Ocr => format!("Screen text: {}", on(live.ocr)),
-            Self::Copy => format!("Which app copied: {}", on(live.copy)),
             Self::Actions => format!("Presses and field values: {}", on(live.actions)),
             Self::Browsers => format!(
                 "Browsers without private-window info: {}",
@@ -106,7 +103,6 @@ impl Switch {
         match self {
             Self::Metadata => flip(|live| live.metadata = !live.metadata),
             Self::Ocr => flip(|live| live.ocr = !live.ocr),
-            Self::Copy => flip(|live| live.copy = !live.copy),
             Self::Actions => flip(|live| live.actions = !live.actions),
             Self::Browsers => flip(|live| live.opaque_browsers = !live.opaque_browsers),
             Self::ScreenText => Request::Mcp {
