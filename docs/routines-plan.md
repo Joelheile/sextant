@@ -217,15 +217,15 @@ A local chat model such as Qwen 4B is not planned: it is a 4 GB download, and th
 
 One MCP server is the whole engine interface. The bridge, Claude Code, Claude Desktop, Cowork and Codex all call the same tools, so a routine found in any of them lands in the same list. There is no separate brief to keep in sync.
 
-| Tool                   | Returns                                                                                                                                         |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `week(start)`          | Per day: active minutes and top tasks. Across the week: task kinds and activity labels that repeat on 2 or more days, with minutes and days     |
-| `day(date)`            | Activities in time order (id, time, minutes, app, label, task), and tasks with their minutes                                                    |
-| `task(id)`             | Its activities, its actions run-length compressed with value types, and redacted values when screen text is on                                  |
-| `search`, `context_at` | Exist today: full-text search, and the screen text and speech around a moment (rewind)                                                          |
+| Tool                   | Returns                                                                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `week(start)`          | Per day: active minutes and top tasks. Across the week: task kinds and activity labels that repeat on 2 or more days, with minutes and days        |
+| `day(date)`            | Activities in time order (id, time, minutes, app, label, task), and tasks with their minutes                                                       |
+| `task(id)`             | Its activities, its actions run-length compressed with value types, and redacted values when screen text is on                                     |
+| `search`, `context_at` | Exist today: full-text search, and the screen text and speech around a moment (rewind)                                                             |
 | `save_routine(...)`    | The one new write. Code checks the cited ids, measures hours a week and stores the routine with the time spans it cites. An error says what to fix |
-| `routines()`           | Saved routines with their hours and evidence                                                                                                    |
-| `check_skill(...)`     | Checks a draft `SKILL.md` for a routine: every numbered step cites `(task <id>: <action>)`, a task the routine cites and an action it holds      |
+| `routines()`           | Saved routines with their hours and evidence                                                                                                       |
+| `check_skill(...)`     | Checks a draft `SKILL.md` for a routine: every numbered step cites `(task <id>: <action>)`, a task the routine cites and an action it holds        |
 
 - Ids survive refreshes: an activity's id comes from its start time and object, and a task's id is its first activity's. A routine stores the time spans it cites, so it outlives the 90-day window.
 - The two existing switches stay. "Screen text" (`mcp_rewind`) gates `search`, `context_at` and the values in `task`. "Work patterns" (`mcp_workflows`) gates the rest. Excluded apps never appear, the page tools hold no transcripts, and every result goes through `redact.rs`.
@@ -265,7 +265,9 @@ E4 ships in two steps, because the old path still drives the Workflows and Resul
 
 ### E5. Search with local embeddings
 
-- `models.rs` downloads Qwen3-Embedding-0.6B like the speech models. Check that an ONNX export exists and pick the smallest vector size that keeps recall.
+- Model, decided 2026-11-02: EmbeddingGemma 300M from `onnx-community/embeddinggemma-300m-ONNX`, int8 (`model_quantized.onnx` plus its 309 MB `.onnx_data`), pinned by commit and checksum in `models.rs` like the speech models. MTEB Multilingual v2 is 61.15 at 768 dims and 59.68 at 256 dims, so vectors keep 256 dims, renormalized. Qwen3-Embedding-0.6B scores about 64.3 but has no official ONNX export and needs twice the RAM. The activations break in fp16, so it runs fp32 or int8 on CPU. Queries use the prefix `task: search result | query: `, documents `title: none | text: `. The Gemma license applies to the download, so the download screen names it.
+- Loading, decided 2026-11-02: like ASR. Load the model for refresh and on the first search, keep it warm, unload after 2 minutes idle, so RAM without models stays under 150 MB. Add a "with embeddings loaded" row to plan.md §11 with the measured number, and report how far the first search after idle misses 100 ms.
+- It runs through the ONNX Runtime the speech models already load (`app/src/platform/speech.rs`, `parakeet_rs::ort`), with one shared environment.
 - Vectors live in a BLOB column. Search scans them in Rust and merges the result with FTS5. No sqlite-vec: it is pre-v1, and [an open issue](https://github.com/asg017/sqlite-vec/issues/12) reports it failing with SQLCipher.
 - Activities above a similarity threshold get a `similar` edge.
 - Done when search finds the fixture's paraphrased queries that FTS5 alone misses, the search budget in plan.md §11 holds, and `scripts/check-network.sh` passes.
@@ -274,21 +276,21 @@ E4 ships in two steps, because the old path still drives the Workflows and Resul
 
 E1 first: it is the smallest step that lets an early adopter's own agent read the graph. D1 comes next, before the public launch. Then E2 to E5. Each step leaves Sextant working, and the old workflow path stays live until E4. T4 and T5 follow, and T4's input classes then join `task`.
 
-| Step | Delivers                                                  | Done when                                                    |
-| ---- | --------------------------------------------------------- | ------------------------------------------------------------ |
-| E1   | Stable ids, `week`, `day` and `task` tools                | See E1                                                       |
-| D1   | Debug report, no network                                  | See D1                                                       |
-| E2   | `save_routine`: the agent proposes, code checks           | See E2                                                       |
-| E3   | The bridge runs Claude Code or Codex on the tools         | See E3                                                       |
-| E4   | Skills, old workflow path removed, episodes renamed       | See E4                                                       |
-| E5   | Local embeddings, hybrid search, similar edges            | See E5                                                       |
-| L1   | On-device labels for activities and tasks                 | Labels on the fixture without network                        |
-| T1   | Activities with actions and identifiers                   | The fixture shows actions per activity                       |
-| T2   | Tasks, "where time goes"                                  | Pair agreement ≥ 0.9 on the interleaved fixture              |
-| T3   | Task types and procedures (deferred)                      | The invoice type found with its steps and for-each           |
-| T4   | Input classes                                             | Transfers found on the fixture                               |
-| T5   | Incremental refresh                                       | Equals full rebuild, under 50 ms                             |
-| L2   | Connect to ChatGPT, `.mcpb`                               | **(user)** Claude Desktop and ChatGPT desktop list the tools |
+| Step | Delivers                                            | Done when                                                    |
+| ---- | --------------------------------------------------- | ------------------------------------------------------------ |
+| E1   | Stable ids, `week`, `day` and `task` tools          | See E1                                                       |
+| D1   | Debug report, no network                            | See D1                                                       |
+| E2   | `save_routine`: the agent proposes, code checks     | See E2                                                       |
+| E3   | The bridge runs Claude Code or Codex on the tools   | See E3                                                       |
+| E4   | Skills, old workflow path removed, episodes renamed | See E4                                                       |
+| E5   | Local embeddings, hybrid search, similar edges      | See E5                                                       |
+| L1   | On-device labels for activities and tasks           | Labels on the fixture without network                        |
+| T1   | Activities with actions and identifiers             | The fixture shows actions per activity                       |
+| T2   | Tasks, "where time goes"                            | Pair agreement ≥ 0.9 on the interleaved fixture              |
+| T3   | Task types and procedures (deferred)                | The invoice type found with its steps and for-each           |
+| T4   | Input classes                                       | Transfers found on the fixture                               |
+| T5   | Incremental refresh                                 | Equals full rebuild, under 50 ms                             |
+| L2   | Connect to ChatGPT, `.mcpb`                         | **(user)** Claude Desktop and ChatGPT desktop list the tools |
 
 ## Open decisions
 
