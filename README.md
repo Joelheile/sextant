@@ -41,8 +41,6 @@ The script checks the disk image against the SHA-256 published with the release 
 - **Writes the skill.** Every routine becomes a `SKILL.md` with its steps, example cases and rules, ready for Claude.
 - **Makes your work searchable by your agent.** Ask it "Find the invoice number I saw yesterday" or "What did Anna say about pricing on Tuesday?"
 
-On first launch, Sextant reads history you already have (browser history, calendar, git commits, recent files) and draws a first map in under a minute.
-
 ## Use it with Claude
 
 The onboarding has a "Connect to Claude" step for Claude Desktop. For Claude Code, run:

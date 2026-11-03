@@ -1,5 +1,5 @@
 //! The database worker (plan.md §5): one thread owns the write connection and the [`Writer`],
-//! flushes every second, refreshes every 5 minutes and after a backfill, and reports progress as
+//! flushes every second, refreshes every 5 minutes, and reports progress as
 //! events. Commands read through a separate read-only connection. Live capture runs on its own
 //! threads and sends finished records here; no database call happens on those threads.
 
@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
-use sextant_core::backfill;
 use sextant_core::capture::{Stall, stall};
 use sextant_core::{Item, Key, Secret, Settings, Store};
 
@@ -30,7 +29,6 @@ type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 type Job = Box<dyn FnOnce(&mut Store) + Send>;
 
 enum Msg {
-    Backfill,
     /// Runs on the write connection, then the sender of the job gets its answer.
     Job(Job),
     /// Closes the database and ends the thread; the sender waits for the acknowledgement.
@@ -93,9 +91,8 @@ impl Engine {
         thread::Builder::new()
             .name("sextant-db".into())
             .spawn({
-                let (dir, emit, failing) =
-                    (dir.clone(), emit.clone(), writes_failing_since.clone());
-                move || work(store, &dir, messages, &emit, &failing)
+                let (dir, failing) = (dir.clone(), writes_failing_since.clone());
+                move || work(store, &dir, messages, &failing)
             })
             .context("starting the database thread")?;
         Ok(Self {
@@ -109,13 +106,6 @@ impl Engine {
             download: Arc::new(Mutex::new(None)),
             writes_failing_since,
         })
-    }
-
-    /// Replaces the backfill events with a fresh read of the ticked sources, then refreshes.
-    pub fn start_backfill(&self) -> Result<()> {
-        self.inbox
-            .send(Msg::Backfill)
-            .map_err(|_| anyhow::anyhow!("the database thread has stopped"))
     }
 
     /// Runs `job` on the database thread, which owns the only write connection, and waits for it.
@@ -412,13 +402,7 @@ fn create_private_dir(dir: &Path) -> Result<()> {
         .context("creating the data folder")
 }
 
-fn work(
-    mut store: Store,
-    dir: &Path,
-    messages: Receiver<Msg>,
-    emit: &Emit,
-    writes_failing_since: &AtomicI64,
-) {
+fn work(mut store: Store, dir: &Path, messages: Receiver<Msg>, writes_failing_since: &AtomicI64) {
     let mut ingest = Ingest::new();
     let mut last_refresh = Instant::now();
     let mut next_retention = Instant::now();
@@ -426,16 +410,6 @@ fn work(
     refresh(&mut store, &mut last_refresh);
     loop {
         match messages.recv_timeout(FLUSH_EVERY) {
-            Ok(Msg::Backfill) => {
-                match backfill_and_refresh(&mut store, &mut ingest, dir, emit) {
-                    Ok(summary) => emit("backfill-done", summary),
-                    Err(err) => {
-                        debug::record("backfill");
-                        emit("backfill-failed", json!({"message": err.to_string()}));
-                    }
-                }
-                last_refresh = Instant::now();
-            }
             Ok(Msg::Job(job)) => {
                 // A job sees everything captured before it, so a delete leaves nothing behind.
                 flush(&mut store, &mut ingest, writes_failing_since);
@@ -523,49 +497,6 @@ fn refresh(store: &mut Store, last_refresh: &mut Instant) {
         }
     }
     *last_refresh = Instant::now();
-}
-
-fn backfill_and_refresh(
-    store: &mut Store,
-    ingest: &mut Ingest,
-    dir: &Path,
-    emit: &Emit,
-) -> Result<Value> {
-    let settings = prefs::load(dir)?;
-    let when = clock::local();
-    let now = when.now;
-
-    let mut collected = backfill::collect(
-        &platform::System,
-        &settings.sources,
-        &settings.git_folders,
-        now,
-        |stage| emit("backfill-progress", json!({"stage": stage.as_str()})),
-    );
-    collected.events.retain(|event| {
-        let url = event.json.get("url").and_then(Value::as_str);
-        !url.is_some_and(|url| settings.is_excluded_site(url))
-    });
-    emit("backfill-progress", json!({"stage": "saving"}));
-    store.clear_backfill()?;
-    let events = collected.events.len();
-    for event in collected.events {
-        ingest.push(Item::Event(event), Instant::now());
-    }
-    ingest.flush(store, now)?;
-
-    emit("backfill-progress", json!({"stage": "analyzing"}));
-    let stats = store.refresh(when)?;
-    let reports: Vec<Value> = collected
-        .reports
-        .iter()
-        .map(|r| json!({"stage": r.stage.as_str(), "events": r.events, "errors": r.errors}))
-        .collect();
-    Ok(json!({
-        "events": events,
-        "tasks": stats.tasks,
-        "sources": reports,
-    }))
 }
 
 #[cfg(test)]

@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 use serde::Serialize;
+use sextant_core::Settings;
 use sextant_core::connect::claude_code_command;
-use sextant_core::{Settings, Sources};
 use tauri::{AppHandle, Manager, State};
 
 use crate::engine::Engine;
@@ -99,28 +99,11 @@ pub struct Permission {
     status: &'static str,
 }
 
-/// Status of the permissions the ticked sources need.
+/// Status of the permissions live capture needs.
 #[tauri::command]
 pub async fn permission_status(state: State<'_, AppState>) -> Reply<Vec<Permission>> {
     let settings = prefs::load(&state.dir).map_err(msg)?;
-    let sources = &settings.sources;
     let mut needed = Vec::new();
-    if sources.calendar {
-        needed.push(Permission {
-            name: "calendar",
-            status: platform::calendar_status(),
-        });
-        needed.push(Permission {
-            name: "reminders",
-            status: platform::reminders_status(),
-        });
-    }
-    if sources.safari {
-        needed.push(Permission {
-            name: "safari",
-            status: platform::safari_status(),
-        });
-    }
     if settings.live.ocr {
         needed.push(Permission {
             name: "screen-recording",
@@ -155,8 +138,7 @@ pub(crate) fn capture_blockers(dir: &Path) -> Vec<&'static str> {
     missing
 }
 
-/// Shows the system prompt for `calendar`, `reminders` or `automation`. Returns whether access is
-/// granted.
+/// Shows the system prompt for `automation`. Returns whether access is granted.
 #[tauri::command]
 pub async fn request_permission(name: Prompt) -> Reply<bool> {
     tauri::async_runtime::spawn_blocking(move || platform::request_permission(name))
@@ -165,47 +147,17 @@ pub async fn request_permission(name: Prompt) -> Reply<bool> {
         .map_err(msg)
 }
 
-/// Opens `full-disk-access`, `calendars`, `reminders`, `screen-recording`, `accessibility` or
-/// `automation` in System Settings. With `drag_hint`, the first three also get the panel that
-/// holds Sextant's icon to drag into the list.
+/// Opens `screen-recording`, `accessibility` or `automation` in System Settings. With
+/// `drag_hint`, the first two also get the panel that holds Sextant's icon to drag into the list.
 #[tauri::command]
 pub async fn open_settings_pane(pane: SettingsPane, drag_hint: Option<String>) -> Reply<()> {
     platform::open_settings_pane(pane, drag_hint.as_deref()).map_err(msg)
 }
 
-/// Quits and opens Sextant again. Screen Recording and Full Disk Access apply only after this.
+/// Quits and opens Sextant again. Screen Recording applies only after this.
 #[tauri::command]
 pub fn relaunch(app: AppHandle) {
     app.restart();
-}
-
-/// The folder dialog with `prompt` as its message. `None` when cancelled.
-#[tauri::command]
-pub async fn pick_folder(prompt: String) -> Reply<Option<String>> {
-    tauri::async_runtime::spawn_blocking(move || platform::pick_folder(&prompt))
-        .await
-        .map_err(msg)?
-        .map_err(msg)
-}
-
-#[tauri::command]
-pub async fn save_choices(
-    state: State<'_, AppState>,
-    sources: Sources,
-    git_folders: Vec<String>,
-) -> Reply<Settings> {
-    prefs::update(&state.dir, |s| {
-        s.sources = sources;
-        s.git_folders = git_folders;
-    })
-    .map_err(msg)
-}
-
-/// Starts the backfill on the worker thread. Progress arrives as `backfill-progress` events,
-/// then `backfill-done` or `backfill-failed`.
-#[tauri::command]
-pub async fn start_backfill(state: State<'_, AppState>) -> Reply<()> {
-    state.engine()?.start_backfill().map_err(msg)
 }
 
 #[derive(Serialize)]

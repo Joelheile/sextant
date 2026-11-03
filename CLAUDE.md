@@ -20,7 +20,7 @@ Read `AGENTS.md` first for the vision, then `plan.md`. It is the spec: principle
 | Lint | `cargo clippy --workspace --all-targets -q -- -D warnings` |
 | Test | `cargo test --workspace -q` |
 | Test core only | `cargo test -p sextant-core -q` |
-| Budget tests (first map, MCP p95, search, refresh) | `cargo test -p sextant-core --release -- --nocapture` |
+| Budget tests (MCP p95, search, refresh) | `cargo test -p sextant-core --release -- --nocapture` |
 | OCR budget on synthetic fixtures (macOS; the test enforces the budget only with `SEXTANT_BUDGET_TESTS=1`, which the Stop hook sets) | `SEXTANT_BUDGET_TESTS=1 cargo test -p sextant-app --release ocr -- --nocapture` or `cargo run -p sextant-app --release -- bench` |
 | Live capture bench (user step: needs Screen Recording; agents never run it) | `cargo run -p sextant-app --release -- bench --live 60` |
 | Fetch ONNX Runtime into `app/frameworks` (needed once for `bench --asr`, `tauri build`) | `scripts/fetch-onnxruntime.sh` |
@@ -35,6 +35,5 @@ Read `AGENTS.md` first for the vision, then `plan.md`. It is the spec: principle
 ## Rules
 
 - Dev builds read and write only `./.dev-data` (`SEXTANT_HOME`, set in `.cargo/config.toml`). Never read `~/Library/Application Support/Sextant`, the Claude Desktop config, or the `sextant` keychain entry. Dev builds use the `sextant-dev` entry; tests set `SEXTANT_DEV_KEY` (64 hex digits, debug only) instead.
-- Never run backfill against real browsers, calendar, git or Spotlight in development. Tests use `core/src/profile_fixture.rs` and temp folders.
 - Network code only in `app/src/models.rs`.
 - No `unwrap()` outside tests. `thiserror` in core, `anyhow` in app.

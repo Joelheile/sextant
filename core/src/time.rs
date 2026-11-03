@@ -2,10 +2,6 @@
 
 pub(crate) const DAY: i64 = 86_400;
 pub(crate) const WEEK_DAYS: i64 = 7;
-/// Chromium counts microseconds since 1601-01-01.
-pub(crate) const WEBKIT_TO_UNIX_S: i64 = 11_644_473_600;
-/// Safari counts seconds since 2001-01-01.
-pub(crate) const SAFARI_TO_UNIX_S: i64 = 978_307_200;
 
 /// A moment and the local UTC offset at it. The caller reads both from the clock for each call,
 /// so a daylight-saving change applies to the next call.

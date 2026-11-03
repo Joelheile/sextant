@@ -6,9 +6,6 @@ import { Failed, List, Muted } from "./layout";
 import { Button } from "@/components/ui/button";
 
 export const PERMISSION_LABEL: Record<PermissionName, Key> = {
-  calendar: "permCalendar",
-  reminders: "permReminders",
-  safari: "permSafari",
   "screen-recording": "permScreen",
   accessibility: "permAccessibility",
   automation: "permAutomation",
@@ -16,17 +13,16 @@ export const PERMISSION_LABEL: Record<PermissionName, Key> = {
 
 /** Permissions the user grants by dragging Sextant into a System Settings list. */
 const DRAG_PANE: Partial<Record<PermissionName, SettingsPane>> = {
-  safari: "full-disk-access",
   "screen-recording": "screen-recording",
   accessibility: "accessibility",
 };
 
 /** These apply only after Sextant starts again. */
-const NEEDS_REOPEN: PermissionName[] = ["safari", "screen-recording"];
+const NEEDS_REOPEN: PermissionName[] = ["screen-recording"];
 
 const POLL_MS = 1000;
 
-/** The permissions the chosen sources need, polled every second, with the actions that grant them. */
+/** The permissions live capture needs, polled every second, with the actions that grant them. */
 export function usePermissions() {
   const [permissions, setPermissions] = useState<Permission[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,12 +54,6 @@ export function usePermissions() {
         // macOS shows its prompt once. After that the user has to switch it on in Settings.
         if (permission.status === "denied" || !(await api.requestPermission("automation"))) {
           await api.openSettingsPane("automation");
-        }
-      } else if (permission.name === "calendar" || permission.name === "reminders") {
-        if (permission.status === "undetermined") {
-          await api.requestPermission(permission.name);
-        } else {
-          await api.openSettingsPane(permission.name === "calendar" ? "calendars" : "reminders");
         }
       }
       await refresh();
@@ -108,7 +98,7 @@ export function usePermissions() {
 export type PermissionState = ReturnType<typeof usePermissions>;
 
 /** A check when every named permission is granted, else Allow for the first missing one. Shows
- * nothing for permissions the chosen sources do not need. */
+ * nothing for permissions live capture does not need. */
 export function AllowButton({ state, names }: { state: PermissionState; names: PermissionName[] }) {
   const needed = state.permissions?.filter((p) => names.includes(p.name)) ?? [];
   if (needed.length === 0) return null;
@@ -143,7 +133,7 @@ export function PermissionNotes({ state }: { state: PermissionState }) {
 const label = (permission: Permission): Key =>
   DRAG_PANE[permission.name] || permission.status === "undetermined" ? "allow" : "openSettings";
 
-/** The permissions the chosen sources need, with a button to allow each one or all in turn. */
+/** The permissions live capture needs, with a button to allow each one or all in turn. */
 export default function Permissions() {
   const state = usePermissions();
   const { permissions, walking, walkFrom, allow, missing } = state;

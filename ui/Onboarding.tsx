@@ -1,23 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  api,
-  listenBackfill,
-  type BackfillDone,
-  type ConnectInfo,
-  type Settings,
-  type Sources,
-  type Stage,
-  type Written,
-} from "./api";
-import { t, type Key } from "./i18n";
+import { api, type ConnectInfo, type Written } from "./api";
+import { t } from "./i18n";
 import { Done, Failed, List } from "./layout";
 import { AllowButton, PERMISSION_LABEL, PermissionNotes, usePermissions } from "./Permissions";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 
-const STEPS = ["sources", "access", "map", "connect"] as const;
+const STEPS = ["access", "connect"] as const;
 type Step = (typeof STEPS)[number];
 
 /** The step's buttons, pinned bottom right so they stay put from step to step. */
@@ -25,107 +14,7 @@ function Actions({ children }: { children: ReactNode }) {
   return <div className="mt-auto flex justify-end gap-2 pt-4">{children}</div>;
 }
 
-const CHOICES: { key: keyof Sources; title: Key }[] = [
-  { key: "browsers", title: "sourceBrowsers" },
-  { key: "safari", title: "sourceSafari" },
-  { key: "calendar", title: "sourceCalendar" },
-  { key: "git", title: "sourceGit" },
-  { key: "files", title: "sourceFiles" },
-];
-
-type Choices = { sources: Sources; folders: string[] };
-
-function PickSources({
-  choices,
-  onChange,
-  onNext,
-}: {
-  choices: Choices;
-  onChange: (choices: Choices) => void;
-  onNext: () => void;
-}) {
-  const { sources, folders } = choices;
-  const [error, setError] = useState<string | null>(null);
-
-  const addFolder = async () => {
-    try {
-      const folder = await api.pickFolder(t("pickCodeFolder"));
-      if (folder && !folders.includes(folder)) onChange({ sources, folders: [...folders, folder] });
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  /** Saves before moving on, because the access step asks only for what these sources need. */
-  const next = async () => {
-    try {
-      await api.saveChoices(sources, folders);
-      onNext();
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  return (
-    <>
-      <List>
-        {CHOICES.map(({ key, title }) => (
-          <li key={key} className="flex flex-col gap-2 px-4 py-2">
-            <div className="flex min-h-8 items-center justify-between gap-4">
-              <Label className="font-normal">
-                <Checkbox
-                  checked={sources[key]}
-                  onCheckedChange={(on) =>
-                    onChange({
-                      sources: { ...sources, [key]: on === true },
-                      folders,
-                    })
-                  }
-                />
-                <span className="font-medium">{t(title)}</span>
-              </Label>
-              {key === "git" && sources.git && (
-                <Button type="button" variant="outline" size="sm" onClick={() => void addFolder()}>
-                  {t("addFolder")}
-                </Button>
-              )}
-            </div>
-            {key === "git" && sources.git && folders.length > 0 && (
-              <ul className="ml-6 flex flex-col gap-1.5">
-                {folders.map((folder) => (
-                  <li key={folder} className="flex items-center gap-2">
-                    <code className="font-mono text-xs break-all">{folder}</code>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() =>
-                        onChange({
-                          sources,
-                          folders: folders.filter((f) => f !== folder),
-                        })
-                      }
-                    >
-                      {t("removeFolder")}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
-      </List>
-      {error && <Failed>{error}</Failed>}
-      <Actions>
-        <Button type="button" onClick={() => void next()}>
-          {t("next")}
-        </Button>
-      </Actions>
-    </>
-  );
-}
-
-function GrantAccess({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+function GrantAccess({ onNext }: { onNext: () => void }) {
   const state = usePermissions();
   return (
     <>
@@ -141,79 +30,7 @@ function GrantAccess({ onBack, onNext }: { onBack: () => void; onNext: () => voi
       )}
       <PermissionNotes state={state} />
       <Actions>
-        <Button type="button" variant="ghost" onClick={onBack}>
-          {t("back")}
-        </Button>
         <Button type="button" onClick={onNext}>
-          {t("readHistory")}
-        </Button>
-      </Actions>
-    </>
-  );
-}
-
-type Backfill =
-  | { state: "running"; stage: Stage | null }
-  | { state: "done"; summary: BackfillDone }
-  | { state: "failed"; message: string };
-
-function FirstMap({ onNext }: { onNext: () => void }) {
-  const [backfill, setBackfill] = useState<Backfill>({
-    state: "running",
-    stage: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    let stop: (() => void) | undefined;
-    void listenBackfill({
-      progress: (stage) => setBackfill({ state: "running", stage }),
-      done: (summary) => setBackfill({ state: "done", summary }),
-      failed: (message) => setBackfill({ state: "failed", message }),
-    }).then(async (unlisten) => {
-      if (cancelled) return unlisten();
-      stop = unlisten;
-      try {
-        await api.startBackfill();
-      } catch (err) {
-        setBackfill({ state: "failed", message: String(err) });
-      }
-    });
-    return () => {
-      cancelled = true;
-      stop?.();
-    };
-  }, []);
-
-  return (
-    <>
-      {backfill.state === "running" && (
-        <p className="text-sm text-muted-foreground" aria-live="polite">
-          {backfill.stage ? t(`stage_${backfill.stage}`) : t("mapWorking")}
-        </p>
-      )}
-      {backfill.state === "failed" && <Failed>{t("mapFailed", { message: backfill.message })}</Failed>}
-      {backfill.state === "done" && (
-        <>
-          <p className="text-sm">
-            {t("mapDone", { events: backfill.summary.events, tasks: backfill.summary.tasks })}
-          </p>
-          <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {backfill.summary.sources.flatMap((source) =>
-              source.errors.map((message) => (
-                <li key={`${source.stage}-${message}`}>
-                  {t("sourceSkipped", {
-                    stage: t(`stage_${source.stage}`),
-                    message,
-                  })}
-                </li>
-              )),
-            )}
-          </ul>
-        </>
-      )}
-      <Actions>
-        <Button type="button" disabled={backfill.state === "running"} onClick={onNext}>
           {t("next")}
         </Button>
       </Actions>
@@ -293,21 +110,15 @@ function ConnectToClaude({ onFinish }: { onFinish: () => void }) {
   );
 }
 
-/** Keeps the step across "Reopen Sextant", which restarts the app during the access step. It
- * stores the step's name, so a number saved by an older build starts over at sources instead
- * of opening the map, which starts the backfill. */
+/** Keeps the step across "Reopen Sextant", which restarts the app during the access step. */
 const STEP_KEY = "onboardingStep";
 
 function savedStep(): Step {
-  return STEPS.find((name) => name === localStorage.getItem(STEP_KEY)) ?? "sources";
+  return STEPS.find((name) => name === localStorage.getItem(STEP_KEY)) ?? "access";
 }
 
-export default function Onboarding({ settings, onDone }: { settings: Settings; onDone: () => void }) {
+export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStepState] = useState(savedStep);
-  const [choices, setChoices] = useState<Choices>({
-    sources: settings.sources,
-    folders: settings.git_folders,
-  });
   const setStep = (next: Step) => {
     localStorage.setItem(STEP_KEY, next);
     setStepState(next);
@@ -318,9 +129,7 @@ export default function Onboarding({ settings, onDone }: { settings: Settings; o
   };
 
   const screens: Record<Step, ReactNode> = {
-    sources: <PickSources choices={choices} onChange={setChoices} onNext={() => setStep("access")} />,
-    access: <GrantAccess onBack={() => setStep("sources")} onNext={() => setStep("map")} />,
-    map: <FirstMap onNext={() => setStep("connect")} />,
+    access: <GrantAccess onNext={() => setStep("connect")} />,
     connect: <ConnectToClaude onFinish={finish} />,
   };
 

@@ -36,7 +36,7 @@ Judge every feature by one question: does it get an early adopter to their first
 3. **Where does my time go?** Day and week pages by task ("invoice for Acme", "weekly report"), not by app.
 4. **Search and rewind your past.** "Find the invoice number I saw yesterday." You and your agent read the same record.
 
-The user does nothing beyond installing and granting permissions. A first map appears within a minute, from history already on the Mac.
+The user does nothing beyond installing and granting permissions. The map fills in from live capture as they work.
 
 ## How we measure it
 

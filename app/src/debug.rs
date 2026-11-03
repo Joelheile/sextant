@@ -54,9 +54,6 @@ fn permissions() -> Vec<(&'static str, &'static str)> {
         ("accessibility", platform::accessibility_status()),
         ("screen-recording", platform::screen_recording_status()),
         ("automation", platform::automation_status()),
-        ("calendar", platform::calendar_status()),
-        ("reminders", platform::reminders_status()),
-        ("full-disk-access", platform::safari_status()),
     ]
 }
 

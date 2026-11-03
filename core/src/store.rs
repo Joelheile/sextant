@@ -156,13 +156,6 @@ impl Store {
         )? as usize)
     }
 
-    /// Removes every backfill event so a new backfill replaces the old one instead of doubling it.
-    pub fn clear_backfill(&mut self) -> Result<usize> {
-        Ok(self
-            .conn
-            .execute("DELETE FROM events WHERE source = 'backfill'", [])?)
-    }
-
     /// A short-lived keyed write connection, so a read-only reader can append a row.
     pub(crate) fn write_conn(&self) -> Result<Connection> {
         let conn = Connection::open(&self.path)?;

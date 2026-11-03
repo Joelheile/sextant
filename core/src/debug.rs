@@ -36,11 +36,6 @@ impl Store {
         let _ = writeln!(out, "\n### Settings\n");
         let _ = writeln!(
             out,
-            "- Backfill: {}",
-            switches(&serde_json::to_value(settings.sources)?)
-        );
-        let _ = writeln!(
-            out,
             "- Live: {}",
             switches(&serde_json::to_value(settings.live)?)
         );
@@ -61,7 +56,6 @@ impl Store {
             None => writeln!(out, "- Retention: forever"),
         };
         let _ = writeln!(out, "- Excluded apps: {}", settings.excluded_apps.len());
-        let _ = writeln!(out, "- Git folders: {}", settings.git_folders.len());
         let _ = writeln!(out, "- Onboarded: {}", settings.onboarded);
 
         let _ = writeln!(out, "\n### Permissions\n");
@@ -216,9 +210,6 @@ mod tests {
         store.refresh(local(WEEK_NOW)).expect("refresh");
         let mut settings = Settings::default();
         settings.excluded_apps.push("Secret Ledger".to_owned());
-        settings
-            .git_folders
-            .push("/Users/someone/acme-books".to_owned());
 
         let report = store
             .debug_report(&settings, &facts(), local(WEEK_NOW))
@@ -247,7 +238,6 @@ mod tests {
         let leaked: Vec<&String> = captured
             .iter()
             .chain(&settings.excluded_apps)
-            .chain(&settings.git_folders)
             .filter(|text| text.chars().count() >= 4 && report.contains(text.as_str()))
             .collect();
         assert!(leaked.is_empty(), "{leaked:?} leaked into\n{report}");

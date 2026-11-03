@@ -1,4 +1,4 @@
-//! OS access for backfill and live capture (plan.md §4, §6, §12). `cfg` appears only here:
+//! OS access for live capture (plan.md §4, §12). `cfg` appears only here:
 //! macOS gets the real implementation, other systems get one that reports "needs macOS" so the
 //! crate still builds.
 
@@ -8,8 +8,6 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Prompt {
-    Calendar,
-    Reminders,
     Automation,
 }
 
@@ -17,9 +15,6 @@ pub enum Prompt {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SettingsPane {
-    FullDiskAccess,
-    Calendars,
-    Reminders,
     ScreenRecording,
     Accessibility,
     Automation,
@@ -33,8 +28,6 @@ mod audio;
 mod automation;
 #[cfg(target_os = "macos")]
 mod drag_panel;
-#[cfg(target_os = "macos")]
-mod eventkit;
 #[cfg(target_os = "macos")]
 mod live;
 #[cfg(target_os = "macos")]
@@ -56,9 +49,8 @@ mod vision;
 
 #[cfg(target_os = "macos")]
 pub use macos::{
-    System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,
-    open_settings_pane, os_version, pick_folder, pump, reminders_status, request_permission,
-    safari_status, screen_recording_status, start_audio, start_live, trash_app,
+    accessibility_status, automation_status, ocr_fixture_timings, open_settings_pane, os_version,
+    pump, request_permission, screen_recording_status, start_audio, start_live, trash_app,
 };
 #[cfg(target_os = "macos")]
 pub use speech::{Parakeet, silero};
@@ -66,7 +58,6 @@ pub use speech::{Parakeet, silero};
 pub use unsupported::{Parakeet, silero};
 #[cfg(not(target_os = "macos"))]
 pub use unsupported::{
-    System, accessibility_status, automation_status, calendar_status, ocr_fixture_timings,
-    open_settings_pane, os_version, pick_folder, pump, reminders_status, request_permission,
-    safari_status, screen_recording_status, start_audio, start_live, trash_app,
+    accessibility_status, automation_status, ocr_fixture_timings, open_settings_pane, os_version,
+    pump, request_permission, screen_recording_status, start_audio, start_live, trash_app,
 };

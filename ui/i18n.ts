@@ -1,22 +1,12 @@
 const en = {
   next: "Next",
-  back: "Back",
   finish: "Finish",
   copy: "Copy",
   copied: "Copied",
 
-  sourceBrowsers: "Chrome, Arc, Brave and Edge",
-  sourceSafari: "Safari",
-  sourceCalendar: "Calendar and Reminders",
-  sourceGit: "Git commits",
-  sourceFiles: "Recent files",
-  addFolder: "Add code folder",
   removeFolder: "Remove",
 
   accessNone: "The sources you picked need no permission.",
-  permCalendar: "Calendar",
-  permReminders: "Reminders",
-  permSafari: "Safari history (Full Disk Access)",
   permScreen: "Screen Recording (text in the window you use)",
   permAccessibility: "Accessibility (window titles)",
   permAutomation: "Automation (browser address and private windows)",
@@ -28,22 +18,10 @@ const en = {
   allowAll: "Allow all",
   dragHint: "Drag Sextant into the list, then switch it on.",
   reopenHint:
-    "Screen Recording and Full Disk Access start working after Sextant reopens.",
+    "Screen Recording starts working after Sextant reopens.",
   reopen: "Reopen Sextant",
   automationHint:
     "Open your browser first, then press Allow. Without this, Sextant skips browser windows.",
-  readHistory: "Read my history",
-
-  mapWorking: "Reading your history. This takes a few seconds.",
-  stage_browsers: "Reading browser history",
-  stage_calendar: "Reading calendar and reminders",
-  stage_git: "Reading git commits",
-  stage_files: "Reading recent files",
-  stage_saving: "Saving",
-  stage_analyzing: "Finding your tasks",
-  mapFailed: "Reading your history failed: {message}",
-  mapDone: "Read {events} events from your past weeks and found {tasks} tasks.",
-  sourceSkipped: "{stage}: skipped, {message}",
   hoursWeek: "{hours} h a week",
 
   desktopAdd: "Add to Claude Desktop",
@@ -75,8 +53,6 @@ const en = {
 
   loading: "Loading",
   errorTitle: "Something went wrong",
-
-  pickCodeFolder: "Pick the folder that holds your code",
 
   durSeconds: "{n} s",
   durMinutes: "{n} min",
@@ -201,23 +177,13 @@ export type Key = keyof typeof en;
 
 const de: Record<Key, string> = {
   next: "Weiter",
-  back: "Zurück",
   finish: "Fertig",
   copy: "Kopieren",
   copied: "Kopiert",
 
-  sourceBrowsers: "Chrome, Arc, Brave und Edge",
-  sourceSafari: "Safari",
-  sourceCalendar: "Kalender und Erinnerungen",
-  sourceGit: "Git-Commits",
-  sourceFiles: "Zuletzt geöffnete Dateien",
-  addFolder: "Code-Ordner hinzufügen",
   removeFolder: "Entfernen",
 
   accessNone: "Die gewählten Quellen brauchen keine Erlaubnis.",
-  permCalendar: "Kalender",
-  permReminders: "Erinnerungen",
-  permSafari: "Safari-Verlauf (Vollzugriff auf die Festplatte)",
   permScreen: "Bildschirmaufnahme (Text im Fenster, das du nutzt)",
   permAccessibility: "Bedienungshilfen (Fenstertitel)",
   permAutomation: "Automation (Browser-Adresse und private Fenster)",
@@ -229,22 +195,10 @@ const de: Record<Key, string> = {
   allowAll: "Alle erlauben",
   dragHint: "Zieh Sextant in die Liste und schalte es dann ein.",
   reopenHint:
-    "Bildschirmaufnahme und Festplattenvollzugriff wirken erst, wenn Sextant neu startet.",
+    "Bildschirmaufnahme wirkt erst, wenn Sextant neu startet.",
   reopen: "Sextant neu öffnen",
   automationHint:
     "Öffne zuerst deinen Browser und tippe dann auf Erlauben. Ohne diese Erlaubnis überspringt Sextant Browserfenster.",
-  readHistory: "Verlauf lesen",
-
-  mapWorking: "Dein Verlauf wird gelesen. Das dauert einige Sekunden.",
-  stage_browsers: "Browser-Verlauf wird gelesen",
-  stage_calendar: "Kalender und Erinnerungen werden gelesen",
-  stage_git: "Git-Commits werden gelesen",
-  stage_files: "Zuletzt geöffnete Dateien werden gelesen",
-  stage_saving: "Wird gespeichert",
-  stage_analyzing: "Deine Aufgaben werden gesucht",
-  mapFailed: "Der Verlauf konnte nicht gelesen werden: {message}",
-  mapDone: "{events} Ereignisse aus deinen letzten Wochen gelesen, {tasks} Aufgaben gefunden.",
-  sourceSkipped: "{stage}: übersprungen, {message}",
   hoursWeek: "{hours} Std. pro Woche",
 
   desktopAdd: "Zu Claude Desktop hinzufügen",
@@ -278,8 +232,6 @@ const de: Record<Key, string> = {
 
   loading: "Lädt",
   errorTitle: "Etwas ist schiefgelaufen",
-
-  pickCodeFolder: "Wähle den Ordner mit deinem Code",
 
   durSeconds: "{n} Sek.",
   durMinutes: "{n} Min.",

@@ -44,7 +44,7 @@ export default function App() {
     );
   }
   if (!settings.onboarded) {
-    return <Onboarding settings={settings} onDone={() => setSettings({ ...settings, onboarded: true })} />;
+    return <Onboarding onDone={() => setSettings({ ...settings, onboarded: true })} />;
   }
   return (
     <Page>

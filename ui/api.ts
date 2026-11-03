@@ -1,14 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-export type Sources = {
-  browsers: boolean;
-  safari: boolean;
-  calendar: boolean;
-  git: boolean;
-  files: boolean;
-};
-
 export type Live = {
   metadata: boolean;
   ocr: boolean;
@@ -34,8 +26,6 @@ export type Settings = {
   mcp_rewind: boolean;
   mcp_workflows: boolean;
   onboarded: boolean;
-  sources: Sources;
-  git_folders: string[];
   retention_days: number | null;
   agent: AgentName | null;
   agent_weekly: boolean;
@@ -89,26 +79,20 @@ export type AgentStatus = {
   routines: Routine[];
 };
 
-export type MenuAction = "pause" | "search" | "open" | "quit" | "hide";
+export type MenuAction = "pause" | "open" | "quit" | "hide";
 
 export type PermissionName =
-  | "calendar"
-  | "reminders"
-  | "safari"
   | "screen-recording"
   | "accessibility"
   | "automation";
 /** The permissions that have a system prompt. */
-export type PromptName = "calendar" | "reminders" | "automation";
+export type PromptName = "automation";
 export type Permission = {
   name: PermissionName;
   status: "granted" | "undetermined" | "denied";
 };
 
 export type SettingsPane =
-  | "full-disk-access"
-  | "calendars"
-  | "reminders"
   | "screen-recording"
   | "accessibility"
   | "automation";
@@ -120,20 +104,6 @@ export type ConnectInfo = {
 };
 
 export type Written = { path: string; backup: string | null };
-
-export type Stage =
-  | "browsers"
-  | "calendar"
-  | "git"
-  | "files"
-  | "saving"
-  | "analyzing";
-
-export type BackfillDone = {
-  events: number;
-  tasks: number;
-  sources: { stage: Stage; events: number; errors: string[] }[];
-};
 
 export type Models = {
   installed: boolean;
@@ -151,11 +121,6 @@ export const api = {
   openSettingsPane: (pane: SettingsPane, dragHint?: string) =>
     invoke<void>("open_settings_pane", { pane, dragHint }),
   relaunch: () => invoke<void>("relaunch"),
-  pickFolder: (prompt: string) =>
-    invoke<string | null>("pick_folder", { prompt }),
-  saveChoices: (sources: Sources, gitFolders: string[]) =>
-    invoke<Settings>("save_choices", { sources, gitFolders }),
-  startBackfill: () => invoke<void>("start_backfill"),
   connectInfo: () => invoke<ConnectInfo>("connect_info"),
   connectClaudeDesktop: () => invoke<Written>("connect_claude_desktop"),
   setMcpSwitches: (rewind: boolean, workflows: boolean) =>
@@ -197,28 +162,6 @@ export const onReady = (handler: () => void): Promise<UnlistenFn> =>
 /** Calls `handler` each time the menu bar popover opens. */
 export const onPopoverOpen = (handler: () => void): Promise<UnlistenFn> =>
   listen("popover-open", handler);
-
-export type BackfillHandlers = {
-  progress: (stage: Stage) => void;
-  done: (summary: BackfillDone) => void;
-  failed: (message: string) => void;
-};
-
-/** Listens to the backfill events. Resolves once all three listeners are attached. */
-export async function listenBackfill(
-  handlers: BackfillHandlers,
-): Promise<UnlistenFn> {
-  const stops = await Promise.all([
-    listen<{ stage: Stage }>("backfill-progress", (e) =>
-      handlers.progress(e.payload.stage),
-    ),
-    listen<BackfillDone>("backfill-done", (e) => handlers.done(e.payload)),
-    listen<{ message: string }>("backfill-failed", (e) =>
-      handlers.failed(e.payload.message),
-    ),
-  ]);
-  return () => stops.forEach((stop) => stop());
-}
 
 export type DownloadHandlers = {
   progress: (done: number, total: number) => void;

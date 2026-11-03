@@ -36,7 +36,6 @@ Pre-approved crates for core: rusqlite, thiserror, regex, serde, serde_json, pet
 
 | Source                                                                                                                                                                                        | When                        | Default                                       |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | --------------------------------------------- |
-| **Backfill:** browser history (Chrome, Arc, Brave, Edge; Safari if Full Disk Access is granted), calendar and reminders (90 days), git commits in folders the user picks, recently used files | once, in onboarding         | on, each source can be unticked in onboarding |
 | **Live:** focused app, window title, document, browser URL                                                                                                                                    | while working               | on                                            |
 | **Live:** OCR text of the focused window                                                                                                                                                      | while working               | on                                            |
 | **Live:** mic and system audio transcripts                                                                                                                                                    | during calls and voice use  | off, switch in Privacy; tray shows it, one click stops it |
@@ -86,19 +85,15 @@ every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶
 - **Retention, hourly:** delete raw rows past the window (lines, frames, windows, utterances, events and rewind turns, with their FTS rows), then unreferenced lines and windows, then run a refresh so the engine tables hold only what the remaining rows make. Then the storage cap (5 GB by default; 1, 2 or 10 GB, or none) deletes the oldest days until the database fits. Once a week, when nothing was captured for 15 minutes, `VACUUM` returns the freed space. Workflows and scores keep only redacted, templated keys.
 - Dev builds use `SEXTANT_HOME=./.dev-data` (in `.cargo/config.toml`) and keychain service `sextant-dev`, and refuse to start without it.
 
-## 6. Backfill (the 60-second first map)
+## 6. Backfill (removed)
 
-- Browser history: copy the `History` SQLite file to memory first (the browser locks it), read `urls` and `visits` (`visit_time`, `visit_duration`, WebKit epoch). Group visits into sessions by host and 5 min gaps.
-- Calendar and reminders: EventKit, last 90 days and next 14.
-- Git: `git log --all --since=90.days --format=%H%x09%at%x09%s` per repo in folders the user picks.
-- Recent files: Spotlight `kMDItemLastUsedDate` for documents, file names only.
-- Everything becomes `events` with `source = backfill` and goes through the same compiler. Workflows built only from backfill are labeled "rough" until live data confirms them.
+Removed on 2026-11-02. Sextant no longer reads browser history, calendar, git or recent files at install; the map comes from live capture only. The last commit with the readers is `e0f5336`. `Source::Backfill` stays in the model so databases that hold backfill rows still load.
 
 ## 7. Automation finder (core, deterministic, time passed in as `Local { now, utc_offset_s }`)
 
 Functions take a `Local` built per call, so day boundaries follow daylight saving. Process mining applied to one person: a **task** is one piece of work (one client, ticket, invoice), a **step** is a recurring activity, a **workflow** is a step sequence that repeats across tasks.
 
-The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`, `press` and `edit` events. Commit and file events from backfill feed the MCP timeline, not the map.
+The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`, `press` and `edit` events. Commit and file events from older backfill rows feed the MCP timeline, not the map.
 
 1. **Episodes:** consecutive focus on the same object key, min 5 s, max 120 min, merge gaps under 2 min. Object key: host + first 2 path segments + 3 title tokens; else app + document; else app + title template (numbers and ids replaced). OCR headings and form titles refine the key.
 2. **Steps:** group episodes by object key, merge within the same app or site at Jaccard ≥ 0.5 on title tokens. Name from shared tokens. Category by rules: meeting, email, spreadsheet, crm, finance, chat, planning, coding, design, writing, slides, calendar, social, media, web, other.
@@ -146,7 +141,7 @@ The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`,
 
 - Tray icon while capturing (filled on, outline paused, dot while transcribing, ring with "!" when a permission blocks capture). Right click: status, Pause 1 h, Stop audio, Search, Open Sextant, Quit Sextant.
 - **Popover** (left click on the tray icon): a status line with a breathing dot ("Reading Safari, 12 s ago"), chips for what is captured now, a banner with an Allow button when capture is blocked. Tabs: **Today** (time at the Mac, 7-day bars, longest focus, app switches an hour, lines saved, call minutes, top apps, all computed on this Mac), **Ideas** (hours you could get back, trend against last week, ideas from your agent), **Settings** (agent bridge and everything from Privacy).
-- **Onboarding** (four screens, no titles or intro text): pick backfill sources, grant the permissions they and live capture need, see the first map, connect to Claude. Call audio and the agent switches live in Privacy.
+- **Onboarding** (two screens, no titles or intro text): grant the permissions live capture needs, connect to Claude. Call audio and the agent switches live in Privacy.
 - **Workflows:** "X hours a week you could get back", quick enjoyment question, ranked workflows as rows of steps (apps, gaps, copy points), promises you keep pushing, things to protect. Detail: reasons, example cases, correction box, "Create automation" (writes `SKILL.md`, copies a ready prompt for Claude).
 - **Search:** one box over screen text and transcripts, results by session. No timeline replay.
 - **Results:** hours before and after each handoff, from 3+ days of data.
@@ -172,7 +167,6 @@ Measured by `sextant bench` on fixtures and `sextant bench --live 3600` on a rea
 
 | Metric                                              | Budget                        |
 | --------------------------------------------------- | ----------------------------- |
-| First workflow map after install (90 days backfill) | < 60 s                        |
 | CPU idle / working (1 h average)                    | < 0.5 % / < 3 %               |
 | RAM without / with ASR loaded                       | < 150 MB / < 1.3 GB           |
 | OCR per window, p95                                 | < 250 ms, off the main thread |
@@ -228,6 +222,6 @@ Done when: **(user)** a fresh Mac installs, grants permissions and shows a map w
 
 `minimumSystemVersion` 26.0, the version Sextant is tested on. The search palette that needed Apple's on-device model is gone (`docs/rewind-and-apple-model.md`).
 
-- `Info.plist`: `NSAudioCaptureUsageDescription`, `NSMicrophoneUsageDescription`, `NSAppleEventsUsageDescription`, `NSCalendarsFullAccessUsageDescription`, `NSRemindersFullAccessUsageDescription`, `LSUIElement`.
-- `Entitlements.plist`: `com.apple.security.device.audio-input`, `com.apple.security.automation.apple-events`, `com.apple.security.personal-information.calendars`.
-- Permissions asked only when the matching step in onboarding needs them: Screen Recording (OCR), Accessibility (window titles), Automation (browser URL), Calendars and Reminders (backfill), Microphone and System Audio (transcripts), Full Disk Access (Safari history, optional).
+- `Info.plist`: `NSAudioCaptureUsageDescription`, `NSMicrophoneUsageDescription`, `NSAppleEventsUsageDescription`, `LSUIElement`.
+- `Entitlements.plist`: `com.apple.security.device.audio-input`, `com.apple.security.automation.apple-events`.
+- Permissions asked only when the matching step in onboarding needs them: Screen Recording (OCR), Accessibility (window titles), Automation (browser URL), Microphone and System Audio (transcripts).

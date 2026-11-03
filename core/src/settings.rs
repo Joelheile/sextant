@@ -6,32 +6,6 @@ use crate::agent::AgentName;
 use crate::error::Result;
 use crate::text::split_url;
 
-/// Backfill sources the user can untick in onboarding (plan.md §3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Sources {
-    /// Chrome, Arc, Brave and Edge.
-    pub browsers: bool,
-    /// Needs Full Disk Access.
-    pub safari: bool,
-    /// Calendar and reminders.
-    pub calendar: bool,
-    pub git: bool,
-    pub files: bool,
-}
-
-impl Default for Sources {
-    fn default() -> Self {
-        Self {
-            browsers: true,
-            safari: true,
-            calendar: true,
-            git: true,
-            files: true,
-        }
-    }
-}
-
 /// Live capture sources (plan.md §3). Each one can be switched off on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -77,7 +51,7 @@ pub struct Settings {
     /// Apps whose screen text never leaves the database through MCP (plan.md §4: password
     /// managers, Health, messengers). Compared case-insensitively against the app name.
     pub excluded_apps: Vec<String>,
-    /// Sites never read live or from browser history: banks and payment sites by default. A
+    /// Sites never read: banks and payment sites by default. A
     /// site matches its subdomains too.
     pub excluded_sites: Vec<String>,
     /// Switch for `search`, `context_at` and `timeline`.
@@ -86,10 +60,7 @@ pub struct Settings {
     /// `task` also need `mcp_rewind`.
     pub mcp_workflows: bool,
     pub onboarded: bool,
-    pub sources: Sources,
     pub live: Live,
-    /// Folders the user picked for git backfill.
-    pub git_folders: Vec<String>,
     /// How long raw data stays (plan.md §3): 30, 90 or 365 days, `None` for forever.
     pub retention_days: Option<u32>,
     /// Above this many megabytes of raw data, the oldest days go first. `None` for no cap.
@@ -147,9 +118,7 @@ impl Default for Settings {
             mcp_rewind: true,
             mcp_workflows: true,
             onboarded: false,
-            sources: Sources::default(),
             live: Live::default(),
-            git_folders: Vec::new(),
             retention_days: Some(90),
             storage_cap_mb: Some(5000),
             agent: None,
