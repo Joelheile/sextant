@@ -95,7 +95,7 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
 | Discovery (E2, E3) | Your agent finds routines through the tools and saves them. Code checks every cited id and computes the hours.                                | `core/src/routines.rs`, `app/src/agent.rs` | shipped                     |
 | Skills (E4)        | `SKILL.md` per routine with cited steps, written by your agent and checked by `check_skill`                                                  | `core/src/routines.rs`, `core/src/mcp`    | shipped                     |
 | Search (E5)        | Local embeddings next to full-text search, and "similar" edges between activities                                                             | not in the tree                           | deprecated                  |
-| Input classes (T4) | Where each step's values come from: fixed, copied, derived or judgment                                                                        | not yet                                   | planned                     |
+| Input classes (T4) | Where each step's values come from: fixed, copied, derived or judgment                                                                        | not yet                                   | deferred                    |
 
 The workflow finder, its scores, corrections and the Results tab are gone (E4b, `schema_v9.sql`). `steps` stays only to name activities on the week and day pages.
 
@@ -135,5 +135,5 @@ Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-d
 
 - **Shipped in the tree:** capture with AX-first text, actions v1, signals, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), routines in place of workflows (E4b), and the `sextant` CLI and TUI in place of the window (C1).
 - **Next:** L2 (connect to ChatGPT, `.mcpb`) in `docs/routines-plan.md`. The OCR comparison (O1) kept Apple Vision: `docs/ocr-comparison.md`.
-- **Deferred:** task types (T3), input classes (T4), incremental refresh (T5) and evaluation (L3). Your agent finds recurring work in E2 and E3, so nothing needs them yet.
-- **Deprecated on 2026-11-02 (removed from the code):** local embeddings (E5, measured, see `docs/routines-plan.md`), the rewind panel and Apple's model (`docs/rewind-and-apple-model.md`), backfill, the popover, Today and the React window.
+- **Deferred:** input classes (T4), until people ask what to automate.
+- **Deprecated on 2026-11-02 (removed from the code):** local embeddings (E5, measured, see `docs/routines-plan.md`), the rewind panel and Apple's model (`docs/rewind-and-apple-model.md`), backfill, the popover, Today, the React window, task types (T3), incremental refresh (T5) and evaluation (L3).

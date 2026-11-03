@@ -1,6 +1,6 @@
 # Task graph and LLM layer plan
 
-Status: T1 and T2 are built. T3 is deferred: nothing reads task types yet, and `from_tasks` in `core/src/finder/graph.rs` is the one grouping engine for now, so the MinHash and alignment code is deleted. T4 onward is not started. The plan builds on actions v1 (`press` and `edit` events, plan.md §4). The engine section below replaces workflows as the way Sextant finds automation.
+Status: T1 and T2 are built. T3, T5 and L3 are deprecated: your agent groups tasks into routines (E2), so code-side clustering, incremental refresh and a scoring harness have nothing to serve. T4 is deferred until people ask what to automate. The plan builds on actions v1 (`press` and `edit` events, plan.md §4). The engine section below replaces workflows as the way Sextant finds automation.
 
 ## The goal
 
@@ -74,20 +74,13 @@ This is TMI's latent task induction, done with rules first.
 - Output: `tasks(id, label, workflow_id, first_ts, last_ts, active_s)` and `task_episodes(task_id, episode_id)`.
 - "Where time goes" becomes task minutes per day, with apps underneath.
 
-### T3. Task types (recurring work)
+### T3. Task types (deprecated)
 
-1. **Signature** of a task: the shingles of its action symbols (3 in a row) plus its step categories.
-2. **Clustering:** MinHash with 64 hashes and locality-sensitive hashing (LSH) with Jaccard ≥ 0.5. Clustering is near-linear in the number of tasks and needs no new dependency, about 100 lines in core. It replaces the edit-distance grouping of workflows (§7.6).
-3. A task type needs 3 or more tasks on 2 or more days.
-4. **Procedure:** align each task's action sequence against the type's medoid, the task closest to all others, with the existing `edit_distance` extended to keep the alignment.
-   - Actions present in 60 % or more of runs are the steps.
-   - A block repeated within a run on different identifiers is a for-each.
-   - A block repeated until the run ends is a while.
-   - Error corrections and detours fall out as low-frequency actions and are kept as "sometimes".
+Deprecated on 2026-11-02. MinHash clustering and procedure alignment would rebuild in code what your agent already does when it proposes routines from the task pages (E2). It comes back only if agents miss routines that people point out.
 
-### T4. Inputs and automatability
+### T4. Inputs and automatability (deferred)
 
-For each step of a task type, compare its value across runs:
+Deferred until people use routines and ask what to automate. For each step of a routine (E2), compare its value across the routine's tasks:
 
 | Class       | Rule                                                                                   | Agent                      |
 | ----------- | -------------------------------------------------------------------------------------- | -------------------------- |
@@ -97,22 +90,13 @@ For each step of a task type, compare its value across runs:
 | judgment    | varying text with no source                                                            | needs an LLM or the person |
 
 - "Visible earlier" searches `lines_fts` and earlier edits of the same task, matching on the redacted form.
-- automatable = (fixed + transferred) / steps. It replaces the category prior in the potential score whenever a task type exists.
-- Transfers let the Workflows screen name friction exactly, for example "you typed the invoice amount from Mail into lexoffice 23 times this month".
+- automatable = (fixed + transferred) / steps.
+- Transfers name friction exactly, for example "you typed the invoice amount from Mail into lexoffice 23 times this month".
+- Storage: `routine_steps(routine_id, idx, symbol, share, input_class, source_step)`, with no values, only symbols, classes and positions. Values stay in `events` under retention.
 
-### T5. Incremental refresh
+### T5. Incremental refresh (deprecated)
 
-- Today each refresh recomputes 90 days, with a budget under 2 s.
-- New design: T1 and T2 run only on events since the last refresh. MinHash signatures are stored per task, so T3 updates only touched clusters. T4 reruns only for changed types.
-- Target: a refresh under 50 ms for 10 minutes of new events. The full rebuild stays as the nightly pass and as the test oracle: incremental results must equal a full rebuild on fixtures.
-
-### T6. Storage
-
-T2 shipped in `core/src/schema_v6.sql`: `tasks` and `task_episodes`. The tables below arrive with T3.
-
-- `task_types(id, label, signature BLOB, runs, days, minutes_week, automatable)`
-- `type_steps(type_id, idx, symbol, share, input_class, source_step)`
-- No values in the new tables, only symbols, classes and positions. Values stay in `events` under retention.
+Deprecated on 2026-11-02. The full 90-day refresh meets its 2 s budget every 5 minutes. It comes back only if that budget fails on real data.
 
 ### Tests and budgets
 
@@ -124,9 +108,8 @@ Fixtures:
 Done when:
 
 - The invoice and report tasks separate, with a pair-agreement score of 0.9 or more, the measure TMI uses.
-- The invoice type has 3 transferred inputs and 1 judgment input.
-- Incremental equals full rebuild.
-- An incremental refresh takes under 50 ms; the full 90-day rebuild stays under 2 s.
+- The full 90-day rebuild stays under 2 s.
+- With T4: the invoice routine has 3 transferred inputs and 1 judgment input.
 
 ## LLM layer
 
@@ -153,10 +136,9 @@ Deprecated on 2026-11-02 and removed from the code. It only ever answered questi
 - **Grounding check:** every step in the answer cites a step index of the task type. Code rejects answers with unknown or missing citations, because models are known to invent steps ([WONDERBREAD](https://arxiv.org/abs/2406.13264)).
 - **What models see:** see the engine below.
 
-### L3. Evaluation
+### L3. Evaluation (deprecated)
 
-- **Labels from the person:** the Workflows screen asks "Is this one task?" and "Is this name right?". Answers are corrections (§7.12) and also labels for measuring T2 and T3 on real data.
-- **Fixtures:** 10 task types with hand-written skills. An ignored test runs the bridge and scores step precision and recall.
+Deprecated on 2026-11-02. Asking "Is this one task?" adds friction, and hand-written fixture skills mostly measure the fixtures. The test is whether early users run the skills Sextant writes.
 
 ## Engine: a memory your agent can read
 
@@ -272,7 +254,7 @@ The code is in a local stash ("E5 local embeddings"). The decisions below are ke
 
 ## Order
 
-E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture, activities and tasks, the pages over MCP, routines and skills. E5, T3, T4, T5 and L3 wait until people use that workflow. The `sextant` CLI and TUI replaced the window (C1). The OCR comparison (O1, `docs/ocr-comparison.md`) kept Apple Vision. Each step leaves Sextant working.
+E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture, activities and tasks, the pages over MCP, routines and skills. E5, T3, T5 and L3 are deprecated; T4 waits until people ask what to automate. The `sextant` CLI and TUI replaced the window (C1). The OCR comparison (O1, `docs/ocr-comparison.md`) kept Apple Vision. Each step leaves Sextant working.
 
 | Step | Delivers                                            | Done when                                                    |
 | ---- | --------------------------------------------------- | ------------------------------------------------------------ |
@@ -285,9 +267,9 @@ E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture
 | L1   | Deprecated with the rewind panel                    | See `docs/rewind-and-apple-model.md`                         |
 | T1   | Activities with actions and identifiers             | The fixture shows actions per activity                       |
 | T2   | Tasks, "where time goes"                            | Pair agreement ≥ 0.9 on the interleaved fixture              |
-| T3   | Task types and procedures (deferred)                | The invoice type found with its steps and for-each           |
-| T4   | Input classes (deferred)                            | Transfers found on the fixture                               |
-| T5   | Incremental refresh (deferred)                      | Equals full rebuild, under 50 ms                             |
+| T3   | Deprecated: your agent groups routines (E2)         | See T3                                                       |
+| T4   | Input classes per routine step (deferred)           | Transfers found on the fixture                               |
+| T5   | Deprecated: the full refresh meets its budget       | See T5                                                       |
 | C1   | `sextant` CLI and TUI replace the window, built     | Status, routines, agent bridge, privacy and sent log work    |
 | O1   | OCR comparison, written: Vision stays               | Reopens when harder fixtures show `.fast` misses             |
 | L2   | Connect to ChatGPT, `.mcpb`                         | **(user)** Claude Desktop and ChatGPT desktop list the tools |
