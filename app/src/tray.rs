@@ -130,15 +130,15 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn state(app: &AppHandle) -> CaptureState {
-    match app.state::<AppState>().engine.get() {
+fn capture_state(state: &AppState) -> CaptureState {
+    match state.engine.get() {
         Some(Ok(engine)) => engine.capture_state(),
         _ => CaptureState::Off,
     }
 }
 
-fn audio_state(app: &AppHandle) -> AudioState {
-    match app.state::<AppState>().engine.get() {
+fn audio_state(state: &AppState) -> AudioState {
+    match state.engine.get() {
         Some(Ok(engine)) => engine.audio_state(),
         _ => AudioState::Off,
     }
@@ -166,64 +166,83 @@ fn toggle_pause(app: &AppHandle) {
     }
 }
 
-/// Local clock time of Unix time `ts` as `HH:MM`.
-fn clock_time(ts: i64) -> String {
-    let local = ts + i64::from(crate::clock::utc_offset(ts));
-    let minutes = local.rem_euclid(86_400) / 60;
-    format!("{:02}:{:02}", minutes / 60, minutes % 60)
+/// Which tray icon shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Icon {
+    On,
+    Paused,
+    Alert,
+    Listening,
+}
+
+impl Icon {
+    fn image(self) -> Image<'static> {
+        match self {
+            Self::On => tauri::include_image!("icons/tray-on.png"),
+            Self::Paused => tauri::include_image!("icons/tray-paused.png"),
+            Self::Alert => tauri::include_image!("icons/tray-alert.png"),
+            Self::Listening => tauri::include_image!("icons/tray-listening.png"),
+        }
+    }
+}
+
+/// What the tray and `sextant status` show.
+pub struct Look {
+    pub text: String,
+    icon: Icon,
+    pub capture: CaptureState,
+    pub audio: AudioState,
+}
+
+pub fn look(state: &AppState) -> Look {
+    let capture = capture_state(state);
+    let (text, icon) = match capture {
+        CaptureState::Off => ("Capture is off".into(), Icon::Paused),
+        CaptureState::Capturing => ("Capturing".into(), Icon::On),
+        CaptureState::Paused(until) => (
+            format!("Paused until {}", crate::clock::hour_minute(until)),
+            Icon::Paused,
+        ),
+        CaptureState::Stalled(_) => ("Capture stopped: restart Sextant".into(), Icon::Alert),
+    };
+    let blocked = capture == CaptureState::Capturing
+        && !crate::commands::capture_blockers(&state.dir).is_empty();
+    let (text, icon) = if blocked {
+        (
+            "Capture is blocked: run `sextant setup`".into(),
+            Icon::Alert,
+        )
+    } else {
+        (text, icon)
+    };
+    let audio = audio_state(state);
+    let (text, icon) = match audio {
+        AudioState::Transcribing => (format!("{text}, transcribing a call"), Icon::Listening),
+        AudioState::Waiting => (format!("{text}, audio on"), icon),
+        AudioState::Off => (text, icon),
+    };
+    Look {
+        text,
+        icon,
+        capture,
+        audio,
+    }
 }
 
 fn refresh(app: &AppHandle) {
     let Some(tray) = app.try_state::<Tray>() else {
         return;
     };
-    let state = state(app);
-    let (text, pause, icon): (String, &str, Image<'static>) = match state {
-        CaptureState::Off => (
-            "Capture is off".into(),
-            "Pause 1 h",
-            tauri::include_image!("icons/tray-paused.png"),
-        ),
-        CaptureState::Capturing => (
-            "Capturing".into(),
-            "Pause 1 h",
-            tauri::include_image!("icons/tray-on.png"),
-        ),
-        CaptureState::Paused(until) => (
-            format!("Paused until {}", clock_time(until)),
-            "Resume",
-            tauri::include_image!("icons/tray-paused.png"),
-        ),
-        CaptureState::Stalled(_) => (
-            "Capture stopped: restart Sextant".into(),
-            "Pause 1 h",
-            tauri::include_image!("icons/tray-alert.png"),
-        ),
+    let look = look(&app.state::<AppState>());
+    let pause = match look.capture {
+        CaptureState::Paused(_) => "Resume",
+        _ => "Pause 1 h",
     };
-    let blocked = state == CaptureState::Capturing
-        && !crate::commands::capture_blockers(&app.state::<AppState>().dir).is_empty();
-    let (text, icon) = if blocked {
-        (
-            "Capture is blocked: allow access in Sextant".into(),
-            tauri::include_image!("icons/tray-alert.png"),
-        )
-    } else {
-        (text, icon)
-    };
-    let audio = audio_state(app);
-    let (text, icon) = match audio {
-        AudioState::Transcribing => (
-            format!("{text}, transcribing a call"),
-            tauri::include_image!("icons/tray-listening.png"),
-        ),
-        AudioState::Waiting => (format!("{text}, audio on"), icon),
-        AudioState::Off => (text, icon),
-    };
-    let _ = tray.status.set_text(text);
-    let _ = tray.stop_audio.set_enabled(audio != AudioState::Off);
+    let _ = tray.status.set_text(look.text);
+    let _ = tray.stop_audio.set_enabled(look.audio != AudioState::Off);
     let _ = tray.pause.set_text(pause);
-    let _ = tray.pause.set_enabled(state != CaptureState::Off);
-    let _ = tray.icon.set_icon(Some(icon));
+    let _ = tray.pause.set_enabled(look.capture != CaptureState::Off);
+    let _ = tray.icon.set_icon(Some(look.icon.image()));
     let _ = tray.icon.set_icon_as_template(true);
 }
 

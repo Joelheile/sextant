@@ -3,13 +3,13 @@
 //! nothing leaves without one.
 
 use rusqlite::params;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::store::Store;
 
 /// One answer an agent received.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Sent {
     pub ts: i64,
     /// The MCP client's name from `initialize`.

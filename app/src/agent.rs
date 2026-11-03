@@ -15,7 +15,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sextant_core::Settings;
 use sextant_core::agent::{AgentName, Run};
@@ -255,17 +255,17 @@ fn analyze(engine: &Engine, settings: &Settings, agent: AgentName) -> Result<()>
     result
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AgentStatus {
     /// The agents found on this Mac.
-    installed: Vec<AgentName>,
-    chosen: Option<AgentName>,
-    weekly: bool,
-    running: bool,
-    last_run: Option<i64>,
-    last_agent: Option<AgentName>,
+    pub installed: Vec<AgentName>,
+    pub chosen: Option<AgentName>,
+    pub weekly: bool,
+    pub running: bool,
+    pub last_run: Option<i64>,
+    pub last_agent: Option<AgentName>,
     /// Saved routines, as the `routines` tool lists them.
-    routines: Value,
+    pub routines: Value,
 }
 
 fn status(engine: &Engine, settings: &Settings) -> Result<AgentStatus> {
@@ -287,6 +287,10 @@ fn status(engine: &Engine, settings: &Settings) -> Result<AgentStatus> {
 
 #[tauri::command]
 pub async fn agent_status(state: State<'_, AppState>) -> Reply<AgentStatus> {
+    bridge(&state)
+}
+
+pub(crate) fn bridge(state: &AppState) -> Reply<AgentStatus> {
     let engine = state.engine()?;
     let settings = crate::prefs::load(&state.dir).map_err(msg)?;
     status(engine, &settings).map_err(|err| format!("{err:#}"))
@@ -299,6 +303,10 @@ pub async fn set_agent(
     agent: Option<AgentName>,
     weekly: bool,
 ) -> Reply<Settings> {
+    choose(&state, agent, weekly)
+}
+
+pub(crate) fn choose(state: &AppState, agent: Option<AgentName>, weekly: bool) -> Reply<Settings> {
     state
         .engine()?
         .change_settings(move |s| {
@@ -311,16 +319,17 @@ pub async fn set_agent(
 /// "Analyze now": runs the chosen agent and returns the new status.
 #[tauri::command]
 pub async fn run_agent(app: AppHandle) -> Reply<AgentStatus> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = app.state::<AppState>();
-        let engine = state.engine()?;
-        let settings = crate::prefs::load(&state.dir).map_err(msg)?;
-        let agent = settings.agent.ok_or("pick Claude Code or Codex first")?;
-        analyze(engine, &settings, agent).map_err(|err| format!("{err:#}"))?;
-        status(engine, &settings).map_err(|err| format!("{err:#}"))
-    })
-    .await
-    .map_err(msg)?
+    tauri::async_runtime::spawn_blocking(move || run_now(&app.state::<AppState>()))
+        .await
+        .map_err(msg)?
+}
+
+pub(crate) fn run_now(state: &AppState) -> Reply<AgentStatus> {
+    let engine = state.engine()?;
+    let settings = crate::prefs::load(&state.dir).map_err(msg)?;
+    let agent = settings.agent.ok_or("pick Claude Code or Codex first")?;
+    analyze(engine, &settings, agent).map_err(|err| format!("{err:#}"))?;
+    status(engine, &settings).map_err(|err| format!("{err:#}"))
 }
 
 /// Runs the agent once a week when the user switched that on.

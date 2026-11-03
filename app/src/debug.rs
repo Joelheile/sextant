@@ -8,7 +8,7 @@ use std::time::Duration;
 use sextant_core::Facts;
 use tauri::AppHandle;
 
-use crate::commands::{Reply, blocking, msg};
+use crate::commands::{AppState, Reply, blocking, msg};
 use crate::{clock, platform, prefs};
 
 const KEPT_ERRORS: usize = 20;
@@ -59,32 +59,33 @@ fn permissions() -> Vec<(&'static str, &'static str)> {
 
 #[tauri::command]
 pub async fn debug_report(app: AppHandle) -> Reply<String> {
-    blocking(app, |state| {
-        let settings = prefs::load(&state.dir).map_err(msg)?;
-        let engine = state.engine()?;
-        let mut numbers = Vec::new();
-        let errors = {
-            let log = log();
-            numbers.extend(log.refresh_ms.map(|ms| ("last refresh ms", ms)));
-            numbers.extend(
-                log.capture_to_search_ms
-                    .map(|ms| ("capture to search ms", ms)),
-            );
-            log.errors.iter().copied().collect()
-        };
-        numbers.extend(engine.capture_numbers());
-        let facts = Facts {
-            app_version: env!("CARGO_PKG_VERSION"),
-            macos: platform::os_version(),
-            permissions: permissions(),
-            numbers,
-            errors,
-        };
-        engine
-            .read(|store| store.debug_report(&settings, &facts, clock::local()))
-            .map_err(msg)
-    })
-    .await
+    blocking(app, report).await
+}
+
+pub(crate) fn report(state: &AppState) -> Reply<String> {
+    let settings = prefs::load(&state.dir).map_err(msg)?;
+    let engine = state.engine()?;
+    let mut numbers = Vec::new();
+    let errors = {
+        let log = log();
+        numbers.extend(log.refresh_ms.map(|ms| ("last refresh ms", ms)));
+        numbers.extend(
+            log.capture_to_search_ms
+                .map(|ms| ("capture to search ms", ms)),
+        );
+        log.errors.iter().copied().collect()
+    };
+    numbers.extend(engine.capture_numbers());
+    let facts = Facts {
+        app_version: env!("CARGO_PKG_VERSION"),
+        macos: platform::os_version(),
+        permissions: permissions(),
+        numbers,
+        errors,
+    };
+    engine
+        .read(|store| store.debug_report(&settings, &facts, clock::local()))
+        .map_err(msg)
 }
 
 #[cfg(test)]

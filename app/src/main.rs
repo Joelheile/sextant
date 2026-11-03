@@ -2,9 +2,11 @@ mod agent;
 mod audio;
 mod bench;
 mod capture;
+mod cli;
 mod clock;
 mod commands;
 mod connect;
+mod control;
 mod data;
 mod debug;
 mod engine;
@@ -16,6 +18,7 @@ mod platform;
 mod prefs;
 mod screens;
 mod tray;
+mod tui;
 
 use std::thread;
 
@@ -63,6 +66,12 @@ fn main() -> anyhow::Result<()> {
     if args.first().map(String::as_str) == Some("mcp") {
         return mcp::run(&dir);
     }
+    if args
+        .first()
+        .is_some_and(|command| cli::COMMANDS.contains(&command.as_str()))
+    {
+        return cli::run(&dir, &args);
+    }
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -98,6 +107,9 @@ fn main() -> anyhow::Result<()> {
         .setup(move |app| {
             app.manage(AppState::new(dir));
             tray::build(app.handle())?;
+            if let Err(err) = control::serve(app.handle().clone()) {
+                eprintln!("the sextant command will not reach this app: {err:#}");
+            }
             tray::open_window(app.handle())?;
             let handle = app.handle().clone();
             thread::Builder::new()

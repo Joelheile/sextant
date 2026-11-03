@@ -6,7 +6,7 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sextant_core::Settings;
 use sextant_core::connect::claude_code_command;
 use tauri::{AppHandle, Manager, State};
@@ -93,32 +93,42 @@ pub async fn get_state(state: State<'_, AppState>) -> Reply<Settings> {
     prefs::load(&state.dir).map_err(msg)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Permission {
-    name: &'static str,
-    status: &'static str,
+    pub name: String,
+    pub status: String,
+}
+
+impl Permission {
+    fn new(name: &str, status: &str) -> Self {
+        Self {
+            name: name.into(),
+            status: status.into(),
+        }
+    }
 }
 
 /// Status of the permissions live capture needs.
 #[tauri::command]
 pub async fn permission_status(state: State<'_, AppState>) -> Reply<Vec<Permission>> {
-    let settings = prefs::load(&state.dir).map_err(msg)?;
+    permissions(&state.dir)
+}
+
+pub(crate) fn permissions(dir: &Path) -> Reply<Vec<Permission>> {
+    let settings = prefs::load(dir).map_err(msg)?;
     let mut needed = Vec::new();
     if settings.live.ocr {
-        needed.push(Permission {
-            name: "screen-recording",
-            status: platform::screen_recording_status(),
-        });
+        needed.push(Permission::new(
+            "screen-recording",
+            platform::screen_recording_status(),
+        ));
     }
     if settings.live.metadata {
-        needed.push(Permission {
-            name: "accessibility",
-            status: platform::accessibility_status(),
-        });
-        needed.push(Permission {
-            name: "automation",
-            status: platform::automation_status(),
-        });
+        needed.push(Permission::new(
+            "accessibility",
+            platform::accessibility_status(),
+        ));
+        needed.push(Permission::new("automation", platform::automation_status()));
     }
     Ok(needed)
 }
@@ -201,24 +211,32 @@ pub async fn set_mcp_switches(
     rewind: bool,
     workflows: bool,
 ) -> Reply<Settings> {
-    prefs::update(&state.dir, |s| {
+    switch_mcp(&state.dir, rewind, workflows)
+}
+
+pub(crate) fn switch_mcp(dir: &Path, rewind: bool, workflows: bool) -> Reply<Settings> {
+    prefs::update(dir, |s| {
         s.mcp_rewind = rewind;
         s.mcp_workflows = workflows;
     })
     .map_err(msg)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Models {
-    installed: bool,
-    downloading: bool,
-    audio: bool,
-    bytes: u64,
+    pub installed: bool,
+    pub downloading: bool,
+    pub audio: bool,
+    pub bytes: u64,
 }
 
 /// What the audio consent step and the settings show.
 #[tauri::command]
 pub async fn models_status(state: State<'_, AppState>) -> Reply<Models> {
+    models(&state)
+}
+
+pub(crate) fn models(state: &AppState) -> Reply<Models> {
     let engine = state.engine()?;
     Ok(Models {
         installed: engine.models_installed(),
@@ -244,12 +262,21 @@ pub async fn cancel_download(state: State<'_, AppState>) -> Reply<()> {
 /// Switches call audio on or off. Off closes every stream within a second.
 #[tauri::command]
 pub async fn set_audio(state: State<'_, AppState>, on: bool) -> Reply<Settings> {
+    switch_audio(&state, on)
+}
+
+pub(crate) fn switch_audio(state: &AppState, on: bool) -> Reply<Settings> {
     state.engine()?.set_audio(on).map_err(msg)?;
     prefs::load(&state.dir).map_err(msg)
 }
 
 #[tauri::command]
 pub async fn finish_onboarding(state: State<'_, AppState>) -> Reply<Settings> {
+    finish_setup(&state)
+}
+
+/// Marks setup done and starts capture.
+pub(crate) fn finish_setup(state: &AppState) -> Reply<Settings> {
     let settings = prefs::update(&state.dir, |s| s.onboarded = true).map_err(msg)?;
     state
         .engine()?

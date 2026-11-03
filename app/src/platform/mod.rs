@@ -2,7 +2,7 @@
 //! macOS gets the real implementation, other systems get one that reports "needs macOS" so the
 //! crate still builds.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The permissions that have a system prompt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -12,7 +12,7 @@ pub enum Prompt {
 }
 
 /// A pane of System Settings > Privacy & Security.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SettingsPane {
     ScreenRecording,

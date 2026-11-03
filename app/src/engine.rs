@@ -49,7 +49,7 @@ pub enum CaptureState {
 }
 
 /// What the tray shows about call audio.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AudioState {
     /// Switched off, or the models are not downloaded.
@@ -393,7 +393,7 @@ fn secret() -> Result<Secret> {
     Ok(secret)
 }
 
-fn create_private_dir(dir: &Path) -> Result<()> {
+pub(crate) fn create_private_dir(dir: &Path) -> Result<()> {
     use std::os::unix::fs::DirBuilderExt;
     fs::DirBuilder::new()
         .recursive(true)
