@@ -257,6 +257,14 @@ E4 ships in two steps, because the old path still drives the Workflows and Resul
 
 ### E5. Search with local embeddings
 
+Removed on 2026-11-02, before it shipped, to keep Sextant small while the main workflow gets tested. What the build measured:
+
+- `model_quantized` (int8) dequantizes its embedding table on every run: about 2.8 GB and 160 ms per query. Not usable.
+- `model_q4.onnx` with prepacking on: 29 ms warm p95, about 550 MB loaded (the tokenizer alone is about 350 MB), 4 s first load.
+- Ranking was good. A similarity of about 0.4 separated relevant from unrelated activity labels.
+
+The code is in a local stash ("E5 local embeddings"). The decisions below are kept for when it comes back; switch them to q4 first.
+
 - Model, decided 2026-11-02: EmbeddingGemma 300M from `onnx-community/embeddinggemma-300m-ONNX`, int8 (`model_quantized.onnx` plus its 309 MB `.onnx_data`), pinned by commit and checksum in `models.rs` like the speech models. MTEB Multilingual v2 is 61.15 at 768 dims and 59.68 at 256 dims, so vectors keep 256 dims, renormalized. Qwen3-Embedding-0.6B scores about 64.3 but has no official ONNX export and needs twice the RAM. The activations break in fp16, so it runs fp32 or int8 on CPU. Queries use the prefix `task: search result | query: `, documents `title: none | text: `. The Gemma license applies to the download, so the download screen names it.
 - Loading, decided 2026-11-02: like ASR. Load the model for refresh and on the first search, keep it warm, unload after 2 minutes idle, so RAM without models stays under 150 MB. Add a "with embeddings loaded" row to plan.md §11 with the measured number, and report how far the first search after idle misses 100 ms.
 - It runs through the ONNX Runtime the speech models already load (`app/src/platform/speech.rs`, `parakeet_rs::ort`), with one shared environment.
@@ -266,7 +274,7 @@ E4 ships in two steps, because the old path still drives the Workflows and Resul
 
 ## Order
 
-E1 first: it is the smallest step that lets an early adopter's own agent read the graph. D1 comes next, before the public launch. Then E2 to E5. Each step leaves Sextant working, and the old workflow path stays live until E4. T4 and T5 follow, and T4's input classes then join `task`.
+E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture, activities and tasks, the pages over MCP, routines and skills. E5, T3, T4, T5 and L3 wait until people use that workflow. Next comes a `sextant` CLI and TUI in place of the main window, then better OCR. Each step leaves Sextant working.
 
 | Step | Delivers                                            | Done when                                                    |
 | ---- | --------------------------------------------------- | ------------------------------------------------------------ |
@@ -275,13 +283,15 @@ E1 first: it is the smallest step that lets an early adopter's own agent read th
 | E2   | `save_routine`: the agent proposes, code checks     | See E2                                                       |
 | E3   | The bridge runs Claude Code or Codex on the tools   | See E3                                                       |
 | E4   | Skills, old workflow path removed, episodes renamed | See E4                                                       |
-| E5   | Local embeddings, hybrid search, similar edges      | See E5                                                       |
+| E5   | Removed, measured                                   | See E5                                                       |
 | L1   | Removed with the rewind panel                       | See `docs/rewind-and-apple-model.md`                         |
 | T1   | Activities with actions and identifiers             | The fixture shows actions per activity                       |
 | T2   | Tasks, "where time goes"                            | Pair agreement ≥ 0.9 on the interleaved fixture              |
 | T3   | Task types and procedures (deferred)                | The invoice type found with its steps and for-each           |
-| T4   | Input classes                                       | Transfers found on the fixture                               |
-| T5   | Incremental refresh                                 | Equals full rebuild, under 50 ms                             |
+| T4   | Input classes (deferred)                            | Transfers found on the fixture                               |
+| T5   | Incremental refresh (deferred)                      | Equals full rebuild, under 50 ms                             |
+| C1   | `sextant` CLI and TUI replace the main window       | Status, routines, agent bridge, privacy and sent log work    |
+| O1   | Better OCR, after a written comparison              | Fixture accuracy and the OCR budget beat Apple Vision today  |
 | L2   | Connect to ChatGPT, `.mcpb`                         | **(user)** Claude Desktop and ChatGPT desktop list the tools |
 
 ## Open decisions
