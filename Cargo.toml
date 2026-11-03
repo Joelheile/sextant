@@ -10,6 +10,12 @@ license = "MIT"
 [workspace.lints.clippy]
 unwrap_used = "deny"
 
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 codegen-units = 1
 lto = true
