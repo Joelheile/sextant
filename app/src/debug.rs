@@ -6,9 +6,8 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use sextant_core::Facts;
-use tauri::AppHandle;
 
-use crate::commands::{AppState, Reply, blocking, msg};
+use crate::commands::{AppState, Reply, msg};
 use crate::{clock, platform, prefs};
 
 const KEPT_ERRORS: usize = 20;
@@ -55,11 +54,6 @@ fn permissions() -> Vec<(&'static str, &'static str)> {
         ("screen-recording", platform::screen_recording_status()),
         ("automation", platform::automation_status()),
     ]
-}
-
-#[tauri::command]
-pub async fn debug_report(app: AppHandle) -> Reply<String> {
-    blocking(app, report).await
 }
 
 pub(crate) fn report(state: &AppState) -> Reply<String> {

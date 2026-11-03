@@ -12,7 +12,7 @@ Everything stays on the device, encrypted, until your own agent reads it, and th
 ## 1. Principles
 
 - **Value in 60 seconds.** On install, Sextant reads history you already have and shows a first workflow map before recording anything.
-- **The agent is the main interface.** Rewind lives in Claude through MCP. The app window is small: a workflow map, a search box, privacy settings.
+- **The agent is the main interface.** Rewind lives in Claude through MCP. Sextant itself is a menu bar icon and the `sextant` CLI and TUI.
 - **Lean beats complete.** Text only, event driven, one process, one database file, two Rust crates. Every feature has to earn its CPU and its lines of code.
 - **Explain everything.** Every score shows its reasons and evidence. Sextant runs no language model besides speech recognition. The agent does the language work, and code checks it.
 - **Private by construction.** No pixels or audio on disk, no network except one consented model download, MIT license forever.
@@ -23,7 +23,7 @@ Everything stays on the device, encrypted, until your own agent reads it, and th
 | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Tauri 2 + Rust                                                                                                 | The hot path is native anyway. Small download, low idle RAM, the window is destroyed when closed. Windows later without a rewrite.             |
 | Two crates: `sextant-core` (dir `core/`, lib `sextant_core`) and `sextant-app` (dir `app/`, binary `sextant`)  | All logic without OS APIs lives in core and is tested on Linux, in CI and in cloud agents. Platform code sits behind traits in the app.        |
-| React 19 + TypeScript + Vite, Bun for tooling                                                                  | Tailwind CSS and shadcn/ui components (Radix), no state library.                                                                                         |
+| `sextant` CLI and TUI over a Unix socket                                                                       | No webview. The running app keeps the only write connection; the CLI sends it one request at a time. Bun only runs the Tauri CLI for bundling.             |
 | Built-in OCR: Apple Vision (later `Windows.Media.Ocr`)                                                         | Ships with the OS, no download, runs on the Neural Engine. Open OCR models are slower per frame on a laptop.                                   |
 | Parakeet TDT 0.6B v3 int8 via `parakeet-rs` (CoreML)                                                           | Smallest open model with German and English (25 languages), much faster than Whisper. Downloaded once after consent. CC-BY-4.0, credit NVIDIA. |
 | SQLite with SQLCipher and FTS5 (`rusqlite`, `bundled-sqlcipher-vendored-openssl`), key in Keychain (`keyring`) | SQLCipher encrypts the whole file. FTS5 is SQLite's built-in full-text index. One file, fast search for years.                                 |
@@ -118,7 +118,7 @@ The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`,
 
 ## 8. MCP (the agent interface)
 
-`sextant mcp` runs the same binary as a stdio MCP server. It opens the database read-only, and every tool is read-only except `report_handoff`, which writes one row on a short-lived keyed connection. Onboarding has "Connect to Claude": it adds Sextant to Claude Desktop's config and shows the one-line command for Claude Code (`claude mcp add sextant -- <path>/sextant mcp`).
+`sextant mcp` runs the same binary as a stdio MCP server. It opens the database read-only, and every tool is read-only except `report_handoff`, which writes one row on a short-lived keyed connection. `sextant connect` adds Sextant to Claude Desktop's config and prints the one-line command for Claude Code (`claude mcp add sextant -- <path>/sextant mcp`).
 
 | Tool                                | Returns                                                                                  |
 | ----------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -140,14 +140,15 @@ The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`,
 ## 9. App UI (small)
 
 - Tray icon while capturing (filled on, outline paused, dot while transcribing, ring with "!" when a permission blocks capture). A click opens the menu: status, Pause 1 h, Stop audio, Open Sextant, Quit Sextant.
-- **Popover and Today** (deprecated on 2026-11-02): removed to make Sextant CLI first. The main window holds routines, the agent bridge and Privacy until a `sextant` CLI and TUI replace it.
-- **Onboarding** (two screens, no titles or intro text): grant the permissions live capture needs, connect to Claude. Call audio and the agent switches live in Privacy.
+- **Popover, Today and the main window** (deprecated on 2026-11-02): removed to make Sextant CLI first. "Open Sextant" opens `sextant tui` in Terminal, or `sextant setup` until setup is done; the first launch opens setup on its own.
+- **CLI and TUI** (`app/src/cli.rs`, `app/src/tui.rs`): every command sends one JSON request to the running app over `sextant.sock` in the data folder (mode 0600, `app/src/control.rs`). `sextant help` lists them. The TUI shows status, routines, the agent bridge, Privacy switches and the sent log; deleting stays in the CLI, which asks you to type "delete".
+- **Setup** (`sextant setup`): grant the permissions live capture needs, one at a time, then capture starts. `sextant connect` connects to Claude. Call audio (`sextant audio on`) and the agent switches live in Privacy.
 - **Workflows:** "X hours a week you could get back", quick enjoyment question, ranked workflows as rows of steps (apps, gaps, copy points), promises you keep pushing, things to protect. Detail: reasons, example cases, correction box, "Create automation" (writes `SKILL.md`, copies a ready prompt for Claude).
 - **Search:** one box over screen text and transcripts, results by session. No timeline replay.
 - **Results:** hours before and after each handoff, from 3+ days of data.
-- **Privacy** (in the main window): sources and permissions, excluded apps, excluded sites, retention, storage cap, storage used, MCP tool switches, "Sent to your agent" (the sent log), "Delete recent" (15 min, 1 h, 1 day), "Delete everything", and "Uninstall" (deletes everything, removes Sextant from the Claude Desktop config, moves the app to the Trash, and names `claude mcp remove sextant` for Claude Code).
+- **Privacy** (`sextant privacy`): sources and permissions, excluded apps, excluded sites, retention, storage cap, storage used, MCP tool switches, "Sent to your agent" (the sent log), "Delete recent" (15 min, 1 h, 1 day), "Delete everything", and "Uninstall" (deletes everything, removes Sextant from the Claude Desktop config, moves the app to the Trash, and names `claude mcp remove sextant` for Claude Code).
 - **Skill preview (E4):** a skill shows its full `SKILL.md` before it is copied anywhere.
-- **Agent bridge:** the user picks their own Claude Code or Codex CLI. "Find routines" (or a weekly run, off by default) runs it with the `find_routines` prompt and `sextant mcp` as its only MCP server (§10). The agent reads the pages through the tools and saves routines with `save_routine`, and the main window lists them.
+- **Agent bridge:** the user picks their own Claude Code or Codex CLI. "Find routines" (or a weekly run, off by default) runs it with the `find_routines` prompt and `sextant mcp` as its only MCP server (§10). The agent reads the pages through the tools and saves routines with `save_routine`, and `sextant routines` lists them.
 - Tailwind and shadcn/ui components, light and dark, English and German strings, short copy, no em dashes. Data only through typed Tauri commands, paginated. CSP `default-src 'self'; connect-src ipc: http://ipc.localhost`, no `shell`, `http` or `updater` plugins.
 
 ## 10. Privacy rules (non-negotiable)

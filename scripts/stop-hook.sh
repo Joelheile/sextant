@@ -15,7 +15,6 @@ run() {
 
 export SEXTANT_BUDGET_TESTS=1
 
-run bun run build
 run cargo fmt --all --check
 run cargo clippy --workspace --all-targets -q -- -D warnings
 run cargo test --workspace -q

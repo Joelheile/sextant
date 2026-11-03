@@ -1,18 +1,17 @@
 //! The database worker (plan.md §5): one thread owns the write connection and the [`Writer`],
-//! flushes every second, refreshes every 5 minutes, and reports progress as
-//! events. Commands read through a separate read-only connection. Live capture runs on its own
+//! flushes every second and refreshes every 5 minutes. Commands read through a separate
+//! read-only connection. Live capture runs on its own
 //! threads and sends finished records here; no database call happens on those threads.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use serde_json::{Value, json};
 use sextant_core::capture::{Stall, stall};
 use sextant_core::{Item, Key, Secret, Settings, Store};
 
@@ -23,8 +22,6 @@ const REFRESH_EVERY: Duration = Duration::from_secs(300);
 const RETENTION_EVERY: Duration = Duration::from_secs(3600);
 const PAUSE_STEP_S: i64 = 3600;
 const STOP_DOWNLOAD_WAIT: Duration = Duration::from_secs(5);
-
-type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 
 type Job = Box<dyn FnOnce(&mut Store) + Send>;
 
@@ -60,33 +57,45 @@ pub enum AudioState {
     Transcribing,
 }
 
+/// The model download, while it runs.
+struct Download {
+    cancel: Arc<AtomicBool>,
+    done: Arc<AtomicU64>,
+    total: u64,
+}
+
+/// What `sextant audio` shows about the model download.
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DownloadState {
+    pub running: bool,
+    pub done: u64,
+    pub total: u64,
+    /// Why the last download stopped, if it failed.
+    pub failed: Option<String>,
+}
+
 pub struct Engine {
     dir: PathBuf,
-    emit: Emit,
     inbox: Sender<Msg>,
     /// `None` once [`Engine::shutdown`] has closed the database.
     reader: Mutex<Option<Store>>,
     control: Arc<Control>,
     capture: Mutex<Option<Pipeline>>,
     audio: Mutex<Option<audio::Pipeline>>,
-    /// The cancel flag of the model download that runs, if one does.
-    download: Arc<Mutex<Option<Arc<AtomicBool>>>>,
+    download: Arc<Mutex<Option<Download>>>,
+    download_failed: Arc<Mutex<Option<String>>>,
     /// Since when flushes fail, 0 while they work.
     writes_failing_since: Arc<AtomicI64>,
 }
 
 impl Engine {
-    pub fn start(
-        dir: &Path,
-        key: &Key,
-        emit: impl Fn(&str, Value) + Send + Sync + 'static,
-    ) -> Result<Self> {
+    pub fn start(dir: &Path, key: &Key) -> Result<Self> {
         create_private_dir(dir)?;
         let store =
             Store::open(&home::db_path(dir), key, &secret()?).context("opening the database")?;
         let reader = store.reader().context("opening the read connection")?;
         let (inbox, messages) = mpsc::channel();
-        let (dir, emit) = (dir.to_path_buf(), Arc::new(emit) as Emit);
+        let dir = dir.to_path_buf();
         let writes_failing_since = Arc::new(AtomicI64::new(0));
         thread::Builder::new()
             .name("sextant-db".into())
@@ -97,13 +106,13 @@ impl Engine {
             .context("starting the database thread")?;
         Ok(Self {
             dir,
-            emit,
             inbox,
             reader: Mutex::new(Some(reader)),
             control: Arc::new(Control::new(Settings::default())),
             capture: Mutex::new(None),
             audio: Mutex::new(None),
             download: Arc::new(Mutex::new(None)),
+            download_failed: Arc::new(Mutex::new(None)),
             writes_failing_since,
         })
     }
@@ -137,7 +146,7 @@ impl Engine {
     pub fn shutdown(&self) -> Result<()> {
         self.cancel_download();
         let deadline = Instant::now() + STOP_DOWNLOAD_WAIT;
-        while self.downloading() && Instant::now() < deadline {
+        while self.download_state().running && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(50));
         }
         let audio = self
@@ -258,8 +267,8 @@ impl Engine {
         }
     }
 
-    /// Downloads the models after the user agreed. Progress arrives as `models-progress` events,
-    /// then `models-done` or `models-failed`. Does nothing while a download runs.
+    /// Downloads the models after the user agreed. [`Engine::download_state`] reports progress.
+    /// Does nothing while a download runs.
     pub fn download_models(&self) -> Result<()> {
         let mut running = self
             .download
@@ -268,21 +277,38 @@ impl Engine {
         if running.is_some() {
             return Ok(());
         }
-        let cancel = Arc::new(AtomicBool::new(false));
-        *running = Some(cancel.clone());
-        let (dir, emit, slot) = (self.models_dir(), self.emit.clone(), self.download.clone());
+        let (cancel, done) = (
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicU64::new(0)),
+        );
+        *running = Some(Download {
+            cancel: cancel.clone(),
+            done: done.clone(),
+            total: models::total_bytes(models::ASSETS),
+        });
+        if let Ok(mut failed) = self.download_failed.lock() {
+            *failed = None;
+        }
+        let (dir, slot, failed) = (
+            self.models_dir(),
+            self.download.clone(),
+            self.download_failed.clone(),
+        );
         thread::Builder::new()
             .name("sextant-models".into())
             .spawn(move || {
                 let progress = |progress: models::Progress| {
-                    emit("models-progress", json!({"done": progress.done, "total": progress.total}));
+                    done.store(progress.done, Ordering::Relaxed);
                 };
-                match models::download(&dir, models::ASSETS, &models::UrlSession, &cancel, &progress) {
-                    Ok(()) => emit("models-done", json!({})),
-                    Err(err) => emit(
-                        "models-failed",
-                        json!({"message": format!("{err:#}"), "cancelled": cancel.load(Ordering::Relaxed)}),
-                    ),
+                let result = models::download(
+                    &dir,
+                    models::ASSETS,
+                    &models::UrlSession,
+                    &cancel,
+                    &progress,
+                );
+                if let (Err(err), Ok(mut failed)) = (result, failed.lock()) {
+                    *failed = Some(format!("{err:#}"));
                 }
                 if let Ok(mut running) = slot.lock() {
                     *running = None;
@@ -292,16 +318,32 @@ impl Engine {
         Ok(())
     }
 
-    pub fn cancel_download(&self) {
-        if let Ok(running) = self.download.lock()
-            && let Some(cancel) = running.as_ref()
-        {
-            cancel.store(true, Ordering::Relaxed);
+    pub fn download_state(&self) -> DownloadState {
+        let failed = self
+            .download_failed
+            .lock()
+            .ok()
+            .and_then(|failed| failed.clone());
+        match self.download.lock().as_deref() {
+            Ok(Some(download)) => DownloadState {
+                running: true,
+                done: download.done.load(Ordering::Relaxed),
+                total: download.total,
+                failed,
+            },
+            _ => DownloadState {
+                failed,
+                ..DownloadState::default()
+            },
         }
     }
 
-    pub fn downloading(&self) -> bool {
-        self.download.lock().is_ok_and(|running| running.is_some())
+    fn cancel_download(&self) {
+        if let Ok(running) = self.download.lock()
+            && let Some(download) = running.as_ref()
+        {
+            download.cancel.store(true, Ordering::Relaxed);
+        }
     }
 
     pub fn pause_capture(&self) {

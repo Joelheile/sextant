@@ -4,17 +4,8 @@
   "mainBinaryName": "sextant",
   "version": "0.1.0",
   "identifier": "app.sextant.desktop",
-  "build": {
-    "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "bun run build",
-    "frontendDist": "../dist"
-  },
   "app": {
-    "windows": [],
-    "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost"
-    }
+    "windows": []
   },
   "bundle": {
     "active": true,

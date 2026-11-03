@@ -1,18 +1,21 @@
 //! The menu bar icon (plan.md §9): filled while capturing, outline while paused, a dot while a call
 //! is transcribed and an exclamation mark when capture is on but macOS blocks it. A click opens a
 //! menu with the status line, "Pause 1 h", "Stop audio", Open and Quit. The status refreshes
-//! every few seconds.
+//! every few seconds. Open starts `sextant tui` in Terminal, or `sextant setup` until setup is
+//! done.
 
+use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
+use tauri::{AppHandle, Manager, Wry};
 
 use crate::commands::AppState;
 use crate::engine::{AudioState, CaptureState};
+use crate::{platform, prefs};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
 
@@ -52,7 +55,7 @@ fn perform(app: &AppHandle, action: MenuAction) -> tauri::Result<()> {
             turn_audio_off(app);
             refresh(app);
         }
-        MenuAction::Open => open_window(app)?,
+        MenuAction::Open => open_terminal(&app.state::<AppState>().dir),
         MenuAction::Quit => app.exit(0),
     }
     Ok(())
@@ -246,14 +249,65 @@ fn refresh(app: &AppHandle) {
     let _ = tray.icon.set_icon_as_template(true);
 }
 
-pub fn open_window(app: &AppHandle) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window("main") {
-        return window.set_focus();
+/// The first launch has nothing to show in the menu yet, so it opens setup.
+pub fn open_on_first_launch(app: &AppHandle) {
+    let dir = &app.state::<AppState>().dir;
+    if !prefs::load(dir).is_ok_and(|settings| settings.onboarded) {
+        open_terminal(dir);
     }
-    WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-        .title("Sextant")
-        .inner_size(880.0, 620.0)
-        .min_inner_size(560.0, 420.0)
-        .build()?;
-    Ok(())
+}
+
+fn open_terminal(dir: &Path) {
+    let opened = std::env::current_exe()
+        .map_err(anyhow::Error::from)
+        .and_then(|exe| {
+            let command = if prefs::load(dir).is_ok_and(|settings| settings.onboarded) {
+                "tui"
+            } else {
+                "setup"
+            };
+            let script = dir.join("open.command");
+            std::fs::write(&script, terminal_script(&exe, dir, command))?;
+            std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
+            platform::open_in_terminal(&script)
+        });
+    if let Err(err) = opened {
+        eprintln!("opening Terminal failed: {err:#}");
+    }
+}
+
+/// A shell script that runs `sextant <command>`. Dev builds pass their data folder along.
+fn terminal_script(exe: &Path, dir: &Path, command: &str) -> String {
+    let home = if cfg!(debug_assertions) {
+        format!("export SEXTANT_HOME={}\n", quote(dir))
+    } else {
+        String::new()
+    };
+    format!("#!/bin/sh\n{home}exec {} {command}\n", quote(exe))
+}
+
+fn quote(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', r"'\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_terminal_script_quotes_paths_and_keeps_dev_data_in_dev() {
+        let script = terminal_script(
+            Path::new("/Applications/Joel's Apps/Sextant.app/Contents/MacOS/sextant"),
+            Path::new("/tmp/dev data"),
+            "tui",
+        );
+        assert!(script.starts_with("#!/bin/sh\n"));
+        assert!(script.ends_with(
+            "exec '/Applications/Joel'\\''s Apps/Sextant.app/Contents/MacOS/sextant' tui\n"
+        ));
+        assert_eq!(
+            script.contains("export SEXTANT_HOME='/tmp/dev data'\n"),
+            cfg!(debug_assertions)
+        );
+    }
 }

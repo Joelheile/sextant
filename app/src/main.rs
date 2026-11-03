@@ -23,20 +23,17 @@ mod tui;
 use std::thread;
 
 use anyhow::Context;
-use tauri::{AppHandle, Emitter, Manager, RunEvent};
+use tauri::{AppHandle, Manager, RunEvent};
 
 use crate::commands::AppState;
 use crate::engine::Engine;
 
 /// Looks up the key (the Keychain may prompt and wait) and opens the database off the main
-/// thread, then tells the window with a `ready` event. "Delete everything" waits for this.
+/// thread. "Delete everything" waits for this.
 fn start_engine(app: &AppHandle) {
-    let emitter = app.clone();
     app.state::<AppState>().start(|dir| {
         let key = keys::load_or_create()?;
-        let engine = Engine::start(dir, &key, move |name, payload| {
-            let _ = emitter.emit(name, payload);
-        })?;
+        let engine = Engine::start(dir, &key)?;
         // Capture starts only after onboarding: the permissions are asked there.
         match prefs::load(dir) {
             Ok(settings) if settings.onboarded => {
@@ -53,7 +50,6 @@ fn start_engine(app: &AppHandle) {
         }
         Ok(engine)
     });
-    let _ = app.emit("ready", ());
 }
 
 fn main() -> anyhow::Result<()> {
@@ -74,43 +70,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            commands::engine_status,
-            commands::get_state,
-            commands::permission_status,
-            commands::request_permission,
-            commands::open_settings_pane,
-            commands::relaunch,
-            commands::connect_info,
-            commands::connect_claude_desktop,
-            commands::set_mcp_switches,
-            commands::models_status,
-            commands::download_models,
-            commands::cancel_download,
-            commands::set_audio,
-            commands::finish_onboarding,
-            screens::storage_used,
-            debug::debug_report,
-            screens::set_excluded_apps,
-            screens::set_live,
-            screens::set_retention,
-            screens::delete_everything,
-            screens::set_excluded_sites,
-            screens::set_storage_cap,
-            screens::forget_recent,
-            screens::sent_log,
-            screens::uninstall,
-            agent::agent_status,
-            agent::set_agent,
-            agent::run_agent,
-        ])
         .setup(move |app| {
             app.manage(AppState::new(dir));
             tray::build(app.handle())?;
             if let Err(err) = control::serve(app.handle().clone()) {
                 eprintln!("the sextant command will not reach this app: {err:#}");
             }
-            tray::open_window(app.handle())?;
+            tray::open_on_first_launch(app.handle());
             let handle = app.handle().clone();
             thread::Builder::new()
                 .name("sextant-start".into())
@@ -122,7 +88,7 @@ fn main() -> anyhow::Result<()> {
         .build(tauri::generate_context!())
         .context("building the Tauri app")?
         .run(|_, event| {
-            // Closing the window destroys it; the tray keeps running until Quit.
+            // The tray keeps running until Quit.
             if let RunEvent::ExitRequested {
                 code: None, api, ..
             } = event

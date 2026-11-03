@@ -154,6 +154,18 @@ pub fn open_settings_pane(pane: SettingsPane, hint: Option<&str>) -> Result<()> 
     Ok(())
 }
 
+/// Opens `script`, a `.command` file, in Terminal.
+pub fn open_in_terminal(script: &Path) -> Result<()> {
+    let output = process::output(
+        Command::new("open").args(["-a", "Terminal"]).arg(script),
+        OPEN_TIMEOUT,
+    )?;
+    if !output.status.success() {
+        bail!("Terminal did not open");
+    }
+    Ok(())
+}
+
 /// Moves the running `Sextant.app` to the Trash, for the uninstall. Refuses a binary that is not
 /// inside an app bundle.
 pub fn trash_app() -> Result<()> {

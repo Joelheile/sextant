@@ -5,17 +5,16 @@ Read `AGENTS.md` first for the vision, then `plan.md`. It is the spec: principle
 ## Layout
 
 - `core/`: crate `sextant-core`, all logic without OS APIs. Tested on Linux.
-- `app/`: crate `sextant-app`, binary `sextant`. Tauri 2, tray, platform code.
-- `ui/`: React 19 + TypeScript window, built by Vite into `dist/`.
+- `app/`: crate `sextant-app`, binary `sextant`. Tauri 2 tray app, platform code, and the `sextant` CLI and TUI, which talk to the running app over `sextant.sock` in the data folder (`app/src/control.rs`).
 - `scripts/`: `check-network.sh` (privacy check), `stop-hook.sh` (runs every check), `fetch-speech.sh` (speech fixtures into the git-ignored `fixtures/speech`), `fetch-onnxruntime.sh` (the ONNX Runtime library into the git-ignored `app/frameworks`), `install.sh` (the one-line installer, uploaded with each release).
 
 ## Commands
 
 | Task | Command |
 |---|---|
-| Install JS deps | `bun install` |
-| Run the app | `bun tauri dev` |
-| Build the UI | `bun run build` |
+| Install the Tauri CLI (release builds only) | `bun install` |
+| Run the app | `cargo run` |
+| Use the running dev app | `cargo run -q -- status` (or `tui`, `routines`, `privacy`, `help`) |
 | Format | `cargo fmt --all` |
 | Lint | `cargo clippy --workspace --all-targets -q -- -D warnings` |
 | Test | `cargo test --workspace -q` |

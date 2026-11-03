@@ -272,7 +272,7 @@ The code is in a local stash ("E5 local embeddings"). The decisions below are ke
 
 ## Order
 
-E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture, activities and tasks, the pages over MCP, routines and skills. E5, T3, T4, T5 and L3 wait until people use that workflow. Next comes a `sextant` CLI and TUI in place of the main window, then better OCR. Each step leaves Sextant working.
+E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture, activities and tasks, the pages over MCP, routines and skills. E5, T3, T4, T5 and L3 wait until people use that workflow. The `sextant` CLI and TUI replaced the window (C1). Next comes better OCR. Each step leaves Sextant working.
 
 | Step | Delivers                                            | Done when                                                    |
 | ---- | --------------------------------------------------- | ------------------------------------------------------------ |
@@ -288,7 +288,7 @@ E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture
 | T3   | Task types and procedures (deferred)                | The invoice type found with its steps and for-each           |
 | T4   | Input classes (deferred)                            | Transfers found on the fixture                               |
 | T5   | Incremental refresh (deferred)                      | Equals full rebuild, under 50 ms                             |
-| C1   | `sextant` CLI and TUI replace the main window       | Status, routines, agent bridge, privacy and sent log work    |
+| C1   | `sextant` CLI and TUI replace the window, built     | Status, routines, agent bridge, privacy and sent log work    |
 | O1   | Better OCR, after a written comparison              | Fixture accuracy and the OCR budget beat Apple Vision today  |
 | L2   | Connect to ChatGPT, `.mcpb`                         | **(user)** Claude Desktop and ChatGPT desktop list the tools |
 

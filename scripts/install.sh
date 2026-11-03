@@ -2,7 +2,8 @@
 # Installs the latest Sextant release:
 #   curl -fsSL https://github.com/Joelheile/sextant/releases/latest/download/install.sh | sh
 # It downloads the DMG over HTTPS, checks its SHA-256 against the checksum published with the
-# release, copies Sextant.app into /Applications and opens it.
+# release, copies Sextant.app into /Applications, links the sextant command into /usr/local/bin
+# when that folder is writable, and opens the app.
 set -eu
 
 repo="Joelheile/sextant"
@@ -42,4 +43,11 @@ hdiutil attach "$work/Sextant.dmg" -quiet -nobrowse -readonly -mountpoint "$moun
 rm -rf "$dest/Sextant.app"
 ditto "$mount/Sextant.app" "$dest/Sextant.app"
 echo "Installed $dest/Sextant.app"
+bin="$dest/Sextant.app/Contents/MacOS/sextant"
+links="${SEXTANT_LINK_DIR:-/usr/local/bin}"
+if [ -d "$links" ] && [ -w "$links" ] && ln -sf "$bin" "$links/sextant"; then
+  echo "Linked the sextant command into $links"
+else
+  echo "To use the sextant command, run: sudo ln -sf '$bin' $links/sextant"
+fi
 open "$dest/Sextant.app"

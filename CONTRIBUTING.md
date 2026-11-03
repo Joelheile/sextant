@@ -5,9 +5,10 @@
 You need Rust (stable), [Bun](https://bun.sh) and Xcode command line tools.
 
 ```sh
-bun install
+bun install                    # the Tauri CLI, for bundling
 scripts/fetch-onnxruntime.sh   # the speech runtime, bundled into the app
-bun tauri dev                  # run with data in ./.dev-data
+cargo run                      # run with data in ./.dev-data
+cargo run -q -- tui            # the terminal UI for that running app
 bun tauri build                # build Sextant.app and the DMG
 scripts/stop-hook.sh           # format, lint, tests and the network check
 ```

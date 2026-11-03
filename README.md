@@ -41,9 +41,22 @@ The script checks the disk image against the SHA-256 published with the release 
 - **Writes the skill.** Every routine becomes a `SKILL.md` with its steps, example cases and rules, ready for Claude.
 - **Makes your work searchable by your agent.** Ask it "Find the invoice number I saw yesterday" or "What did Anna say about pricing on Tuesday?"
 
+## Set it up
+
+Sextant runs in the menu bar. You control it from the terminal with the `sextant` command; the installer links it into `/usr/local/bin` when it can.
+
+```sh
+sextant setup      # grant access and start capture
+sextant connect    # add Sextant to Claude Desktop and print the Claude Code command
+sextant tui        # status, routines, your agent, privacy and the sent log on one screen
+sextant help       # every command
+```
+
+"Open Sextant" in the menu bar menu opens `sextant tui` in Terminal.
+
 ## Use it with Claude
 
-The onboarding has a "Connect to Claude" step for Claude Desktop. For Claude Code, run:
+`sextant connect` adds Sextant to Claude Desktop. For Claude Code, run:
 
 ```sh
 claude mcp add sextant -- /Applications/Sextant.app/Contents/MacOS/sextant mcp
@@ -96,10 +109,10 @@ Only you, on your Mac. The database is encrypted and nothing is uploaded. An age
 Sextant is built and tested on macOS 26. It no longer uses Apple's on-device model, so a lower minimum may follow once it is tested.
 
 **How do I delete everything?**
-Click the menu bar icon, choose Open Sextant, and press "Delete everything" under Privacy. You can also choose how long raw data stays: 30, 90 or 365 days, or forever.
+Run `sextant privacy delete-everything`. You can also choose how long raw data stays with `sextant privacy keep 30`, `90`, `365` or `forever`.
 
 **Can Sextant transcribe calls?**
-Yes, with the optional speech models (about 670 MB, downloaded only when you press "Download and turn on"). Sextant listens only while a call app or a browser has the microphone open, and keeps the transcript as text, never the audio. Call audio follows the same rules as screen capture: it does not start for an excluded app (Apple Passwords is excluded by default) or a private browser window. "Stop audio" in the menu bar menu ends it at once, and pausing capture ends it too. Transcribing people without consent is a crime in some countries, including Germany. Tell the other side first.
+Yes, with the optional speech models (about 670 MB, downloaded only after `sextant audio on` asks and you agree). Sextant listens only while a call app or a browser has the microphone open, and keeps the transcript as text, never the audio. Call audio follows the same rules as screen capture: it does not start for an excluded app (Apple Passwords is excluded by default) or a private browser window. "Stop audio" in the menu bar menu ends it at once, and pausing capture ends it too. Transcribing people without consent is a crime in some countries, including Germany. Tell the other side first.
 
 ## Contributing
 
@@ -112,4 +125,4 @@ Sextant is MIT licensed. See [LICENSE](LICENSE).
 - **Parakeet TDT 0.6B v3** by NVIDIA, [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/), used as the ONNX export by istupakov. NVIDIA is the credited author.
 - **Silero VAD** by the Silero team, MIT.
 - **ONNX Runtime** by Microsoft, MIT, bundled in the app.
-- The Rust and JavaScript dependencies keep their own licenses.
+- The Rust dependencies keep their own licenses.

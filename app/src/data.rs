@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn delete_everything_leaves_an_empty_folder_and_no_key() {
         let dir = populated("delete");
-        let engine = Engine::start(&dir, &TEST_KEY, |_, _| {}).expect("test setup");
+        let engine = Engine::start(&dir, &TEST_KEY).expect("test setup");
         assert!(
             engine
                 .read(|store| store.counts())
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn a_failed_shutdown_still_wipes_the_folder_and_the_key_then_reports_it() {
         let dir = populated("shutdown-fails");
-        let engine = Engine::start(&dir, &TEST_KEY, |_, _| {}).expect("test setup");
+        let engine = Engine::start(&dir, &TEST_KEY).expect("test setup");
         engine.poison_capture_state();
         let vault = FakeVault(Cell::new(true));
 

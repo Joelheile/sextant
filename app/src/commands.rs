@@ -8,13 +8,10 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 
 use serde::{Deserialize, Serialize};
 use sextant_core::Settings;
-use sextant_core::connect::claude_code_command;
-use tauri::{AppHandle, Manager, State};
 
-use crate::engine::Engine;
+use crate::engine::{DownloadState, Engine};
 use crate::keys::KeyVault;
-use crate::platform::{Prompt, SettingsPane};
-use crate::{clock, connect, data, models, platform, prefs};
+use crate::{data, models, platform, prefs};
 
 pub struct AppState {
     pub dir: PathBuf,
@@ -67,32 +64,6 @@ pub(crate) fn msg(err: impl Display) -> String {
     err.to_string()
 }
 
-/// Runs `work` on a blocking thread, so a database call never holds one of the few threads the
-/// async runtime runs every command on.
-pub(crate) async fn blocking<T: Send + 'static>(
-    app: AppHandle,
-    work: impl FnOnce(&AppState) -> Reply<T> + Send + 'static,
-) -> Reply<T> {
-    tauri::async_runtime::spawn_blocking(move || work(&app.state::<AppState>()))
-        .await
-        .map_err(msg)?
-}
-
-/// `false` while the engine starts, `true` once it runs, an error if it could not start. The UI
-/// asks again whenever the `ready` event arrives.
-#[tauri::command]
-pub async fn engine_status(state: State<'_, AppState>) -> Reply<bool> {
-    match state.engine.get() {
-        None => Ok(false),
-        Some(started) => started.as_ref().map(|_| true).map_err(Clone::clone),
-    }
-}
-
-#[tauri::command]
-pub async fn get_state(state: State<'_, AppState>) -> Reply<Settings> {
-    prefs::load(&state.dir).map_err(msg)
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct Permission {
     pub name: String,
@@ -106,12 +77,6 @@ impl Permission {
             status: status.into(),
         }
     }
-}
-
-/// Status of the permissions live capture needs.
-#[tauri::command]
-pub async fn permission_status(state: State<'_, AppState>) -> Reply<Vec<Permission>> {
-    permissions(&state.dir)
 }
 
 pub(crate) fn permissions(dir: &Path) -> Reply<Vec<Permission>> {
@@ -148,72 +113,6 @@ pub(crate) fn capture_blockers(dir: &Path) -> Vec<&'static str> {
     missing
 }
 
-/// Shows the system prompt for `automation`. Returns whether access is granted.
-#[tauri::command]
-pub async fn request_permission(name: Prompt) -> Reply<bool> {
-    tauri::async_runtime::spawn_blocking(move || platform::request_permission(name))
-        .await
-        .map_err(msg)?
-        .map_err(msg)
-}
-
-/// Opens `screen-recording`, `accessibility` or `automation` in System Settings. With
-/// `drag_hint`, the first two also get the panel that holds Sextant's icon to drag into the list.
-#[tauri::command]
-pub async fn open_settings_pane(pane: SettingsPane, drag_hint: Option<String>) -> Reply<()> {
-    platform::open_settings_pane(pane, drag_hint.as_deref()).map_err(msg)
-}
-
-/// Quits and opens Sextant again. Screen Recording applies only after this.
-#[tauri::command]
-pub fn relaunch(app: AppHandle) {
-    app.restart();
-}
-
-#[derive(Serialize)]
-pub struct ConnectInfo {
-    binary: String,
-    claude_code_command: String,
-    desktop_config: String,
-}
-
-#[tauri::command]
-pub async fn connect_info() -> Reply<ConnectInfo> {
-    let binary = std::env::current_exe()
-        .map_err(msg)?
-        .to_string_lossy()
-        .into_owned();
-    Ok(ConnectInfo {
-        claude_code_command: claude_code_command(&binary),
-        desktop_config: connect::desktop_config_path()
-            .map_err(msg)?
-            .to_string_lossy()
-            .into_owned(),
-        binary,
-    })
-}
-
-/// Adds Sextant to the Claude Desktop config and keeps a backup of the old file.
-#[tauri::command]
-pub async fn connect_claude_desktop() -> Reply<connect::Written> {
-    let binary = std::env::current_exe()
-        .map_err(msg)?
-        .to_string_lossy()
-        .into_owned();
-    let path = connect::desktop_config_path().map_err(msg)?;
-    connect::write_desktop_config(&path, &binary, clock::now()).map_err(msg)
-}
-
-/// The two MCP tool groups can be switched off on their own.
-#[tauri::command]
-pub async fn set_mcp_switches(
-    state: State<'_, AppState>,
-    rewind: bool,
-    workflows: bool,
-) -> Reply<Settings> {
-    switch_mcp(&state.dir, rewind, workflows)
-}
-
 pub(crate) fn switch_mcp(dir: &Path, rewind: bool, workflows: bool) -> Reply<Settings> {
     prefs::update(dir, |s| {
         s.mcp_rewind = rewind;
@@ -225,54 +124,24 @@ pub(crate) fn switch_mcp(dir: &Path, rewind: bool, workflows: bool) -> Reply<Set
 #[derive(Serialize, Deserialize)]
 pub struct Models {
     pub installed: bool,
-    pub downloading: bool,
+    pub download: DownloadState,
     pub audio: bool,
     pub bytes: u64,
-}
-
-/// What the audio consent step and the settings show.
-#[tauri::command]
-pub async fn models_status(state: State<'_, AppState>) -> Reply<Models> {
-    models(&state)
 }
 
 pub(crate) fn models(state: &AppState) -> Reply<Models> {
     let engine = state.engine()?;
     Ok(Models {
         installed: engine.models_installed(),
-        downloading: engine.downloading(),
+        download: engine.download_state(),
         audio: prefs::load(&state.dir).map_err(msg)?.live.audio,
         bytes: models::total_bytes(models::ASSETS),
     })
 }
 
-/// Starts the one-time model download. The UI calls it only after the user agreed. Progress
-/// arrives as `models-progress` events, then `models-done` or `models-failed`.
-#[tauri::command]
-pub async fn download_models(state: State<'_, AppState>) -> Reply<()> {
-    state.engine()?.download_models().map_err(msg)
-}
-
-#[tauri::command]
-pub async fn cancel_download(state: State<'_, AppState>) -> Reply<()> {
-    state.engine()?.cancel_download();
-    Ok(())
-}
-
-/// Switches call audio on or off. Off closes every stream within a second.
-#[tauri::command]
-pub async fn set_audio(state: State<'_, AppState>, on: bool) -> Reply<Settings> {
-    switch_audio(&state, on)
-}
-
 pub(crate) fn switch_audio(state: &AppState, on: bool) -> Reply<Settings> {
     state.engine()?.set_audio(on).map_err(msg)?;
     prefs::load(&state.dir).map_err(msg)
-}
-
-#[tauri::command]
-pub async fn finish_onboarding(state: State<'_, AppState>) -> Reply<Settings> {
-    finish_setup(&state)
 }
 
 /// Marks setup done and starts capture.
@@ -339,7 +208,7 @@ mod tests {
                 state.start(|dir| {
                     opening.send(()).expect("test setup");
                     released.recv().expect("test setup");
-                    Engine::start(dir, &TEST_KEY, |_, _| {})
+                    Engine::start(dir, &TEST_KEY)
                 });
             }
         });
@@ -367,7 +236,7 @@ mod tests {
         let vault = FakeVault(AtomicBool::new(true));
 
         state.delete_everything(&vault).expect("deletes");
-        state.start(|dir| Engine::start(dir, &TEST_KEY, |_, _| {}));
+        state.start(|dir| Engine::start(dir, &TEST_KEY));
 
         assert_eq!(fs::read_dir(&dir).expect("the folder stays").count(), 0);
         assert!(state.engine().is_err());

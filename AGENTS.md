@@ -55,7 +55,7 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
 - **Code compiles, models judge.** Code builds the graph and the day pages and checks every claim a model makes. Agents answer questions about a day more accurately from a page compiled by code than from a summary a model wrote ([Activity Frames](https://arxiv.org/html/2608.05784)). Your Claude Code or Codex searches, finds routines and writes skills.
 - **Explain everything.** Every score shows its reasons and evidence. Every skill step cites what was observed. No ungrounded step ships.
 - **Invisible.** No fan, no battery hit, no setup. Every feature earns its CPU and its lines of code.
-- **The agent is the main interface.** The app window stays small. Claude reaches the data through MCP.
+- **The agent is the main interface.** Sextant has no window: a menu bar icon and the `sextant` CLI and TUI. Claude reaches the data through MCP.
 - **Trust you can check.** Every claim has a place to see it: the sent log lists each answer an agent got, the tray says when capture stops, excluded apps and sites drop data before it is stored, and you can delete the last hour or uninstall in one click.
 
 ## Words
@@ -133,7 +133,7 @@ Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-d
 
 ## Status
 
-- **Shipped in the tree:** capture with AX-first text, actions v1, signals, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), and the main window on routines in place of workflows (E4b). The popover and Today were removed on 2026-11-02.
-- **Next:** a `sextant` CLI and TUI in place of the main window (C1), then better OCR (O1), both in `docs/routines-plan.md`.
+- **Shipped in the tree:** capture with AX-first text, actions v1, signals, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), routines in place of workflows (E4b), and the `sextant` CLI and TUI in place of the window (C1).
+- **Next:** better OCR (O1), after a written comparison, in `docs/routines-plan.md`.
 - **Deferred:** task types (T3), input classes (T4), incremental refresh (T5) and evaluation (L3). Your agent finds recurring work in E2 and E3, so nothing needs them yet.
-- **Deprecated on 2026-11-02 (removed from the code):** local embeddings (E5, measured, see `docs/routines-plan.md`), the rewind panel and Apple's model (`docs/rewind-and-apple-model.md`), backfill, the popover and Today.
+- **Deprecated on 2026-11-02 (removed from the code):** local embeddings (E5, measured, see `docs/routines-plan.md`), the rewind panel and Apple's model (`docs/rewind-and-apple-model.md`), backfill, the popover, Today and the React window.

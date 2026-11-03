@@ -3,6 +3,8 @@
 
 use std::io::{self, BufRead, Write};
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
@@ -40,8 +42,7 @@ Usage: sextant <command>
   setup                  Grant access and start capture
   connect                Add Sextant to Claude Desktop and print the Claude Code command
   pause | resume         Pause capture for an hour, or resume it
-  audio on|off           Transcribe call audio, or stop
-  audio download         Download the speech models (about 670 MB)
+  audio on|off           Transcribe calls, or stop. The first time downloads the speech models
   routines               The routines your agent saved, with their hours a week
   agent                  The agent bridge: which agent, when it last ran
   agent use claude|codex [--weekly]
@@ -75,10 +76,6 @@ pub fn run(dir: &Path, args: &[String]) -> Result<()> {
         ["audio", "off"] => {
             let _: Settings = call(dir, &Request::Audio { on: false })?;
             println!("Call audio is off.");
-        }
-        ["audio", "download"] => {
-            let _: Models = call(dir, &Request::DownloadModels)?;
-            println!("Downloading the speech models. `sextant audio on` works once they are in.");
         }
         ["routines"] => print_routines(&call(dir, &Request::Agent)?),
         ["agent"] => print_agent(&call(dir, &Request::Agent)?),
@@ -322,21 +319,58 @@ fn connect() -> Result<()> {
     Ok(())
 }
 
+const AUDIO_CONSENT: &str = "\
+When a call app such as Zoom, Teams or Meet uses your microphone, Sextant writes down what you
+and the other side say. The sound is never saved: only the text stays, on this Mac.
+
+In Germany, recording a call without the other side knowing can be a crime (section 201 StGB).
+Tell everyone on a call that you transcribe it.
+
+Speech recognition: Parakeet TDT 0.6B v3 by NVIDIA (CC BY 4.0, ONNX version by istupakov).
+Voice detection: Silero VAD (MIT). Runtime: ONNX Runtime (MIT).";
+
+/// The first time, asks before the one-time model download and waits for it, then switches
+/// audio on.
 fn audio_on(dir: &Path) -> Result<()> {
-    let _: Settings = call(dir, &Request::Audio { on: true })?;
     let models: Models = call(dir, &Request::Models)?;
-    if models.installed {
-        println!("Call audio is on. Sextant transcribes calls on this Mac and keeps no audio.");
+    if !models.installed {
+        println!("{AUDIO_CONSENT}\n");
+        println!(
+            "This needs a one-time download of about {} MB from github.com and huggingface.co. Sextant makes no other network connection.",
+            models.bytes / 1_000_000
+        );
+        wait_for_enter("Press Enter to download, or Ctrl-C to stop.")?;
+        download(dir)?;
+    }
+    let _: Settings = call(dir, &Request::Audio { on: true })?;
+    println!("Call audio is on.");
+    Ok(())
+}
+
+fn download(dir: &Path) -> Result<()> {
+    let _: Models = call(dir, &Request::DownloadModels)?;
+    loop {
+        thread::sleep(Duration::from_millis(500));
+        let models: Models = call(dir, &Request::Models)?;
+        let state = &models.download;
+        if state.running {
+            print!(
+                "\r{} of {} MB",
+                state.done / 1_000_000,
+                state.total / 1_000_000
+            );
+            io::stdout().flush()?;
+            continue;
+        }
+        println!();
+        if let Some(failed) = &state.failed {
+            bail!("the download failed: {failed}");
+        }
+        if !models.installed {
+            bail!("the download stopped");
+        }
         return Ok(());
     }
-    if !models.downloading {
-        let _: Models = call(dir, &Request::DownloadModels)?;
-    }
-    println!(
-        "Call audio is on. It starts once the speech models ({} MB) are downloaded.",
-        models.bytes / 1_000_000
-    );
-    Ok(())
 }
 
 pub fn status_lines(status: &Status) -> Vec<String> {

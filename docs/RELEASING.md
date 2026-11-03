@@ -17,7 +17,7 @@ You need a paid Apple Developer account. The `curl` installer also needs the rep
 3. Set the same version in `app/tauri.conf.json`, `package.json` and `Cargo.toml`, commit it, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
 4. The `Release` workflow builds, signs with the hardened runtime, notarizes, staples and publishes `Sextant.dmg`, `Sextant.dmg.sha256` and `install.sh`.
 
-To check a release, run the install command on a Mac that has never seen Sextant. It must open without a Gatekeeper warning, ask for each permission only when its onboarding step needs it, and show a map.
+To check a release, run the install command on a Mac that has never seen Sextant. It must open without a Gatekeeper warning, open `sextant setup` in Terminal, ask for each permission only when setup reaches it, and `sextant status` must show capture running.
 
 ## While the repository is private
 

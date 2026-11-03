@@ -294,7 +294,7 @@ mod tests {
         store.refresh(local(WEEK_NOW)).expect("test setup");
         drop(store);
         let state = AppState::new(dir.clone());
-        state.start(|dir| Engine::start(dir, &TEST_KEY, |_, _| {}));
+        state.start(|dir| Engine::start(dir, &TEST_KEY));
         let listener = bind(&dir).expect("binds");
         thread::spawn(move || {
             for stream in listener.incoming().flatten() {

@@ -20,7 +20,7 @@ use serde_json::Value;
 use sextant_core::Settings;
 use sextant_core::agent::{AgentName, Run};
 use sextant_core::mcp::FIND_ROUTINES;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager};
 
 use crate::clock;
 use crate::commands::{AppState, Reply, msg};
@@ -285,25 +285,10 @@ fn status(engine: &Engine, settings: &Settings) -> Result<AgentStatus> {
     })
 }
 
-#[tauri::command]
-pub async fn agent_status(state: State<'_, AppState>) -> Reply<AgentStatus> {
-    bridge(&state)
-}
-
 pub(crate) fn bridge(state: &AppState) -> Reply<AgentStatus> {
     let engine = state.engine()?;
     let settings = crate::prefs::load(&state.dir).map_err(msg)?;
     status(engine, &settings).map_err(|err| format!("{err:#}"))
-}
-
-/// Picks the agent (`None` turns the bridge off) and whether it runs weekly.
-#[tauri::command]
-pub async fn set_agent(
-    state: State<'_, AppState>,
-    agent: Option<AgentName>,
-    weekly: bool,
-) -> Reply<Settings> {
-    choose(&state, agent, weekly)
 }
 
 pub(crate) fn choose(state: &AppState, agent: Option<AgentName>, weekly: bool) -> Reply<Settings> {
@@ -314,14 +299,6 @@ pub(crate) fn choose(state: &AppState, agent: Option<AgentName>, weekly: bool) -
             s.agent_weekly = weekly && agent.is_some();
         })
         .map_err(msg)
-}
-
-/// "Analyze now": runs the chosen agent and returns the new status.
-#[tauri::command]
-pub async fn run_agent(app: AppHandle) -> Reply<AgentStatus> {
-    tauri::async_runtime::spawn_blocking(move || run_now(&app.state::<AppState>()))
-        .await
-        .map_err(msg)?
 }
 
 pub(crate) fn run_now(state: &AppState) -> Reply<AgentStatus> {
