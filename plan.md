@@ -225,4 +225,4 @@ Done when: **(user)** a fresh Mac installs, grants permissions and shows a map w
 
 - `Info.plist`: `NSAudioCaptureUsageDescription`, `NSMicrophoneUsageDescription`, `NSAppleEventsUsageDescription`, `LSUIElement`.
 - `Entitlements.plist`: `com.apple.security.device.audio-input`, `com.apple.security.automation.apple-events`.
-- Permissions asked only when the matching step in onboarding needs them: Screen Recording (OCR), Accessibility (window titles), Automation (browser URL), Microphone and System Audio (transcripts).
+- Permissions asked only when the matching step in `sextant setup` needs them: Screen Recording (OCR), Accessibility (window titles), Automation (browser URL), Microphone and System Audio (transcripts).

@@ -134,6 +134,6 @@ Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-d
 ## Status
 
 - **Shipped in the tree:** capture with AX-first text, actions v1, signals, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), routines in place of workflows (E4b), and the `sextant` CLI and TUI in place of the window (C1).
-- **Next:** better OCR (O1), after a written comparison, in `docs/routines-plan.md`.
+- **Next:** L2 (connect to ChatGPT, `.mcpb`) in `docs/routines-plan.md`. The OCR comparison (O1) kept Apple Vision: `docs/ocr-comparison.md`.
 - **Deferred:** task types (T3), input classes (T4), incremental refresh (T5) and evaluation (L3). Your agent finds recurring work in E2 and E3, so nothing needs them yet.
 - **Deprecated on 2026-11-02 (removed from the code):** local embeddings (E5, measured, see `docs/routines-plan.md`), the rewind panel and Apple's model (`docs/rewind-and-apple-model.md`), backfill, the popover, Today and the React window.
