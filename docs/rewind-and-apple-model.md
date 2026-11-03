@@ -1,6 +1,6 @@
-# Rewind panel and Apple's on-device model
+# Rewind panel and Apple's on-device model (deprecated)
 
-Removed on 2026-11-02 to make Sextant CLI first. This page records how they worked, so they can come back. The last commit with both is `904ade0`.
+Deprecated on 2026-11-02 and removed from the code to make Sextant CLI first. This page records how they worked, so they can come back. The last commit with both is `904ade0`.
 
 ## What the user saw
 

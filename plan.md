@@ -56,7 +56,7 @@ every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶
 
 - One process, plain threads for capture and audio, `crossbeam_queue::ArrayQueue::force_push` between them (oldest frame drops under load).
 - **Triggers:** focus change (300 ms settle), input pause (1 s after activity, read from OS idle time, never keyboard hooks), 10 s tick while active. Nothing when idle over 60 s, locked or asleep.
-- **Gates before any frame or stream exists:** excluded app (password managers including Apple Passwords, Health and messengers by default), private browser window (Chromium `mode`, Arc `incognito`; Safari excluded unless the user opts in), secure input (`IsSecureEventInputEnabled`), excluded site (banks and payment sites by default, subdomains included; backfill visits are dropped too), paused, source off. Call audio passes the excluded-app and private-window gates before a stream opens.
+- **Gates before any frame or stream exists:** excluded app (password managers including Apple Passwords, Health and messengers by default), private browser window (Chromium `mode`, Arc `incognito`; Safari excluded unless the user opts in), secure input (`IsSecureEventInputEnabled`), excluded site (banks and payment sites by default, subdomains included), paused, source off. Call audio passes the excluded-app and private-window gates before a stream opens.
 - **AX tree first:** walk the focused window's Accessibility tree (core `capture::window_lines`, one batched `AXUIElementCopyMultipleAttributeValues` per element, 3000 nodes, 120 ms). Menus, toolbars, scroll bars and secure fields are pruned, offscreen subtrees skipped, rows joined with " · ", checkboxes rendered `[ ]`, `[x]`, `[-]`. `AXManualAccessibility` is set once per app so Electron and Chromium expose their tree. Exact text, no pixels; an unchanged window and text hash writes nothing.
 - **Actions (the UI log for workflow mining):** a global left-mouse-down monitor (`NSEvent`, position only) unparks the capture thread, which resolves the press before the UI changes: `AXUIElementCopyElementAtPosition`, dropped unless it belongs to the focused app, then up to 6 parents to the nearest button, link, menu item, checkbox, row or cell, named by its own label or the text clicked (core `capture::press_event`). The focused text field (`AXFocusedUIElement`) is read each poll; when focus leaves it, it is read once more and the value left in it becomes one edit (core `capture::Edits`). A press first writes the open field, so order holds. A field that empties on send keeps what was typed. Secure fields, values over 2000 characters and keystrokes are never read. Actions are read only while the focus key (pid and window) is the one that last passed every gate, so a private window of the same browser process is closed before anything is read. Redaction applies like any event.
 - **Capture:** only when the tree gives under 80 letters and digits. Only the focused window, `SCScreenshotManager` (macOS 14+).
@@ -85,9 +85,9 @@ every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶
 - **Retention, hourly:** delete raw rows past the window (lines, frames, windows, utterances, events and rewind turns, with their FTS rows), then unreferenced lines and windows, then run a refresh so the engine tables hold only what the remaining rows make. Then the storage cap (5 GB by default; 1, 2 or 10 GB, or none) deletes the oldest days until the database fits. Once a week, when nothing was captured for 15 minutes, `VACUUM` returns the freed space. Workflows and scores keep only redacted, templated keys.
 - Dev builds use `SEXTANT_HOME=./.dev-data` (in `.cargo/config.toml`) and keychain service `sextant-dev`, and refuse to start without it.
 
-## 6. Backfill (removed)
+## 6. Backfill (deprecated)
 
-Removed on 2026-11-02. Sextant no longer reads browser history, calendar, git or recent files at install; the map comes from live capture only. The last commit with the readers is `e0f5336`. `Source::Backfill` stays in the model so databases that hold backfill rows still load.
+Deprecated on 2026-11-02. Sextant no longer reads browser history, calendar, git or recent files at install; the map comes from live capture only. The last commit with the readers is `e0f5336`. `Source::Backfill` stays in the model so databases that hold backfill rows still load.
 
 ## 7. Automation finder (core, deterministic, time passed in as `Local { now, utc_offset_s }`)
 
@@ -140,7 +140,7 @@ The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`,
 ## 9. App UI (small)
 
 - Tray icon while capturing (filled on, outline paused, dot while transcribing, ring with "!" when a permission blocks capture). A click opens the menu: status, Pause 1 h, Stop audio, Open Sextant, Quit Sextant.
-- **Popover and Today** removed on 2026-11-02 to make Sextant CLI first. The main window holds routines, the agent bridge and Privacy until a `sextant` CLI and TUI replace it.
+- **Popover and Today** (deprecated on 2026-11-02): removed to make Sextant CLI first. The main window holds routines, the agent bridge and Privacy until a `sextant` CLI and TUI replace it.
 - **Onboarding** (two screens, no titles or intro text): grant the permissions live capture needs, connect to Claude. Call audio and the agent switches live in Privacy.
 - **Workflows:** "X hours a week you could get back", quick enjoyment question, ranked workflows as rows of steps (apps, gaps, copy points), promises you keep pushing, things to protect. Detail: reasons, example cases, correction box, "Create automation" (writes `SKILL.md`, copies a ready prompt for Claude).
 - **Search:** one box over screen text and transcripts, results by session. No timeline replay.
@@ -200,7 +200,7 @@ Done when: the hook passes; **(user)** CI green, tray icon visible.
 **M1 Core.** Synthetic fixtures with a fixed date and timezone (a week of events, 5 invoices each spread over 2 to 4 days across email, spreadsheet and lexoffice, noise in between, English and German OCR samples), store and migrations, dedupe, FTS search, retention, work graph, finder, corrections, `SKILL.md` builder, `insta` golden tests.
 Done when: tests pass on Linux, the finder recovers the invoice workflow, search p95 < 100 ms on a generated 1-year DB, refresh over 90 days < 2 s.
 
-**M2 Backfill + MCP.** Backfill readers, onboarding with first map, MCP server with all tools, "Connect to Claude".
+**M2 Backfill + MCP.** Backfill readers (deprecated, §6), onboarding with first map, MCP server with all tools, "Connect to Claude".
 Done when: first map < 60 s on a 90-day fixture profile; an MCP client test calls every tool against a fixture DB within budget; **(user)** Claude Desktop answers a question from your real backfill.
 **Validation gate (user):** give this build to 10 people, walk each through their map, count who hands a workflow to an agent within a week. Decide on M3 after that.
 

@@ -132,9 +132,9 @@ Done when:
 
 Rule: the LLM judges, code computes (CLAUDE.md, code rule 9). It sees one compact text per task type, never raw events.
 
-### L1. On-device model for small judgments
+### L1. On-device model for small judgments (deprecated)
 
-Removed on 2026-11-02. It only ever answered questions in the rewind panel, which went with it. See `docs/rewind-and-apple-model.md`.
+Deprecated on 2026-11-02 and removed from the code. It only ever answered questions in the rewind panel, which went with it. See `docs/rewind-and-apple-model.md`.
 
 ### L2. Claude and ChatGPT for skills and advice
 
@@ -182,7 +182,6 @@ So day pages are compiled by code, graph edges come only from exact anchors (ids
  L1 graph          action ─in─▶ activity ─part of─▶ task
                    activity ─next (gap, value copied)─▶ activity
                    activity ─mentions─▶ entity (person, email, id, amount, document)
-                   activity ─similar─▶ activity                 (local embeddings)
        │  code compiles
        ▼
  L2 pages          day and week: time per task, entities touched, values
@@ -200,10 +199,9 @@ Names, smallest first: an **action** is one press or edit, an **activity** is on
 | Job                                       | Who                                                  | Why                                                            |
 | ----------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------- |
 | Split, link, count, compile pages, verify | Code                                                 | Exact, testable, fast                                          |
-| Search and "similar" edges                | Qwen3-Embedding-0.6B on the bundled ONNX Runtime     | Dense retrieval was the strongest single part in AgentMemBench |
 | Find routines across weeks, write skills  | Your Claude Code or Codex                            | Needs reasoning over many days                                 |
 
-A local chat model such as Qwen 4B is not planned: it is a 4 GB download, and the Apple model covers labels.
+A local chat model such as Qwen 4B is not planned: it is a 4 GB download. Local embeddings (E5) are deprecated.
 
 ### What the agent can read and write
 
@@ -255,9 +253,9 @@ E4 ships in two steps, because the old path still drives the Workflows and Resul
 - **Activities renamed, built:** `schema_v9.sql` renames `episodes` to `activities`, `task_episodes` to `task_activities` and every `episode_id` to `activity_id`. The code follows.
 - Done when a fixture routine yields a skill whose citations all resolve, and every test passes after the removal.
 
-### E5. Search with local embeddings
+### E5. Search with local embeddings (deprecated)
 
-Removed on 2026-11-02, before it shipped, to keep Sextant small while the main workflow gets tested. What the build measured:
+Deprecated on 2026-11-02 and removed before it shipped, to keep Sextant small while the main workflow gets tested. What the build measured:
 
 - `model_quantized` (int8) dequantizes its embedding table on every run: about 2.8 GB and 160 ms per query. Not usable.
 - `model_q4.onnx` with prepacking on: 29 ms warm p95, about 550 MB loaded (the tokenizer alone is about 350 MB), 4 s first load.
@@ -283,8 +281,8 @@ E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture
 | E2   | `save_routine`: the agent proposes, code checks     | See E2                                                       |
 | E3   | The bridge runs Claude Code or Codex on the tools   | See E3                                                       |
 | E4   | Skills, old workflow path removed, episodes renamed | See E4                                                       |
-| E5   | Removed, measured                                   | See E5                                                       |
-| L1   | Removed with the rewind panel                       | See `docs/rewind-and-apple-model.md`                         |
+| E5   | Deprecated, measured                                | See E5                                                       |
+| L1   | Deprecated with the rewind panel                    | See `docs/rewind-and-apple-model.md`                         |
 | T1   | Activities with actions and identifiers             | The fixture shows actions per activity                       |
 | T2   | Tasks, "where time goes"                            | Pair agreement ≥ 0.9 on the interleaved fixture              |
 | T3   | Task types and procedures (deferred)                | The invoice type found with its steps and for-each           |
@@ -296,6 +294,6 @@ E1 to E4 are built. On 2026-11-02 the plan was cut to the main workflow: capture
 
 ## Open decisions
 
-1. **Swift helper for Apple's on-device model (L1):** removed with the rewind panel on 2026-11-02 (`docs/rewind-and-apple-model.md`).
+1. **Swift helper for Apple's on-device model (L1):** deprecated with the rewind panel on 2026-11-02 (`docs/rewind-and-apple-model.md`).
 2. **Keyboard monitor** for Enter, Tab, Escape and modifier shortcuts only. Without it, "send with Enter" and shortcut-only steps are missing from procedures. It changes the "never keyboard hooks" rule in §4 and needs Input Monitoring permission.
 3. **What the agent reads:** decided. The page tools in "What the agent can read and write" return labels, action symbols, value types and redacted identifiers. Field values, `search` and `context_at` follow the screen text switch in Settings.
