@@ -311,7 +311,7 @@ impl Store {
     /// Weeks of five work days among the days that hold any activity, at least one day.
     fn weeks_of_data(&self, utc_offset_s: i32) -> Result<f64> {
         let days: i64 = self.conn.query_row(
-            "SELECT COUNT(DISTINCT (start_ts + ?1) / 86400) FROM episodes",
+            "SELECT COUNT(DISTINCT (start_ts + ?1) / 86400) FROM activities",
             params![utc_offset_s],
             |row| row.get(0),
         )?;
@@ -410,7 +410,7 @@ mod tests {
         let observed_days: i64 = store
             .conn
             .query_row(
-                "SELECT COUNT(DISTINCT (start_ts + ?1) / 86400) FROM episodes",
+                "SELECT COUNT(DISTINCT (start_ts + ?1) / 86400) FROM activities",
                 [UTC_OFFSET_S],
                 |row| row.get(0),
             )

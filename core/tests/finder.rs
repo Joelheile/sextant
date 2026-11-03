@@ -22,6 +22,6 @@ fn only_the_last_90_days_count() {
     let (_db, mut store) = refreshed("window");
     let later = WEEK_NOW + 100 * 86_400;
     let stats = store.refresh(local(later)).expect("test setup");
-    assert_eq!(stats.episodes, 0);
+    assert_eq!(stats.activities, 0);
     assert_eq!(stats.tasks, 0);
 }

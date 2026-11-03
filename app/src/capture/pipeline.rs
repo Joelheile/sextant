@@ -202,7 +202,7 @@ impl<S: Sensors> Capturer<S> {
         }
     }
 
-    /// Ends the open episode without saying anything about what came next.
+    /// Ends the open activity without saying anything about what came next.
     fn close(&mut self, now_s: i64, paused: bool) {
         if std::mem::take(&mut self.open) {
             let event = if paused {

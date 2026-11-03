@@ -53,7 +53,7 @@ pub struct Spec {
     pub first_monday: i64,
     pub weeks: u32,
     pub noise_per_day: u32,
-    /// One OCR frame per episode.
+    /// One OCR frame per activity.
     pub frames: bool,
 }
 
@@ -102,7 +102,7 @@ pub fn generate(spec: &Spec) -> Fixture {
 /// and the button it presses. A weekly report (ticket OPS-41) runs on Tuesday and Thursday. The
 /// noise adds a skipped field, a corrected amount and a chat with no identifiers. Generated noise
 /// is off, since it would cut the report windows. Returns the fixture and the task of each planned
-/// episode by start time. Routines, meetings and the chat are not listed.
+/// activity by start time. Routines, meetings and the chat are not listed.
 pub fn actions_week() -> (Fixture, Vec<(i64, String)>) {
     let mut fixture = generate(&Spec {
         first_monday: WEEK_START,
@@ -132,7 +132,7 @@ pub fn actions_week() -> (Fixture, Vec<(i64, String)>) {
     for (day, hour, minute, seconds) in [(1, 13, 0, 900), (3, 10, 0, 600)] {
         let start = at(WEEK_START + day * DAY, hour, minute);
         truth.push((start, "OPS-41 report".into()));
-        episode(
+        activity(
             &mut fixture,
             &mut planned,
             start,
@@ -170,7 +170,7 @@ pub fn actions_week() -> (Fixture, Vec<(i64, String)>) {
         );
     }
     let start = at(WEEK_START + DAY, 15, 20);
-    episode(
+    activity(
         &mut fixture,
         &mut planned,
         start,
@@ -365,9 +365,9 @@ fn copy(ts: i64, app: &str) -> Event {
     }
 }
 
-/// One episode: focus, optional copy event 20 s before the end, idle, and one OCR frame.
+/// One activity: focus, optional copy event 20 s before the end, idle, and one OCR frame.
 #[allow(clippy::too_many_arguments)]
-fn episode(
+fn activity(
     f: &mut Fixture,
     planned: &mut Planned,
     start: i64,
@@ -550,7 +550,7 @@ fn invoices(f: &mut Fixture, monday: i64, week: u32, planned: &mut Planned) {
                     ],
                 ),
             };
-            episode(f, planned, start, seconds, win, &text, lines, copied);
+            activity(f, planned, start, seconds, win, &text, lines, copied);
         }
     }
 }
@@ -566,7 +566,7 @@ pub(crate) const SLACK_TEXT: [&str; 5] = [
 /// Calendar, Slack and Linear every morning at 09:00, 09:03 and 09:07.
 fn routine(f: &mut Fixture, planned: &mut Planned, midnight: i64, day: i64) {
     let slack = vec![SLACK_TEXT[day as usize].to_string(), "#standup".to_string()];
-    episode(
+    activity(
         f,
         planned,
         at(midnight, 9, 0),
@@ -576,7 +576,7 @@ fn routine(f: &mut Fixture, planned: &mut Planned, midnight: i64, day: i64) {
         vec!["Today".into(), "Weekly sync at 14:00".into()],
         false,
     );
-    episode(
+    activity(
         f,
         planned,
         at(midnight, 9, 3),
@@ -586,7 +586,7 @@ fn routine(f: &mut Fixture, planned: &mut Planned, midnight: i64, day: i64) {
         slack,
         false,
     );
-    episode(
+    activity(
         f,
         planned,
         at(midnight, 9, 7),
@@ -825,7 +825,7 @@ fn noise(f: &mut Fixture, midnight: i64, per_day: u32, planned: &Planned, rng: &
             .map(|_| NOISE_LINES[rng.below(NOISE_LINES.len() as u64) as usize].to_string())
             .collect();
         let mut sink = Vec::new();
-        episode(
+        activity(
             f,
             &mut sink,
             start,

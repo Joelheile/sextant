@@ -1,4 +1,4 @@
-//! Actions (routines-plan.md T1): presses and edits, each attached to the episode it happened in.
+//! Actions (routines-plan.md T1): presses and edits, each attached to the activity it happened in.
 
 use super::entities::{ValueType, value_type};
 use crate::model::Payload;
@@ -73,7 +73,7 @@ mod tests {
     }
 
     #[test]
-    fn an_action_belongs_to_the_episode_that_contains_its_time() {
+    fn an_action_belongs_to_the_activity_that_contains_its_time() {
         let spans = [(100, 200), (200, 300)];
         let times = [150, 200, 299, 301, 50];
         assert_eq!(

@@ -46,7 +46,7 @@ pub fn copy_event(ts: i64, app: &str) -> Event {
     event(ts, EventKind::Copy, json!({"app": app}))
 }
 
-/// Ends the open episode. Written when the user goes away, pauses or a gate closes, so the
+/// Ends the open activity. Written when the user goes away, pauses or a gate closes, so the
 /// previous window is not credited with the time and nothing about the gated window is kept.
 pub fn idle_event(ts: i64) -> Event {
     event(ts, EventKind::Idle, json!({}))

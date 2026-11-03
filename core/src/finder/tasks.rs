@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use rusqlite::params;
 
 use super::actions::{Act, act, identifier};
+use super::activities::Activity;
 use super::entities::{Entity, EntityKind, ValueType};
-use super::episodes::Episode;
 use super::{find, stable_id};
 use crate::error::Result;
 use crate::model::Payload;
@@ -19,11 +19,11 @@ const JOIN_WINDOW_S: i64 = 7 * DAY;
 const SAME_OBJECT_S: i64 = 120;
 const MERGE_GAP_S: i64 = 14 * DAY;
 
-/// Episodes joined by shared anchors. Anchors are invoice and ticket ids, and edit values that are ids.
+/// Activities joined by shared anchors. Anchors are invoice and ticket ids, and edit values that are ids.
 pub(crate) struct Task {
     pub anchors: BTreeSet<String>,
-    /// Episode indexes in time order.
-    pub episodes: Vec<usize>,
+    /// Activity indexes in time order.
+    pub activities: Vec<usize>,
     pub first: i64,
     pub last: i64,
     pub active_s: i64,
@@ -37,25 +37,25 @@ impl Task {
 
     fn absorb(&mut self, other: Task) {
         self.anchors.extend(other.anchors);
-        self.episodes.extend(other.episodes);
+        self.activities.extend(other.activities);
         self.first = self.first.min(other.first);
         self.last = self.last.max(other.last);
         self.active_s += other.active_s;
     }
 }
 
-/// Joins episodes in time order (routines-plan.md T2). An episode with an anchor joins the open task
-/// it shares the most anchors with, seen in the last 7 days. An episode with no anchor joins only the
-/// task of an episode in the same object that ended within 2 minutes. Otherwise it stays unassigned.
+/// Joins activities in time order (routines-plan.md T2). An activity with an anchor joins the open task
+/// it shares the most anchors with, seen in the last 7 days. An activity with no anchor joins only the
+/// task of an activity in the same object that ended within 2 minutes. Otherwise it stays unassigned.
 /// A final pass merges tasks that share an anchor when they are at most 14 days apart.
-pub(crate) fn build(episodes: &[Episode], entities: &[Entity], acts: &[Vec<Act>]) -> Vec<Task> {
-    let mut anchors: Vec<BTreeSet<String>> = vec![BTreeSet::new(); episodes.len()];
+pub(crate) fn build(activities: &[Activity], entities: &[Entity], acts: &[Vec<Act>]) -> Vec<Task> {
+    let mut anchors: Vec<BTreeSet<String>> = vec![BTreeSet::new(); activities.len()];
     for entity in entities
         .iter()
         .filter(|e| matches!(e.kind, EntityKind::Invoice | EntityKind::Ticket))
     {
-        for &episode in &entity.episodes {
-            anchors[episode].insert(entity.value.clone());
+        for &activity in &entity.activities {
+            anchors[activity].insert(entity.value.clone());
         }
     }
     for (index, list) in acts.iter().enumerate() {
@@ -67,18 +67,18 @@ pub(crate) fn build(episodes: &[Episode], entities: &[Entity], acts: &[Vec<Act>]
     }
 
     let mut open: Vec<Task> = Vec::new();
-    let mut of: Vec<Option<usize>> = vec![None; episodes.len()];
-    for (index, episode) in episodes.iter().enumerate() {
+    let mut of: Vec<Option<usize>> = vec![None; activities.len()];
+    for (index, activity) in activities.iter().enumerate() {
         let joined = if anchors[index].is_empty() {
             (0..index)
                 .rev()
-                .take_while(|&j| episode.start - episodes[j].end <= SAME_OBJECT_S)
-                .find(|&j| episodes[j].key == episode.key)
+                .take_while(|&j| activity.start - activities[j].end <= SAME_OBJECT_S)
+                .find(|&j| activities[j].key == activity.key)
                 .and_then(|j| of[j])
         } else {
             open.iter()
                 .enumerate()
-                .filter(|(_, task)| task.last >= episode.start - JOIN_WINDOW_S)
+                .filter(|(_, task)| task.last >= activity.start - JOIN_WINDOW_S)
                 .map(|(t, task)| {
                     let shared = anchors[index].intersection(&task.anchors).count();
                     (shared, task.last, t)
@@ -93,9 +93,9 @@ pub(crate) fn build(episodes: &[Episode], entities: &[Entity], acts: &[Vec<Act>]
             (None, false) => {
                 open.push(Task {
                     anchors: BTreeSet::new(),
-                    episodes: Vec::new(),
-                    first: episode.start,
-                    last: episode.start,
+                    activities: Vec::new(),
+                    first: activity.start,
+                    last: activity.start,
                     active_s: 0,
                 });
                 open.len() - 1
@@ -103,9 +103,9 @@ pub(crate) fn build(episodes: &[Episode], entities: &[Entity], acts: &[Vec<Act>]
         };
         let target = &mut open[task];
         target.anchors.extend(anchors[index].iter().cloned());
-        target.episodes.push(index);
-        target.last = target.last.max(episode.end);
-        target.active_s += episode.end - episode.start;
+        target.activities.push(index);
+        target.last = target.last.max(activity.end);
+        target.active_s += activity.end - activity.start;
         of[index] = Some(task);
     }
 
@@ -138,7 +138,7 @@ pub(crate) fn build(episodes: &[Episode], entities: &[Entity], acts: &[Vec<Act>]
     let mut tasks: Vec<Task> = merged.into_values().collect();
     tasks.sort_by_key(|task| task.first);
     for task in &mut tasks {
-        task.episodes.sort_unstable();
+        task.activities.sort_unstable();
     }
     tasks
 }
@@ -174,7 +174,7 @@ pub struct TaskAction {
 pub struct TaskMinutes {
     pub task_id: i64,
     pub label: String,
-    /// `YYYY-MM-DD`, in the local offset. An episode counts on the day it starts.
+    /// `YYYY-MM-DD`, in the local offset. An activity counts on the day it starts.
     pub date: String,
     pub minutes: f64,
 }
@@ -198,8 +198,8 @@ impl Store {
 
     pub fn task_actions(&self, task_id: i64) -> Result<Vec<TaskAction>> {
         let mut statement = self.conn.prepare(
-            "SELECT ev.ts, ev.json FROM task_episodes te
-             JOIN episodes e ON e.id = te.episode_id
+            "SELECT ev.ts, ev.json FROM task_activities te
+             JOIN activities e ON e.id = te.activity_id
              JOIN events ev ON ev.ts BETWEEN e.start_ts AND e.end_ts AND ev.kind IN ('press', 'edit')
              WHERE te.task_id = ?1 ORDER BY ev.ts, ev.id",
         )?;
@@ -224,12 +224,12 @@ impl Store {
         Ok(out)
     }
 
-    /// Active minutes per task and day. Each episode counts once, on the day it starts.
+    /// Active minutes per task and day. Each activity counts once, on the day it starts.
     pub fn where_time_goes(&self, utc_offset_s: i32) -> Result<Vec<TaskMinutes>> {
         let mut statement = self.conn.prepare(
-            "SELECT te.task_id, t.label, e.start_ts, e.end_ts FROM task_episodes te
+            "SELECT te.task_id, t.label, e.start_ts, e.end_ts FROM task_activities te
              JOIN tasks t ON t.id = te.task_id
-             JOIN episodes e ON e.id = te.episode_id",
+             JOIN activities e ON e.id = te.activity_id",
         )?;
         let rows = statement.query_map([], |row| {
             Ok((
@@ -320,7 +320,7 @@ mod tests {
         let db = TempDb::new("stable-ids");
         let mut store = db.open().expect("test setup");
         load(&mut store, &fixture, WEEK_NOW).expect("test setup");
-        let activities = "SELECT start_ts, id FROM episodes";
+        let activities = "SELECT start_ts, id FROM activities";
         let tasks = "SELECT first_ts, id FROM tasks";
 
         store.refresh(local(WEEK_NOW)).expect("test setup");
@@ -369,8 +369,8 @@ mod tests {
             let mut statement = store
                 .conn
                 .prepare(
-                    "SELECT e.start_ts, te.task_id FROM episodes e
-                     LEFT JOIN task_episodes te ON te.episode_id = e.id ORDER BY e.id",
+                    "SELECT e.start_ts, te.task_id FROM activities e
+                     LEFT JOIN task_activities te ON te.activity_id = e.id ORDER BY e.id",
                 )
                 .expect("test setup");
             statement
@@ -380,8 +380,8 @@ mod tests {
                 .expect("test setup")
         };
 
-        // Every episode counts, so an episode that joins the wrong task is a disagreement.
-        // Episodes nobody planned are noise: each is its own group on both sides.
+        // Every activity counts, so an activity that joins the wrong task is a disagreement.
+        // Activities nobody planned are noise: each is its own group on both sides.
         let expected = intern(rows.iter().enumerate().map(|(index, (start, _))| {
             planned
                 .get(start)
@@ -394,7 +394,7 @@ mod tests {
         let score = adjusted_rand(&expected, &found);
         assert!(
             score >= 0.9,
-            "pair agreement {score:.3} over {} episodes",
+            "pair agreement {score:.3} over {} activities",
             rows.len()
         );
 

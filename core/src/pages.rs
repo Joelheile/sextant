@@ -1,5 +1,5 @@
 //! Pages (routines-plan.md E1): the week, a day and a task, compiled by code from the graph so an
-//! agent can read it top down. The schema still calls activities `episodes` until E4.
+//! agent can read it top down.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -84,8 +84,8 @@ impl Store {
     ) -> Result<Vec<Activity>> {
         let mut statement = self.conn.prepare_cached(
             "SELECT e.id, e.start_ts, e.end_ts, e.app, e.object_key, s.key, s.name, t.id, t.label
-             FROM episodes e JOIN steps s ON s.id = e.step_id
-             LEFT JOIN task_episodes te ON te.episode_id = e.id
+             FROM activities e JOIN steps s ON s.id = e.step_id
+             LEFT JOIN task_activities te ON te.activity_id = e.id
              LEFT JOIN tasks t ON t.id = te.task_id
              WHERE e.start_ts >= ?1 AND e.start_ts < ?2 ORDER BY e.start_ts, e.id",
         )?;
@@ -493,7 +493,7 @@ mod tests {
         let started: i64 = store
             .conn
             .query_row(
-                "SELECT count(*) FROM episodes WHERE start_ts >= ?1 AND start_ts < ?1 + 86400",
+                "SELECT count(*) FROM activities WHERE start_ts >= ?1 AND start_ts < ?1 + 86400",
                 [WEEK_START + DAY],
                 |row| row.get(0),
             )

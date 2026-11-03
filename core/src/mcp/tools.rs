@@ -493,7 +493,7 @@ fn timeline(ctx: &Ctx, args: &Value) -> Result<Value> {
 
     let mut items: Vec<Item> = Vec::new();
     let mut activities = ctx.store.conn.prepare_cached(
-        "SELECT e.start_ts, e.end_ts, e.app, s.name FROM episodes e JOIN steps s ON s.id = e.step_id
+        "SELECT e.start_ts, e.end_ts, e.app, s.name FROM activities e JOIN steps s ON s.id = e.step_id
          WHERE e.start_ts BETWEEN ?1 AND ?2 AND e.object_key NOT LIKE 'meeting|%'
          ORDER BY e.start_ts, e.id LIMIT ?3",
     )?;

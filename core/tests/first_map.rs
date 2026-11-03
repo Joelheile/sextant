@@ -234,8 +234,8 @@ fn upcoming_events_are_not_worked_time() {
     let (with, without) = (run(true), run(false));
 
     assert_eq!(
-        with.episodes, without.episodes,
-        "no episode from the future"
+        with.activities, without.activities,
+        "no activity from the future"
     );
     assert_eq!(with.tasks, without.tasks);
 }

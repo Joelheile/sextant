@@ -1,5 +1,5 @@
 //! What the menu bar shows about your day: active time, apps, switching and calls. Computed from
-//! live episodes only, so backfill never counts as time at the computer. Shown to the user on this Mac, never sent anywhere.
+//! live activities only, so backfill never counts as time at the computer. Shown to the user on this Mac, never sent anywhere.
 
 use std::collections::{HashMap, HashSet};
 
@@ -11,7 +11,7 @@ use crate::time::{DAY, Local, WEEK_DAYS, day};
 use crate::writer::unpack;
 
 const TOP_APPS: usize = 5;
-/// Episodes closer than this belong to one stretch of work.
+/// Activities closer than this belong to one stretch of work.
 const RUN_GAP_S: i64 = 120;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,7 +104,7 @@ impl Store {
 
     fn live_spans(&self, from: i64, to: i64) -> Result<Vec<Span>> {
         let mut statement = self.conn.prepare(
-            "SELECT start_ts, end_ts, app FROM episodes
+            "SELECT start_ts, end_ts, app FROM activities
              WHERE live = 1 AND end_ts > ?1 AND start_ts < ?2 ORDER BY start_ts",
         )?;
         let rows = statement.query_map(params![from, to], |row| {

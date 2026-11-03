@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::episodes::Episode;
+use super::activities::Activity;
 use crate::text::{pattern, text_enum};
 
 /// Declaration order sorts entities by kind.
@@ -136,17 +136,17 @@ fn normalize_amount(text: &str) -> Option<String> {
 pub(crate) struct Entity {
     pub kind: EntityKind,
     pub value: String,
-    pub episodes: Vec<usize>,
+    pub activities: Vec<usize>,
 }
 
-/// Entities sorted by (kind, value). Companies and persons need 3+ episodes.
-/// With 20 or more episodes, entities in more than a fifth of them are dropped.
-pub(crate) fn build(episodes: &[Episode]) -> Vec<Entity> {
+/// Entities sorted by (kind, value). Companies and persons need 3+ activities.
+/// With 20 or more activities, entities in more than a fifth of them are dropped.
+pub(crate) fn build(activities: &[Activity]) -> Vec<Entity> {
     let mut seen: BTreeMap<(EntityKind, String), Vec<usize>> = BTreeMap::new();
-    for (index, episode) in episodes.iter().enumerate() {
-        let mut found = find(&episode.text);
-        if !episode.doc.is_empty() {
-            found.push((EntityKind::Doc, episode.doc.clone()));
+    for (index, activity) in activities.iter().enumerate() {
+        let mut found = find(&activity.text);
+        if !activity.doc.is_empty() {
+            found.push((EntityKind::Doc, activity.doc.clone()));
         }
         for entity in found {
             let list = seen.entry(entity).or_default();
@@ -155,17 +155,17 @@ pub(crate) fn build(episodes: &[Episode]) -> Vec<Entity> {
             }
         }
     }
-    let total = episodes.len();
+    let total = activities.len();
     seen.into_iter()
         .filter(|((kind, _), list)| {
             let rare = !matches!(kind, EntityKind::Company | EntityKind::Person) || list.len() >= 3;
             let common = total >= 20 && list.len() * 5 > total;
             rare && !common
         })
-        .map(|((kind, value), episodes)| Entity {
+        .map(|((kind, value), activities)| Entity {
             kind,
             value,
-            episodes,
+            activities,
         })
         .collect()
 }

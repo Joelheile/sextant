@@ -10,7 +10,7 @@ Flushed {
     new_lines: 62,
 }
 RefreshStats {
-    episodes: 135,
+    activities: 135,
     steps: 32,
     entities: 15,
     tasks: 5,

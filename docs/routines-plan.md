@@ -200,7 +200,7 @@ So day pages are compiled by code, graph edges come only from exact anchors (ids
                    ─▶ SKILL.md ─▶ Claude Cowork, Codex
 ```
 
-Names, smallest first: an **action** is one press or edit, an **activity** is one focus span on one object (today's episode), a **task** is activities joined by a shared anchor, and a **routine** is tasks that repeat.
+Names, smallest first: an **action** is one press or edit, an **activity** is one focus span on one object, a **task** is activities joined by a shared anchor, and a **routine** is tasks that repeat.
 
 ### Who does what
 
@@ -260,7 +260,7 @@ E4 ships in two steps, because the old path still drives the Workflows and Resul
 
 - **E4a, built:** each routine on the Ideas tab shows a one-line prompt to copy: `/mcp__sextant__write_skill <id>` for Claude Code, and a plain request for Codex, whose support for MCP prompts is unclear. The `write_skill` prompt has the agent read the routine's evidence through `task`, check its draft with `check_skill` and save a `SKILL.md` where it loads skills. Every step cites a task id and an action symbol. An ignored test runs real Claude on the fixture, and every citation resolves.
 - **E4b, built:** the main window shows the routines list in place of the Workflows and Results tabs, and the popover drops its Ideas tab. The routines list shows the sum of the routines' hours a week. `schema_v9.sql` drops workflows, follows, commitments, overrides, corrections, handoffs, judgments and `agent_ideas`, along with `list_workflows`, `get_workflow`, `get_skill`, `report_handoff`, the judge and the share image. The `steps` table stays without categories, because its names label activities on the week and day pages. Copy and Reminder events no longer reach the finder. Before/after results can come back once E5 matches new tasks to a routine.
-- **Next:** rename episodes to activities in code and schema, as its own change.
+- **Activities renamed, built:** `schema_v9.sql` renames `episodes` to `activities`, `task_episodes` to `task_activities` and every `episode_id` to `activity_id`. The code follows.
 - Done when a fixture routine yields a skill whose citations all resolve, and every test passes after the removal.
 
 ### E5. Search with local embeddings

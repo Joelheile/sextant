@@ -1,21 +1,21 @@
-//! §7.2 Steps: episodes grouped by object key, merged within a scope at Jaccard >= 0.5.
+//! §7.2 Steps: activities grouped by object key, merged within a scope at Jaccard >= 0.5.
 
 use std::collections::{BTreeMap, HashMap};
 
-use super::episodes::Episode;
+use super::activities::Activity;
 use super::find;
 use crate::text::jaccard;
 
 pub(crate) struct Step {
     pub key: String,
     pub name: String,
-    pub episodes: Vec<usize>,
+    pub activities: Vec<usize>,
 }
 
 struct KeyInfo {
     key: String,
     tokens: Vec<String>,
-    episodes: Vec<usize>,
+    activities: Vec<usize>,
 }
 
 struct Group {
@@ -23,20 +23,20 @@ struct Group {
     members: Vec<KeyInfo>,
 }
 
-/// Groups episodes into steps and sets `Episode::step`. Steps are ordered by key.
-pub(crate) fn build(episodes: &mut [Episode]) -> Vec<Step> {
+/// Groups activities into steps and sets `Activity::step`. Steps are ordered by key.
+pub(crate) fn build(activities: &mut [Activity]) -> Vec<Step> {
     let mut by_scope: BTreeMap<&str, BTreeMap<&str, KeyInfo>> = BTreeMap::new();
-    for (index, episode) in episodes.iter().enumerate() {
+    for (index, activity) in activities.iter().enumerate() {
         let info = by_scope
-            .entry(&episode.scope)
+            .entry(&activity.scope)
             .or_default()
-            .entry(&episode.key)
+            .entry(&activity.key)
             .or_insert_with(|| KeyInfo {
-                key: episode.key.clone(),
-                tokens: episode.tokens.clone(),
-                episodes: Vec::new(),
+                key: activity.key.clone(),
+                tokens: activity.tokens.clone(),
+                activities: Vec::new(),
             });
-        info.episodes.push(index);
+        info.activities.push(index);
     }
 
     let mut groups: Vec<Group> = Vec::new();
@@ -70,22 +70,22 @@ pub(crate) fn build(episodes: &mut [Episode]) -> Vec<Step> {
     steps.sort_by(|a, b| a.key.cmp(&b.key));
     dedupe_keys(&mut steps);
 
-    steps.retain(|s| !s.episodes.is_empty());
+    steps.retain(|s| !s.activities.is_empty());
     for (index, step) in steps.iter_mut().enumerate() {
-        for &episode in &step.episodes {
-            episodes[episode].step = index;
+        for &activity in &step.activities {
+            activities[activity].step = index;
         }
     }
     steps
 }
 
-/// Name and key from the tokens shared by at least half of the group's episodes.
+/// Name and key from the tokens shared by at least half of the group's activities.
 fn make_step(group: Group) -> Step {
-    let total: usize = group.members.iter().map(|m| m.episodes.len()).sum();
+    let total: usize = group.members.iter().map(|m| m.activities.len()).sum();
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     for member in &group.members {
         for token in &member.tokens {
-            *counts.entry(token).or_default() += member.episodes.len();
+            *counts.entry(token).or_default() += member.activities.len();
         }
     }
     let mut shared: Vec<&str> = counts
@@ -96,7 +96,7 @@ fn make_step(group: Group) -> Step {
     let main = group
         .members
         .iter()
-        .max_by_key(|m| (m.episodes.len(), std::cmp::Reverse(&m.key)));
+        .max_by_key(|m| (m.activities.len(), std::cmp::Reverse(&m.key)));
     if shared.is_empty() {
         shared = main
             .map(|m| m.tokens.iter().map(String::as_str).collect())
@@ -109,12 +109,16 @@ fn make_step(group: Group) -> Step {
     } else {
         format!("{}: {words}", group.scope)
     };
-    let mut eps: Vec<usize> = group.members.into_iter().flat_map(|m| m.episodes).collect();
+    let mut eps: Vec<usize> = group
+        .members
+        .into_iter()
+        .flat_map(|m| m.activities)
+        .collect();
     eps.sort_unstable();
     Step {
         key: format!("{}|{words}", group.scope),
         name,
-        episodes: eps,
+        activities: eps,
     }
 }
 

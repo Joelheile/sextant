@@ -1,10 +1,10 @@
-//! §7.1 Episodes: consecutive focus on one object key.
+//! §7.1 Activities: consecutive focus on one object key.
 
 use crate::model::Payload;
 use crate::text::{split_url, template, tokens};
 
-const MIN_EPISODE_S: i64 = 5;
-const MAX_EPISODE_S: i64 = 120 * 60;
+const MIN_ACTIVITY_S: i64 = 5;
+const MAX_ACTIVITY_S: i64 = 120 * 60;
 const MERGE_GAP_S: i64 = 120;
 
 pub(crate) struct EventRow {
@@ -14,7 +14,7 @@ pub(crate) struct EventRow {
     pub payload: Payload,
 }
 
-pub(crate) struct Episode {
+pub(crate) struct Activity {
     pub start: i64,
     pub end: i64,
     pub app: String,
@@ -40,13 +40,13 @@ struct Segment<'a> {
 
 fn close<'a>(open: &mut Option<Segment<'a>>, segments: &mut Vec<Segment<'a>>, at: i64) {
     if let Some(mut segment) = open.take() {
-        segment.end = at.min(segment.start + MAX_EPISODE_S);
+        segment.end = at.min(segment.start + MAX_ACTIVITY_S);
         segments.push(segment);
     }
 }
 
-/// Episodes in time order. A focus event lasts until the next focus, idle or pause event.
-pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Episode> {
+/// Activities in time order. A focus event lasts until the next focus, idle or pause event.
+pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Activity> {
     let mut segments: Vec<Segment> = Vec::new();
     let mut open: Option<Segment> = None;
     for event in events {
@@ -94,21 +94,21 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Episode> {
         }
     }
     close(&mut open, &mut segments, now);
-    segments.retain(|s| s.end - s.start >= MIN_EPISODE_S);
+    segments.retain(|s| s.end - s.start >= MIN_ACTIVITY_S);
     segments.sort_by_key(|s| s.start);
 
-    let mut episodes: Vec<Episode> = Vec::new();
+    let mut activities: Vec<Activity> = Vec::new();
     for segment in segments {
         let (scope, key, tokens) = object_key(&segment);
         let text = format!(
             "{}\n{}\n{}",
             segment.payload.title, segment.payload.url, segment.payload.text
         );
-        if let Some(last) = episodes.last_mut() {
+        if let Some(last) = activities.last_mut() {
             let end = last.end.max(segment.end);
             if last.key == key
                 && segment.start - last.end < MERGE_GAP_S
-                && end - last.start <= MAX_EPISODE_S
+                && end - last.start <= MAX_ACTIVITY_S
             {
                 last.end = end;
                 last.live |= segment.live;
@@ -118,7 +118,7 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Episode> {
             }
         }
         let doc = segment.payload.doc.clone();
-        episodes.push(Episode {
+        activities.push(Activity {
             start: segment.start,
             end: segment.end,
             app: segment.app.to_string(),
@@ -131,7 +131,7 @@ pub(crate) fn build(events: &[EventRow], now: i64) -> Vec<Episode> {
             step: 0,
         });
     }
-    episodes
+    activities
 }
 
 /// Returns scope, key and key tokens.
@@ -212,20 +212,20 @@ mod tests {
             focus(62, "Mail", "Invoice INV-2026-0002", ""),
             idle(100),
         ];
-        let episodes = build(&events, 1000);
+        let activities = build(&events, 1000);
         assert_eq!(
-            episodes.len(),
+            activities.len(),
             1,
             "the 2 s Slack flicker is dropped, Mail merges"
         );
-        assert_eq!((episodes[0].start, episodes[0].end), (0, 100));
-        assert_eq!(episodes[0].key, "Mail|invoice inv #");
+        assert_eq!((activities[0].start, activities[0].end), (0, 100));
+        assert_eq!(activities[0].key, "Mail|invoice inv #");
     }
 
     #[test]
-    fn episodes_are_capped_at_two_hours() {
-        let episodes = build(&[focus(0, "Code", "main.rs", "")], 10 * 3600);
-        assert_eq!(episodes[0].end - episodes[0].start, 7200);
+    fn activities_are_capped_at_two_hours() {
+        let activities = build(&[focus(0, "Code", "main.rs", "")], 10 * 3600);
+        assert_eq!(activities[0].end - activities[0].start, 7200);
     }
 
     #[test]
@@ -239,11 +239,11 @@ mod tests {
             ),
             idle(30),
         ];
-        let episodes = build(&events, 100);
+        let activities = build(&events, 100);
         assert_eq!(
-            episodes[0].key,
+            activities[0].key,
             "app.lexoffice.de/vouchers/#|rechnung bearbeiten lexoffice"
         );
-        assert_eq!(episodes[0].scope, "app.lexoffice.de");
+        assert_eq!(activities[0].scope, "app.lexoffice.de");
     }
 }

@@ -63,7 +63,7 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
 | Word     | Meaning                                                                   | Example                      |
 | -------- | ------------------------------------------------------------------------- | ---------------------------- |
 | action   | One press or edit: app, role, label template                              | Mail · AXButton · send       |
-| activity | One focus span on one object, with its actions (code: `episode` until E4) | 8 minutes on one Mail thread |
+| activity | One focus span on one object, with its actions                           | 8 minutes on one Mail thread |
 | task     | Activities joined by a shared anchor (invoice number, email, amount)      | Invoice 4711 for Acme        |
 | routine  | Tasks that repeat, found by your agent and checked by code                | Monthly invoicing            |
 
@@ -134,5 +134,5 @@ Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-d
 ## Status
 
 - **Shipped in the tree:** capture with AX-first text, actions v1, signals, popover, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), and the main window and popover on routines in place of workflows (E4b).
-- **Next:** the engine in `docs/routines-plan.md`: rename episodes to activities, then E5. Then input classes (T4) and incremental refresh (T5).
+- **Next:** the engine in `docs/routines-plan.md`: E5. Then input classes (T4) and incremental refresh (T5).
 - **Deferred:** task types (T3). Your agent finds recurring work in E2 and E3, so nothing needs task types yet.

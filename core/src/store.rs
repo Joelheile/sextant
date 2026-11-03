@@ -386,11 +386,17 @@ mod tests {
         let mut store = db.open().expect("test setup");
         load(&mut store, &week(), WEEK_NOW).expect("test setup");
         store.refresh(local(WEEK_NOW)).expect("test setup");
-        let tables = ["episodes", "entities", "mentions", "tasks", "task_episodes"];
+        let tables = [
+            "activities",
+            "entities",
+            "mentions",
+            "tasks",
+            "task_activities",
+        ];
         for table in tables {
             assert!(count(&store, &format!("SELECT count(*) FROM {table}")) > 0);
         }
-        let before = count(&store, "SELECT count(*) FROM episodes");
+        let before = count(&store, "SELECT count(*) FROM activities");
 
         let cutoff = WEEK_START + 2 * DAY;
         store
@@ -398,24 +404,24 @@ mod tests {
             .expect("retention");
         let newer = |sql: &str| count(&store, &format!("{sql} {cutoff}"));
         assert_eq!(newer("SELECT count(*) FROM events WHERE ts <"), 0);
-        assert_eq!(newer("SELECT count(*) FROM episodes WHERE end_ts <"), 0);
+        assert_eq!(newer("SELECT count(*) FROM activities WHERE end_ts <"), 0);
         assert_eq!(newer("SELECT count(*) FROM tasks WHERE last_ts <"), 0);
         assert_eq!(
             count(
                 &store,
-                "SELECT count(*) FROM mentions WHERE episode_id NOT IN (SELECT id FROM episodes)"
+                "SELECT count(*) FROM mentions WHERE activity_id NOT IN (SELECT id FROM activities)"
             ),
             0
         );
         assert_eq!(
             count(
                 &store,
-                "SELECT count(*) FROM task_episodes WHERE episode_id NOT IN (SELECT id FROM episodes)"
+                "SELECT count(*) FROM task_activities WHERE activity_id NOT IN (SELECT id FROM activities)"
             ),
             0
         );
-        let kept = count(&store, "SELECT count(*) FROM episodes");
-        assert!(kept > 0 && kept < before, "{kept} of {before} episodes");
+        let kept = count(&store, "SELECT count(*) FROM activities");
+        assert!(kept > 0 && kept < before, "{kept} of {before} activities");
 
         store
             .retention(local(WEEK_NOW + 60 * DAY), 30)

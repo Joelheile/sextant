@@ -553,7 +553,7 @@ fn a_scripted_session_keeps_only_what_the_gates_allow() {
         1,
         "only the normal Chrome window was captured"
     );
-    // Each gate that closed after an open window ended its episode, with no content.
+    // Each gate that closed after an open window ended its activity, with no content.
     assert_eq!(store.event_count(EventKind::Idle).expect("count"), 2);
     assert_eq!(store.event_count(EventKind::Focus).expect("count"), 3);
 }
