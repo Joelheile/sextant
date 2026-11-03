@@ -12,6 +12,7 @@ mod debug;
 mod engine;
 mod home;
 mod keys;
+mod login;
 mod mcp;
 mod models;
 mod platform;
@@ -68,6 +69,11 @@ fn main() -> anyhow::Result<()> {
     {
         return cli::run(&dir, &args);
     }
+    // At login launchd may have started Sextant already; opening the app again shows it.
+    if control::running(&dir) {
+        tray::open_terminal(&dir);
+        return Ok(());
+    }
 
     tauri::Builder::default()
         .setup(move |app| {
@@ -77,6 +83,9 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("the sextant command will not reach this app: {err:#}");
             }
             tray::open_on_first_launch(app.handle());
+            if let Err(err) = login::enable() {
+                eprintln!("Sextant will not start at login: {err:#}");
+            }
             let handle = app.handle().clone();
             thread::Builder::new()
                 .name("sextant-start".into())

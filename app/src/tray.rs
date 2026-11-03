@@ -257,7 +257,7 @@ pub fn open_on_first_launch(app: &AppHandle) {
     }
 }
 
-fn open_terminal(dir: &Path) {
+pub fn open_terminal(dir: &Path) {
     let opened = std::env::current_exe()
         .map_err(anyhow::Error::from)
         .and_then(|exe| {

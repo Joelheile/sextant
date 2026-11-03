@@ -6,7 +6,7 @@ use sextant_core::{Live, Sent, Settings};
 
 use crate::commands::{AppState, Reply, msg};
 use crate::keys::Keychain;
-use crate::{clock, connect, platform};
+use crate::{clock, connect, login, platform};
 
 const RETENTION_CHOICES: [Option<u32>; 4] = [Some(30), Some(90), Some(365), None];
 const STORAGE_CAP_CHOICES: [Option<u32>; 5] =
@@ -116,6 +116,7 @@ pub(crate) fn remove_sextant(state: &AppState) -> Reply<()> {
         state.delete_everything(&Keychain)?;
         connect::remove_from_desktop_config(&connect::desktop_config_path()?)?;
         if !cfg!(debug_assertions) {
+            login::disable()?;
             platform::trash_app()?;
         }
         Ok(())

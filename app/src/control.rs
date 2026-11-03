@@ -130,10 +130,15 @@ pub fn serve(app: AppHandle) -> Result<()> {
     Ok(())
 }
 
+/// Whether a Sextant app answers on the socket in `dir`.
+pub fn running(dir: &Path) -> bool {
+    UnixStream::connect(socket_path(dir)).is_ok()
+}
+
 fn bind(dir: &Path) -> Result<UnixListener> {
     engine::create_private_dir(dir)?;
     let path = socket_path(dir);
-    if UnixStream::connect(&path).is_ok() {
+    if running(dir) {
         bail!("another Sextant is already running");
     }
     // Left behind by a crash.

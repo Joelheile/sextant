@@ -52,7 +52,7 @@ sextant tui        # status, routines, your agent, privacy and the sent log on o
 sextant help       # every command
 ```
 
-"Open Sextant" in the menu bar menu opens `sextant tui` in Terminal.
+"Open Sextant" in the menu bar menu opens `sextant tui` in Terminal. Sextant starts at login and restarts after a crash; Quit keeps it off until the next login.
 
 ## Use it with Claude
 
