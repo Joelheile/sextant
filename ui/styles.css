@@ -106,15 +106,3 @@
     text-wrap: pretty;
   }
 }
-
-/* The popover panel. The window draws the glass, so the page stays clear. */
-html.panel,
-html.panel body {
-  height: 100%;
-  background: transparent;
-  overflow: hidden;
-}
-
-html.panel #root {
-  height: 100%;
-}

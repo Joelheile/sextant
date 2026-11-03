@@ -96,7 +96,7 @@ Only you, on your Mac. The database is encrypted and nothing is uploaded. An age
 Sextant is built and tested on macOS 26. It no longer uses Apple's on-device model, so a lower minimum may follow once it is tested.
 
 **How do I delete everything?**
-Open the menu bar popover, go to Settings, then Privacy, and press "Delete everything". You can also choose how long raw data stays: 30, 90 or 365 days, or forever.
+Click the menu bar icon, choose Open Sextant, and press "Delete everything" under Privacy. You can also choose how long raw data stays: 30, 90 or 365 days, or forever.
 
 **Can Sextant transcribe calls?**
 Yes, with the optional speech models (about 670 MB, downloaded only when you press "Download and turn on"). Sextant listens only while a call app or a browser has the microphone open, and keeps the transcript as text, never the audio. Call audio follows the same rules as screen capture: it does not start for an excluded app (Apple Passwords is excluded by default) or a private browser window. "Stop audio" in the menu bar menu ends it at once, and pausing capture ends it too. Transcribing people without consent is a crime in some countries, including Germany. Tell the other side first.

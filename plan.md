@@ -66,7 +66,7 @@ every 5 min: sextant_core::refresh(now) ─▶ episodes ─▶ work graph ─▶
 - **Audio:** per-process mic detection (`kAudioProcessPropertyIsRunningInput`, skipping Sextant), mic via `cpal`, system audio via a Core Audio process tap on the call app only (macOS 14.2+), 16 kHz mono, Silero VAD, Parakeet loaded on first speech and unloaded after 5 min of silence. Mic and system are separate streams, so "me" vs "them" is known without diarization.
 - Timeouts on every OS call that can hang (AX 0.5 s, 0.1 s per element in the tree walk, AppleScript 2 s).
 - **Low Power Mode:** no screenshots or OCR while it is on. The AX tree, focus and actions still run.
-- **Capture health** (core `capture::stall`): the capture thread records a heartbeat each poll, and the app records since when screenshots and database writes fail. No poll for 30 s, or failures for 5 min, turn the tray to "Capture stopped: restart Sextant" and show a Restart banner in the popover.
+- **Capture health** (core `capture::stall`): the capture thread records a heartbeat each poll, and the app records since when screenshots and database writes fail. No poll for 30 s, or failures for 5 min, turn the tray to "Capture stopped: restart Sextant".
 
 ## 5. Storage
 
@@ -139,15 +139,15 @@ The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`,
 
 ## 9. App UI (small)
 
-- Tray icon while capturing (filled on, outline paused, dot while transcribing, ring with "!" when a permission blocks capture). Right click: status, Pause 1 h, Stop audio, Search, Open Sextant, Quit Sextant.
-- **Popover** (left click on the tray icon): a status line with a breathing dot ("Reading Safari, 12 s ago"), chips for what is captured now, a banner with an Allow button when capture is blocked. Tabs: **Today** (time at the Mac, 7-day bars, longest focus, app switches an hour, lines saved, call minutes, top apps, all computed on this Mac), **Ideas** (hours you could get back, trend against last week, ideas from your agent), **Settings** (agent bridge and everything from Privacy).
+- Tray icon while capturing (filled on, outline paused, dot while transcribing, ring with "!" when a permission blocks capture). A click opens the menu: status, Pause 1 h, Stop audio, Open Sextant, Quit Sextant.
+- **Popover and Today** removed on 2026-11-02 to make Sextant CLI first. The main window holds routines, the agent bridge and Privacy until a `sextant` CLI and TUI replace it.
 - **Onboarding** (two screens, no titles or intro text): grant the permissions live capture needs, connect to Claude. Call audio and the agent switches live in Privacy.
 - **Workflows:** "X hours a week you could get back", quick enjoyment question, ranked workflows as rows of steps (apps, gaps, copy points), promises you keep pushing, things to protect. Detail: reasons, example cases, correction box, "Create automation" (writes `SKILL.md`, copies a ready prompt for Claude).
 - **Search:** one box over screen text and transcripts, results by session. No timeline replay.
 - **Results:** hours before and after each handoff, from 3+ days of data.
-- **Privacy** (in the popover Settings tab): sources and permissions, excluded apps, excluded sites, retention, storage cap, storage used, MCP tool switches, "Sent to your agent" (the sent log), "Delete recent" (15 min, 1 h, 1 day), "Delete everything", and "Uninstall" (deletes everything, removes Sextant from the Claude Desktop config, moves the app to the Trash, and names `claude mcp remove sextant` for Claude Code).
+- **Privacy** (in the main window): sources and permissions, excluded apps, excluded sites, retention, storage cap, storage used, MCP tool switches, "Sent to your agent" (the sent log), "Delete recent" (15 min, 1 h, 1 day), "Delete everything", and "Uninstall" (deletes everything, removes Sextant from the Claude Desktop config, moves the app to the Trash, and names `claude mcp remove sextant` for Claude Code).
 - **Skill preview (E4):** a skill shows its full `SKILL.md` before it is copied anywhere.
-- **Agent bridge:** the user picks their own Claude Code or Codex CLI. "Find routines" (or a weekly run, off by default) runs it with the `find_routines` prompt and `sextant mcp` as its only MCP server (§10). The agent reads the pages through the tools and saves routines with `save_routine`, and the Ideas tab lists them.
+- **Agent bridge:** the user picks their own Claude Code or Codex CLI. "Find routines" (or a weekly run, off by default) runs it with the `find_routines` prompt and `sextant mcp` as its only MCP server (§10). The agent reads the pages through the tools and saves routines with `save_routine`, and the main window lists them.
 - Tailwind and shadcn/ui components, light and dark, English and German strings, short copy, no em dashes. Data only through typed Tauri commands, paginated. CSP `default-src 'self'; connect-src ipc: http://ipc.localhost`, no `shell`, `http` or `updater` plugins.
 
 ## 10. Privacy rules (non-negotiable)
@@ -156,7 +156,7 @@ The map reads `focus`, `idle`, `pause`, `visit`, `calendar`, `copy`, `reminder`,
 - Only the focused window, only after all gates pass.
 - Network code only in `app/src/models.rs` (model download with pinned URL and SHA-256 after consent). A CI script fails on network crates or `std::net` anywhere else, checked with `cargo tree --target all`.
 - The agent bridge spawns the user's own CLI in an empty temp folder, only when the user picks an agent. Sextant is its only MCP server. Claude runs with `--strict-mcp-config`, no built-in tools (`--tools ""`) and only Sextant's tools allowed. Codex has no no-tools mode: it runs `exec --sandbox read-only` with the network off, with `--ignore-user-config` and `--ignore-rules`, and with web search, apps, plugins, the browser, computer use and hooks off. Its shell can still read files, so the empty folder is the protection there. Sextant opens no connection; the CLI does. The prompt holds no data. The agent reads only what the MCP switches allow, through the same redacted tools as any other client, and every answer it gets writes a `sent` row. A run stops after 15 minutes.
-- No telemetry, crash reporter, auto-updater or analytics. Usage stats in the popover are computed and shown on this Mac only.
+- No telemetry, crash reporter, auto-updater or analytics.
 - Logs hold counts and timings, never text, titles, URLs or transcripts.
 - Enjoyment and value only from the user. Never infer emotions.
 - Claude Code never reads the real data folder (`~/Library/Application Support/Sextant`) or the `sextant` keychain entry.

@@ -1,15 +1,14 @@
 //! The menu bar icon (plan.md §9): filled while capturing, outline while paused, a dot while a call
-//! is transcribed and an exclamation mark when capture is on but macOS blocks it. A click opens the
-//! popover; a right-click opens a menu with the status line, "Pause 1 h", "Stop audio",
-//! Open and Quit. The status refreshes every few seconds.
+//! is transcribed and an exclamation mark when capture is on but macOS blocks it. A click opens a
+//! menu with the status line, "Pause 1 h", "Stop audio", Open and Quit. The status refreshes
+//! every few seconds.
 
 use std::thread;
 use std::time::Duration;
 
-use serde::Deserialize;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 
 use crate::commands::AppState;
@@ -17,16 +16,13 @@ use crate::engine::{AudioState, CaptureState};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
 
-/// What a menu entry or a popover button does. `Hide` closes the popover and only the popover
-/// sends it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MenuAction {
+/// What a menu entry does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MenuAction {
     Pause,
     StopAudio,
     Open,
     Quit,
-    Hide,
 }
 
 impl MenuAction {
@@ -38,7 +34,6 @@ impl MenuAction {
             Self::StopAudio => "stop-audio",
             Self::Open => "open",
             Self::Quit => "quit",
-            Self::Hide => "hide",
         }
     }
 
@@ -47,8 +42,7 @@ impl MenuAction {
     }
 }
 
-/// Runs the action for both the native menu and the popover.
-pub fn perform(app: &AppHandle, action: MenuAction) -> tauri::Result<()> {
+fn perform(app: &AppHandle, action: MenuAction) -> tauri::Result<()> {
     match action {
         MenuAction::Pause => {
             toggle_pause(app);
@@ -60,7 +54,6 @@ pub fn perform(app: &AppHandle, action: MenuAction) -> tauri::Result<()> {
         }
         MenuAction::Open => open_window(app)?,
         MenuAction::Quit => app.exit(0),
-        MenuAction::Hide => crate::popover::hide(app)?,
     }
     Ok(())
 }
@@ -109,19 +102,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .icon_as_template(true)
         .tooltip("Sextant")
         .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_tray_icon_event(|icon, event| {
-            if let TrayIconEvent::Click {
-                rect,
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-                && let Err(err) = crate::popover::toggle(icon.app_handle(), rect)
-            {
-                eprintln!("opening the popover failed: {err}");
-            }
-        })
         .on_menu_event(|app, event| {
             if let Some(action) = MenuAction::from_id(event.id().as_ref())
                 && let Err(err) = perform(app, action)

@@ -1,7 +1,6 @@
 //! Sextant logic without OS APIs: storage, work graph, routines. See plan.md §7.
 
 pub mod agent;
-mod analytics;
 pub mod audio;
 pub mod capture;
 pub mod connect;
@@ -23,7 +22,6 @@ mod text;
 mod time;
 mod writer;
 
-pub use analytics::Insights;
 pub use debug::Facts;
 pub use error::{Error, Result};
 pub use finder::ValueType;

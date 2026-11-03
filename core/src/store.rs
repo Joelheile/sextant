@@ -192,6 +192,19 @@ impl Store {
         Ok(true)
     }
 
+    /// When the last screen was captured and in which app.
+    pub fn last_capture(&self) -> Result<Option<(i64, String)>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT f.ts, w.app FROM frames f JOIN windows w ON w.id = f.window_id
+                 ORDER BY f.ts DESC LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?)
+    }
+
     pub fn schema_version(&self) -> Result<i32> {
         user_version(&self.conn)
     }

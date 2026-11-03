@@ -3,7 +3,8 @@ import { api, onReady, type Settings } from "./api";
 import { t } from "./i18n";
 import { Failed, Muted, Page } from "./layout";
 import Onboarding from "./Onboarding";
-import Routines from "./Routines";
+import Privacy from "./Privacy";
+import Routines, { AgentBridge } from "./Routines";
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -49,6 +50,8 @@ export default function App() {
   return (
     <Page>
       <Routines />
+      <AgentBridge />
+      <Privacy />
     </Page>
   );
 }

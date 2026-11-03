@@ -12,9 +12,7 @@ mod home;
 mod keys;
 mod mcp;
 mod models;
-mod panel;
 mod platform;
-mod popover;
 mod prefs;
 mod screens;
 mod tray;
@@ -93,9 +91,6 @@ fn main() -> anyhow::Result<()> {
             screens::forget_recent,
             screens::sent_log,
             screens::uninstall,
-            popover::menu_status,
-            popover::insights,
-            popover::menu_action,
             agent::agent_status,
             agent::set_agent,
             agent::run_agent,
@@ -104,7 +99,6 @@ fn main() -> anyhow::Result<()> {
             app.manage(AppState::new(dir));
             tray::build(app.handle())?;
             tray::open_window(app.handle())?;
-            popover::build(app.handle())?;
             let handle = app.handle().clone();
             thread::Builder::new()
                 .name("sextant-start".into())

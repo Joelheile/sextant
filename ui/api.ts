@@ -33,28 +33,6 @@ export type Settings = {
 
 export type AgentName = "claude" | "codex";
 
-export type MenuStatus = {
-  capture: "off" | "capturing" | "paused" | "stalled";
-  paused_until: number | null;
-  audio: "off" | "waiting" | "transcribing";
-  last_capture: number | null;
-  last_app: string | null;
-  blocked_by: PermissionName[];
-  live: Live;
-  now: number;
-};
-
-export type Insights = {
-  active_minutes: number;
-  days: number[];
-  apps: { app: string; minutes: number }[];
-  switches: number;
-  switches_per_hour: number | null;
-  longest_focus_minutes: number;
-  lines: number;
-  call_minutes: number;
-};
-
 /** A routine your agent saved, with the hours Sextant measured from what it cites. */
 export type Routine = {
   id: number;
@@ -78,8 +56,6 @@ export type AgentStatus = {
   last_agent: AgentName | null;
   routines: Routine[];
 };
-
-export type MenuAction = "pause" | "open" | "quit" | "hide";
 
 export type PermissionName =
   | "screen-recording"
@@ -146,9 +122,6 @@ export const api = {
     invoke<void>("forget_recent", { minutes }),
   sentLog: () => invoke<Sent[]>("sent_log"),
   uninstall: () => invoke<void>("uninstall"),
-  menuStatus: () => invoke<MenuStatus>("menu_status"),
-  insights: () => invoke<Insights>("insights"),
-  menuAction: (action: MenuAction) => invoke<void>("menu_action", { action }),
   agentStatus: () => invoke<AgentStatus>("agent_status"),
   setAgent: (agent: AgentName | null, weekly: boolean) =>
     invoke<Settings>("set_agent", { agent, weekly }),
@@ -158,10 +131,6 @@ export const api = {
 /** Calls `handler` when the engine has started or failed to. Resolves once attached. */
 export const onReady = (handler: () => void): Promise<UnlistenFn> =>
   listen("ready", handler);
-
-/** Calls `handler` each time the menu bar popover opens. */
-export const onPopoverOpen = (handler: () => void): Promise<UnlistenFn> =>
-  listen("popover-open", handler);
 
 export type DownloadHandlers = {
   progress: (done: number, total: number) => void;

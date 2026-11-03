@@ -133,6 +133,6 @@ Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-d
 
 ## Status
 
-- **Shipped in the tree:** capture with AX-first text, actions v1, signals, popover, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), and the main window and popover on routines in place of workflows (E4b).
+- **Shipped in the tree:** capture with AX-first text, actions v1, signals, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), and the main window on routines in place of workflows (E4b). The popover and Today were removed on 2026-11-02.
 - **Next:** the engine in `docs/routines-plan.md`: E5. Then input classes (T4) and incremental refresh (T5).
 - **Deferred:** task types (T3). Your agent finds recurring work in E2 and E3, so nothing needs task types yet.
