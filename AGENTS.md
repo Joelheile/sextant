@@ -55,7 +55,7 @@ The validation gate (10 people, count handovers within a week) has not run yet.
 - **Code compiles, models judge.** Code builds the graph and the day pages and checks every claim a model makes. Agents answer questions about a day more accurately from a page compiled by code than from a summary a model wrote ([Activity Frames](https://arxiv.org/html/2608.05784)). Your Claude Code or Codex searches, finds routines and writes skills.
 - **Explain everything.** Every score shows its reasons and evidence. Every skill step cites what was observed. No ungrounded step ships.
 - **Invisible.** No fan, no battery hit, no setup. Every feature earns its CPU and its lines of code.
-- **The agent is the main interface.** Sextant has no window: a menu bar icon and the `sextant` CLI and TUI. Claude reaches the data through MCP.
+- **The agent is the main interface.** Sextant has no main window: a menu bar icon with a panel, and the `sextant` CLI and TUI. Claude reaches the data through MCP.
 - **Trust you can check.** Every claim has a place to see it: the sent log lists each answer an agent got, the tray says when capture stops, excluded apps and sites drop data before it is stored, and you can delete the last hour or uninstall in one click.
 
 ## Words

@@ -31,7 +31,7 @@ Never change the team, the signing identity or the bundle identifier (`app.sexta
 
 The installed app checks `https://github.com/Joelheile/sextant/releases/latest/download/latest.json` at start and then once a day (`app/src/update.rs`). It wakes every hour and reads the wall clock, so a Mac that sleeps at night still checks daily, and a failed check runs again an hour later. When the version there is newer, it downloads `Sextant.app.tar.gz`, checks its signature against the public key, replaces the app and opens it again. When launchd started Sextant, it exits with code 75 instead and launchd opens the new app, because launchd kills any process the old one spawned. The new app is signed by the same team, so the permissions stay granted. Dev builds and cargo builds never update.
 
-The install script also updates: running it again stops Sextant and its launch agent, swaps in the new app and starts it through the launch agent. It refuses an app that fails `codesign --verify` or `spctl --assess`.
+The install script also updates: running it again stops Sextant and its launch agent, swaps in the new app and opens it, and the app hands itself to the launch agent. It refuses an app that fails `codesign --verify` or `spctl --assess`.
 
 ## Check a release
 

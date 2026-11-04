@@ -81,18 +81,16 @@ fn agent(exe: &Path) -> String {
     )
 }
 
-/// Writes the launch agent for the installed app at `exe`.
-fn enable(exe: &Path) -> Result<PathBuf> {
-    let path = agent_path()?;
-    let text = agent(exe);
-    if fs::read_to_string(&path).is_ok_and(|old| old == text) {
-        return Ok(path);
+/// Writes the launch agent to `path` and returns whether its text changed.
+fn write_agent(path: &Path, text: &str) -> Result<bool> {
+    if fs::read_to_string(path).is_ok_and(|old| old == text) {
+        return Ok(false);
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("creating ~/Library/LaunchAgents")?;
     }
-    fs::write(&path, text).context("writing the launch agent")?;
-    Ok(path)
+    fs::write(path, text).context("writing the launch agent")?;
+    Ok(true)
 }
 
 /// Starts the installed app through its launch agent, loading the agent first if launchd does not
@@ -102,11 +100,17 @@ pub fn hand_to_launchd() -> Result<bool> {
     let Some(exe) = installed_exe().filter(|_| !started_by_launchd()) else {
         return Ok(false);
     };
-    let path = enable(&exe)?;
+    let path = agent_path()?;
+    let changed = write_agent(&path, &agent(&exe))?;
     // SAFETY: getuid has no preconditions and cannot fail.
     let domain = format!("gui/{}", unsafe { libc::getuid() });
     let job = format!("{domain}/{LABEL}");
-    if launchctl(&["print", &job]).is_err() {
+    let loaded = launchctl(&["print", &job]).is_ok();
+    // launchd keeps the definition it loaded, so after a move it would start the old path.
+    if loaded && changed {
+        launchctl(&["bootout", &job])?;
+    }
+    if !loaded || changed {
         launchctl(&["bootstrap", &domain, &path.to_string_lossy()])?;
     }
     launchctl(&["kickstart", &job])?;
@@ -151,6 +155,17 @@ mod tests {
         );
         assert!(text.contains("<key>RunAtLoad</key>\n  <true/>"));
         assert!(text.contains("<key>SuccessfulExit</key>\n    <false/>"));
+    }
+
+    #[test]
+    fn writing_the_agent_reports_whether_it_changed() {
+        let dir = std::env::temp_dir().join(format!("sextant-agent-{}", std::process::id()));
+        let path = dir.join("LaunchAgents/agent.plist");
+        assert!(write_agent(&path, "old path").expect("creates"));
+        assert!(!write_agent(&path, "old path").expect("keeps"));
+        assert!(write_agent(&path, "new path").expect("replaces"));
+        assert_eq!(fs::read_to_string(&path).expect("reads"), "new path");
+        fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]
