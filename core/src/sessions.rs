@@ -1,5 +1,5 @@
-//! Search hits grouped into sessions: the same screen or speaker within ten minutes. Shared by the
-//! MCP `search` tool and the Search screen, so both skip excluded apps the same way.
+//! Search hits grouped into sessions for the MCP `search` tool: the same screen or speaker within
+//! ten minutes, with excluded apps skipped.
 
 use crate::error::Result;
 use crate::search::{Hit, HitSource};

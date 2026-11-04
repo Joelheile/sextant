@@ -1,4 +1,4 @@
-//! Gates (plan.md §4). They run in this order, each before the step that would read more:
+//! Gates. They run in this order, each before the step that would read more:
 //! [`session`] before any OS call, [`app`] before the window is read, [`secure_input`], [`tab`]
 //! and [`site`] before a frame exists. A failed gate means no capture call is made at all.
 
@@ -85,7 +85,7 @@ pub fn site(settings: &Settings, url: &str) -> Result<(), Blocked> {
     }
 }
 
-/// Call audio goes through the same gates as the screen (plan.md §4): no stream for an excluded
+/// Call audio goes through the same gates as the screen: no stream for an excluded
 /// app, and none for a browser unless its front window reports that it is not private.
 /// `front_window_private` is only called once the app gate has passed.
 pub fn call(

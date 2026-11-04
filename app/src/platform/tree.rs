@@ -1,5 +1,5 @@
-//! Reads the Accessibility tree of the focused window for `sextant_core::capture::window_lines`
-//! (plan.md §4). One batched call per element, a time budget per window. Text only, no pixels.
+//! Reads the Accessibility tree of the focused window for `sextant_core::capture::window_lines`.
+//! One batched call per element, a time budget per window. Text only, no pixels.
 
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};

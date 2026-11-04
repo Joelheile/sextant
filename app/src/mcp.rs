@@ -1,4 +1,4 @@
-//! `sextant mcp`: the same binary as a stdio MCP server (plan.md §8). Read-only, no Tauri.
+//! `sextant mcp`: the same binary as a stdio MCP server. Read-only, no Tauri.
 
 use std::io;
 use std::path::Path;

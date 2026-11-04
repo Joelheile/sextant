@@ -1,4 +1,4 @@
-//! §7.1 Activities: consecutive focus on one object key.
+//! Activities: consecutive focus on one object key.
 
 use crate::model::Payload;
 use crate::text::{split_url, template, tokens};

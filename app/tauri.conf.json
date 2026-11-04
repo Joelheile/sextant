@@ -10,6 +10,7 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -22,6 +23,14 @@
       "hardenedRuntime": true,
       "entitlements": "Entitlements.plist",
       "frameworks": ["frameworks/libonnxruntime.dylib"]
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNDNDU0NkU0MDY0ODY5RDcKUldUWGFVZ0c1RVpGUEQrNE11TVdad2l2R2hQcXBZK2xwSXkyUExYY3d5WER3VHRMeE9PZTg3NTUK",
+      "endpoints": [
+        "https://github.com/Joelheile/sextant/releases/latest/download/latest.json"
+      ]
     }
   }
 }

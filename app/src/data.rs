@@ -1,4 +1,4 @@
-//! The data folder as a whole (plan.md §10): how much it holds and "Delete everything".
+//! The data folder as a whole: how much it holds and "Delete everything".
 
 use std::fs;
 use std::path::Path;

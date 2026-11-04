@@ -11,7 +11,6 @@ name = "sextant_core"
 workspace = true
 
 [dependencies]
-petgraph = { version = "0.8.3", default-features = false, features = ["std"] }
 regex = "1.13.1"
 rusqlite = { version = "0.41.0", features = ["bundled-sqlcipher-vendored-openssl", "serialize"] }
 serde = { version = "1.0.229", features = ["derive"] }

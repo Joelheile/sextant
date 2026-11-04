@@ -1,4 +1,4 @@
-//! MCP tool logic (plan.md §8): pure functions over a read-only `Store`. Results are capped,
+//! MCP tool logic: pure functions over a read-only `Store`. Results are capped,
 //! paginated, free of excluded apps and redacted again on the way out.
 
 use std::collections::HashSet;

@@ -1,4 +1,4 @@
-//! §7.2 Steps: activities grouped by object key, merged within a scope at Jaccard >= 0.5.
+//! Steps: activities grouped by object key, merged within a scope at Jaccard >= 0.5.
 
 use std::collections::{BTreeMap, HashMap};
 

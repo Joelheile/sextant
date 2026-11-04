@@ -1,4 +1,4 @@
-//! The models on macOS (plan.md §4, §12): ONNX Runtime loaded from the library inside the app,
+//! The models on macOS: ONNX Runtime loaded from the library inside the app,
 //! Silero VAD driven directly, and Parakeet TDT 0.6B v3 through parakeet-rs. The models are read
 //! from the models folder; nothing is fetched here.
 
@@ -11,6 +11,8 @@ use parakeet_rs::ort::session::Session;
 use parakeet_rs::ort::value::Tensor;
 use parakeet_rs::{ExecutionConfig, ExecutionProvider, ParakeetTDT, Transcriber};
 
+use sextant_core::audio::FRAME;
+
 use crate::audio::{Runs, Speech, Vad};
 
 const RUNTIME: &str = "Frameworks/libonnxruntime.dylib";
@@ -20,7 +22,6 @@ const COREML_CACHE: &str = "coreml-cache";
 
 /// Samples of the previous frame that Silero wants in front of each new one.
 const CONTEXT: usize = 64;
-const FRAME: usize = 512;
 const STATE: usize = 2 * 128;
 
 /// The library signed into the app bundle (`Sextant.app/Contents/Frameworks`), so the hardened

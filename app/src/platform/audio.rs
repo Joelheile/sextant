@@ -1,4 +1,4 @@
-//! Call audio on macOS (plan.md §4, §12): which processes have the mic running (Core Audio
+//! Call audio on macOS: which processes have the mic running (Core Audio
 //! process objects), the mic itself (cpal), and a tap on the call app's own sound (a Core Audio
 //! process tap in a private aggregate device, macOS 14.2+). Nothing here records anything by
 //! itself: a stream delivers blocks into an inbox only while the pipeline holds it open, and

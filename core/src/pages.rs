@@ -1,4 +1,4 @@
-//! Pages (routines-plan.md E1): the week, a day and a task, compiled by code from the graph so an
+//! Pages: the week, a day and a task, compiled by code from the graph so an
 //! agent can read it top down.
 
 use std::collections::{BTreeMap, BTreeSet};

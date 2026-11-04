@@ -154,7 +154,7 @@ impl Store {
     }
 
     /// Hourly upkeep: updates the query planner's statistics and, once a week while the user is
-    /// away, rewrites the file so deleted rows give their space back (plan.md §5). `true` when
+    /// away, rewrites the file so deleted rows give their space back. `true` when
     /// it vacuumed.
     pub fn maintain(&mut self, now: i64) -> Result<bool> {
         self.conn.execute_batch("PRAGMA optimize")?;
@@ -198,7 +198,7 @@ impl Store {
         user_version(&self.conn)
     }
 
-    /// Deletes raw capture rows older than `days` (plan.md §5) and lines and windows nothing
+    /// Deletes raw capture rows older than `days` and lines and windows nothing
     /// references, then refreshes, so the engine tables hold only what the remaining rows make.
     pub fn retention(&mut self, when: Local, days: u32) -> Result<Retained> {
         self.forget(when, i64::MIN, when.now - i64::from(days) * DAY)

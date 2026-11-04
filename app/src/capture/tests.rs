@@ -1,4 +1,4 @@
-//! Gate tests (plan.md §13 M3): a scripted session on the fake platform. Every gated source must
+//! Gate tests: a scripted session on the fake platform. Every gated source must
 //! write zero rows and never reach the capture call. Each case has a twin with the gate open,
 //! which has to write rows, so a gate test cannot pass by capturing nothing at all.
 

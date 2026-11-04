@@ -1,4 +1,4 @@
-//! Live capture logic without OS APIs (plan.md §4): when to look, whether to look, whether the
+//! Live capture logic without OS APIs: when to look, whether to look, whether the
 //! picture changed and what to keep from the OCR result. Time and OS state are passed in.
 
 mod act;

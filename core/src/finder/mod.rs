@@ -1,4 +1,4 @@
-//! Turns events into what the routine tools read (plan.md §7): activities, steps that name them,
+//! Turns events into what the routine tools read: activities, steps that name them,
 //! entities and tasks. `refresh(now)` rebuilds everything from the last 90 days.
 
 mod actions;

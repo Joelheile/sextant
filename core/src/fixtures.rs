@@ -97,7 +97,7 @@ pub fn generate(spec: &Spec) -> Fixture {
     fixture
 }
 
-/// The invoice week with actions (plan.md T1, T2). Every invoice visit gets the fields it fills in
+/// The invoice week with actions. Every invoice visit gets the fields it fills in
 /// and the button it presses. A weekly report (ticket OPS-41) runs on Tuesday and Thursday. The
 /// noise adds a skipped field, a corrected amount and a chat with no identifiers. Generated noise
 /// is off, since it would cut the report windows. Returns the fixture and the task of each planned

@@ -1,4 +1,4 @@
-//! Fake devices and models (plan.md §12): the pipeline runs against scripted mic users and PCM
+//! Fake devices and models: the pipeline runs against scripted mic users and PCM
 //! that the test pushes into the open streams, with no permission, device or model.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};

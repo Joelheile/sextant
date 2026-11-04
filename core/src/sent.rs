@@ -1,4 +1,4 @@
-//! The log of what left the database for an agent (plan.md §5, §10): each MCP tool call, the
+//! The log of what left the database for an agent: each MCP tool call, the
 //! agent bridge's included, with its size. A row is written before the answer goes out, so
 //! nothing leaves without one.
 

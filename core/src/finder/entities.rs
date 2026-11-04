@@ -1,4 +1,4 @@
-//! §7.3 Entities and §7.5 cases. Rules only, no model.
+//! Entities and cases. Rules only, no model.
 
 use std::collections::BTreeMap;
 use std::sync::LazyLock;

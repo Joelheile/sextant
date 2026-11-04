@@ -44,7 +44,7 @@ convert() {
 mkdir -p "$work/en" "$work/de" "$out"
 
 echo "LibriSpeech test-clean (first $LIBRI_BYTES bytes)"
-curl -fsSL -r "0-$((LIBRI_BYTES - 1))" -o "$work/libri.part" "$LIBRI_URL"
+curl --proto '=https' --tlsv1.2 -fsSL -r "0-$((LIBRI_BYTES - 1))" -o "$work/libri.part" "$LIBRI_URL"
 verify "$work/libri.part" "$LIBRI_SHA"
 # The archive is cut mid-file: tar fails at the end, and the last file it lists is incomplete.
 mkdir "$work/libri"
@@ -64,9 +64,9 @@ done
 echo "  $count clips"
 
 echo "Multilingual LibriSpeech German test, shard $MLS_SHARD"
-curl -fsSL -o "$work/mls.tar.gz" "$MLS_BASE/audio/$MLS_SHARD.tar.gz"
+curl --proto '=https' --tlsv1.2 -fsSL -o "$work/mls.tar.gz" "$MLS_BASE/audio/$MLS_SHARD.tar.gz"
 verify "$work/mls.tar.gz" "$MLS_SHARD_SHA"
-curl -fsSL -o "$work/mls.txt" "$MLS_BASE/transcripts.txt"
+curl --proto '=https' --tlsv1.2 -fsSL -o "$work/mls.txt" "$MLS_BASE/transcripts.txt"
 verify "$work/mls.txt" "$MLS_TRANSCRIPTS_SHA"
 mkdir "$work/mls"
 tar -xzf "$work/mls.tar.gz" -C "$work/mls"

@@ -1,4 +1,4 @@
-//! The `sextant` commands (plan.md §9). Each one sends a request to the running app over the
+//! The `sextant` commands. Each one sends a request to the running app over the
 //! control socket and prints the answer. `connect` needs no app: it only writes config files.
 
 use std::io::{self, BufRead, Write};

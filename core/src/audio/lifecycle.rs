@@ -1,4 +1,4 @@
-//! The ASR model lifecycle (plan.md §4): loaded on first speech, unloaded after 5 minutes without
+//! The ASR model lifecycle: loaded on first speech, unloaded after 5 minutes without
 //! any, so the model's memory is only held while someone talks. Time is passed in.
 
 /// Silence after which the model is unloaded.

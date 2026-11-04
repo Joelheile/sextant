@@ -8,6 +8,20 @@ use anyhow::{Context, Result};
 
 const LABEL: &str = "app.sextant.desktop";
 
+/// The exit code that asks launchd to start Sextant again (`EX_TEMPFAIL`). `KeepAlive` restarts
+/// any exit that is not a success.
+pub(crate) const RELAUNCH_CODE: i32 = 75;
+
+/// Whether this process is the launch agent's job. launchd sets `XPC_SERVICE_NAME` to the job
+/// label; an app opened from Finder or `open` gets another name.
+pub(crate) fn started_by_launchd() -> bool {
+    is_agent_job(std::env::var("XPC_SERVICE_NAME").ok().as_deref())
+}
+
+fn is_agent_job(service: Option<&str>) -> bool {
+    service == Some(LABEL)
+}
+
 fn agent_path() -> Result<PathBuf> {
     let home = std::env::var_os("HOME").context("HOME is not set")?;
     Ok(PathBuf::from(home)
@@ -16,7 +30,7 @@ fn agent_path() -> Result<PathBuf> {
 }
 
 /// The installed app, or `None` for a binary outside an app bundle such as a cargo build.
-fn bundled_exe() -> Option<PathBuf> {
+pub(crate) fn bundled_exe() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let in_bundle = exe
         .ancestors()
@@ -100,5 +114,15 @@ mod tests {
         );
         assert!(text.contains("<key>RunAtLoad</key>\n  <true/>"));
         assert!(text.contains("<key>SuccessfulExit</key>\n    <false/>"));
+    }
+
+    #[test]
+    fn only_the_launch_agent_job_counts_as_started_by_launchd() {
+        assert!(is_agent_job(Some("app.sextant.desktop")));
+        assert!(!is_agent_job(Some(
+            "application.app.sextant.desktop.1234.5678"
+        )));
+        assert!(!is_agent_job(Some("0")));
+        assert!(!is_agent_job(None));
     }
 }

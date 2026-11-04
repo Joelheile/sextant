@@ -13,7 +13,7 @@ bun tauri build                # build Sextant.app and the DMG
 scripts/stop-hook.sh           # format, lint, tests and the network check
 ```
 
-Dev builds read and write only `./.dev-data`. See `CLAUDE.md` for all commands and `plan.md` for the design.
+Dev builds read and write only `./.dev-data`. See `CLAUDE.md` for all commands and `AGENTS.md` for the design.
 
 ## Before you open a pull request
 

@@ -1,4 +1,4 @@
-//! Live capture (plan.md §4): triggers, gates, window capture, diff gate, OCR and the writer.
+//! Live capture: triggers, gates, window capture, diff gate, OCR and the writer.
 //! The logic is generic over [`Sensors`] and [`Ocr`], so it runs against the macOS platform
 //! and against the scripted fake. `cfg` appears only in `platform`.
 

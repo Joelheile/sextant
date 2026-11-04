@@ -1,4 +1,4 @@
-//! Screen text from the Accessibility tree (plan.md §4): exact text with roles, read before any
+//! Screen text from the Accessibility tree: exact text with roles, read before any
 //! pixel. The platform reads one element at a time through [`AxSource`]; the walk, its budget and
 //! what counts as content live here. OCR is the fallback when the tree says too little.
 

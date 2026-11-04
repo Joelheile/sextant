@@ -23,7 +23,7 @@ impl EventKind {
     }
 }
 
-/// Payload keys the finder reads (plan.md §7). The writer stores whatever JSON it gets.
+/// Payload keys the finder reads. The writer stores whatever JSON it gets.
 ///
 /// - `focus`: `app`, `title`, `doc`, `url`, `text` (optional OCR heading or form title)
 /// - `press`: `app`, `role`, `label`

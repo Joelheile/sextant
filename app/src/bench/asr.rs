@@ -1,4 +1,4 @@
-//! `sextant bench --asr` and `sextant bench --fetch-models` (plan.md §13 M4). The first runs
+//! `sextant bench --asr` and `sextant bench --fetch-models`. The first runs
 //! Parakeet over speech fixtures and prints the real-time factor (RTF: seconds of compute per
 //! second of audio), the word error rate (WER) against the reference text, and memory with the
 //! model loaded. The second puts the models in a dev folder through the code path the app uses.

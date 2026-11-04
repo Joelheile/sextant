@@ -1,4 +1,4 @@
-//! Counts and timings of the live pipeline. Numbers only, never text (plan.md §10).
+//! Counts and timings of the live pipeline. Numbers only, never text.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;

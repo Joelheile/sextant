@@ -1,4 +1,4 @@
-//! Diff gate (plan.md §4): a 64×64 grayscale thumbnail of every frame, compared with the last
+//! Diff gate: a 64×64 grayscale thumbnail of every frame, compared with the last
 //! frame of the same window. A frame that is nearly the same skips OCR.
 //!
 //! The reference only moves when a frame counts as changed, so small edits that are each below

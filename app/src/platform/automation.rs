@@ -1,5 +1,5 @@
-//! Browser address and private-window state through AppleScript, with a 2 s kill timeout
-//! (plan.md §4). Automation permission is checked first without asking, so a look never shows
+//! Browser address and private-window state through AppleScript, with a 2 s kill timeout.
+//! Automation permission is checked first without asking, so a look never shows
 //! the system prompt: only onboarding asks.
 
 use std::ffi::c_void;

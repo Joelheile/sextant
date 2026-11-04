@@ -1,4 +1,4 @@
-//! Speech segmentation around a VAD probability stream (plan.md §4). The VAD says how likely
+//! Speech segmentation around a VAD probability stream. The VAD says how likely
 //! speech is in each 32 ms frame; this finds where speech starts and ends, with a hangover so a
 //! pause inside a sentence does not cut it, and a cap so one segment always fits the ring.
 

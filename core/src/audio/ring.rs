@@ -1,4 +1,4 @@
-//! The 30 s ring buffer (plan.md §4): the last seconds of 16 kHz mono audio, addressed by absolute
+//! The 30 s ring buffer: the last seconds of 16 kHz mono audio, addressed by absolute
 //! sample position, so the segmenter can ask for a span it saw and get it back, or learn that it
 //! was overwritten.
 

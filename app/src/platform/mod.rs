@@ -1,4 +1,4 @@
-//! OS access for live capture (plan.md §4, §12). `cfg` appears only here:
+//! OS access for live capture. `cfg` appears only here:
 //! macOS gets the real implementation, other systems get one that reports "needs macOS" so the
 //! crate still builds.
 

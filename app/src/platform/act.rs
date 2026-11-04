@@ -1,4 +1,4 @@
-//! Presses and text fields for `sextant_core::capture` actions (plan.md §4). A global monitor
+//! Presses and text fields for `sextant_core::capture` actions. A global monitor
 //! notes only where the left mouse button went down; the capture thread then reads the element
 //! there and the focused field from the Accessibility tree. Never keystrokes, and a secure field's
 //! value is never read.

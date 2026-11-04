@@ -1,4 +1,4 @@
-//! Synthetic window images for the OCR budget and the bench (plan.md §13 M3). Text is drawn
+//! Synthetic window images for the OCR budget and the bench. Text is drawn
 //! with AppKit into a bitmap. The real screen and real windows are never captured to make these.
 
 use anyhow::{Context, Result};

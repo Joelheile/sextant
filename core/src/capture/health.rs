@@ -1,4 +1,4 @@
-//! Capture health (plan.md §4): capture that stops while the app runs has to say so, instead of
+//! Capture health: capture that stops while the app runs has to say so, instead of
 //! looking fine. Each signal comes from the step that would fail, not from the process being up.
 
 /// The capture thread polls every second at most, so this long without a poll means it hangs.

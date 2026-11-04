@@ -1,4 +1,4 @@
-//! The database worker (plan.md §5): one thread owns the write connection and the [`Writer`],
+//! The database worker: one thread owns the write connection and the [`Writer`],
 //! flushes every second and refreshes every 5 minutes. Commands read through a separate
 //! read-only connection. Live capture runs on its own
 //! threads and sends finished records here; no database call happens on those threads.

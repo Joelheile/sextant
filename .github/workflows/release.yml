@@ -17,8 +17,13 @@ jobs:
           targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
       - uses: oven-sh/setup-bun@v2
+      # The updater compares the version in tauri.conf.json, so all three files must agree.
       - name: Check the tag matches the app version
-        run: test "$GITHUB_REF_NAME" = "v$(jq -r .version app/tauri.conf.json)"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          test "$version" = "$(jq -r .version app/tauri.conf.json)"
+          test "$version" = "$(jq -r .version package.json)"
+          grep -qx "version = \"$version\"" Cargo.toml
       - run: bun install --frozen-lockfile
       - run: scripts/fetch-onnxruntime.sh
       # Tauri imports APPLE_CERTIFICATE into a temporary keychain, signs the library, the binary and
@@ -32,23 +37,36 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Signs Sextant.app.tar.gz, the archive the updater downloads (app/src/update.rs).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Verify the signed app
         run: |
           app=target/aarch64-apple-darwin/release/bundle/macos/Sextant.app
           codesign --verify --deep --strict --verbose=2 "$app"
           xcrun stapler validate "$app"
           spctl --assess --type execute --verbose=2 "$app"
-      - name: Name the files and write the checksum
+      - name: Name the files and write the checksum and the update manifest
         run: |
+          bundle=target/aarch64-apple-darwin/release/bundle
           mkdir release
-          cp target/aarch64-apple-darwin/release/bundle/dmg/Sextant_*_aarch64.dmg release/Sextant.dmg
+          cp "$bundle"/dmg/Sextant_*_aarch64.dmg release/Sextant.dmg
+          cp "$bundle"/macos/Sextant.app.tar.gz release/Sextant.app.tar.gz
           cp scripts/install.sh release/install.sh
+          jq -n \
+            --arg version "${GITHUB_REF_NAME#v}" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg signature "$(cat "$bundle"/macos/Sextant.app.tar.gz.sig)" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/Sextant.app.tar.gz" \
+            '{version: $version, pub_date: $pub_date, platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' \
+            > release/latest.json
           cd release
           shasum -a 256 Sextant.dmg > Sextant.dmg.sha256
-          cat Sextant.dmg.sha256
+          cat Sextant.dmg.sha256 latest.json
       - name: Publish the release
         run: |
           gh release create "$GITHUB_REF_NAME" release/Sextant.dmg release/Sextant.dmg.sha256 release/install.sh \
+            release/Sextant.app.tar.gz release/latest.json \
             --title "Sextant ${GITHUB_REF_NAME#v}" \
             --notes "SHA-256 of Sextant.dmg: $(cut -d ' ' -f 1 release/Sextant.dmg.sha256)"
         env:

@@ -1,5 +1,5 @@
-//! `sextant bench` and `sextant bench --live <seconds>` (plan.md §13 M3); `--asr` and
-//! `--fetch-models` are in [`asr`] (M4). All print counts and timings only: no text, title or
+//! `sextant bench` and `sextant bench --live <seconds>`; `--asr` and
+//! `--fetch-models` are in [`asr`]. All print counts and timings only: no text, title or
 //! address ever reaches the output.
 //!
 //! The fixture mode times OCR on synthetic windows. The live mode runs real capture for the given

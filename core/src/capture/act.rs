@@ -1,4 +1,4 @@
-//! Actions (plan.md §4): what the user did to which control, read from the Accessibility tree.
+//! Actions: what the user did to which control, read from the Accessibility tree.
 //! A press on a labelled control and the value left in a text field are the UI log that
 //! the finder reads. Never keystrokes, never a secure field.
 

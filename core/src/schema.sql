@@ -1,4 +1,4 @@
--- Sextant's database (plan.md §5), one schema for 0.1.0. Later changes append a migration.
+-- Sextant's database, one schema for 0.1.0. Later changes append a migration.
 --
 -- Three groups of tables:
 -- - Raw capture: what the Mac saw and heard. Retention deletes it by time.

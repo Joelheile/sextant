@@ -20,6 +20,7 @@ mod prefs;
 mod screens;
 mod tray;
 mod tui;
+mod update;
 
 use std::thread;
 
@@ -76,6 +77,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             app.manage(AppState::new(dir));
             tray::build(app.handle())?;
@@ -92,6 +94,7 @@ fn main() -> anyhow::Result<()> {
                 .spawn(move || start_engine(&handle))
                 .context("starting the start-up thread")?;
             agent::spawn_weekly(app.handle().clone())?;
+            update::spawn_daily(app.handle().clone())?;
             Ok(())
         })
         .build(tauri::generate_context!())

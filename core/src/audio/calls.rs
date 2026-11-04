@@ -1,4 +1,4 @@
-//! Call detection (plan.md §3): a call is on when another process, not Sextant, has mic input
+//! Call detection: a call is on when another process, not Sextant, has mic input
 //! running and it is a known call app. Browsers count as Meet, Teams and
 //! Webex in a tab, because a process cannot tell which tab holds the mic.
 

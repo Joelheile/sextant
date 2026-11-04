@@ -1,4 +1,4 @@
-//! Downmix and resample to 16 kHz mono (plan.md §4). A streaming windowed-sinc resampler: the
+//! Downmix and resample to 16 kHz mono. A streaming windowed-sinc resampler: the
 //! low-pass sits at the new Nyquist, so 48 kHz audio does not fold high tones into the band the
 //! model listens to.
 

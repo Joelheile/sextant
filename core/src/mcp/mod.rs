@@ -1,4 +1,4 @@
-//! MCP server over stdio (plan.md §8): JSON-RPC 2.0, one message per line. The app supplies the
+//! MCP server over stdio: JSON-RPC 2.0, one message per line. The app supplies the
 //! pipes, the key and the clock; everything else is here so tests can run it in memory.
 
 mod tools;

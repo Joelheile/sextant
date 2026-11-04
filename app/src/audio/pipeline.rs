@@ -1,4 +1,4 @@
-//! The audio pipeline (plan.md §4): the audio thread watches who uses the mic, opens the streams
+//! The audio pipeline: the audio thread watches who uses the mic, opens the streams
 //! for a call, and cuts speech out of them; the ASR thread transcribes it. Neither is the Tauri
 //! main thread. Switching audio off, or pausing, closes the streams within one wait of the audio
 //! thread, which is never longer than [`IDLE_WAIT`].

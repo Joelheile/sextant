@@ -6,7 +6,7 @@ use crate::agent::AgentName;
 use crate::error::Result;
 use crate::text::split_url;
 
-/// Live capture sources (plan.md §3). Each one can be switched off on its own.
+/// Live capture sources. Each one can be switched off on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Live {
@@ -45,7 +45,7 @@ impl Live {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    /// Apps whose screen text never leaves the database through MCP (plan.md §4: password
+    /// Apps whose screen text never leaves the database through MCP (password
     /// managers, Health, messengers). Compared case-insensitively against the app name.
     pub excluded_apps: Vec<String>,
     /// Sites never read: banks and payment sites by default. A
@@ -58,7 +58,7 @@ pub struct Settings {
     pub mcp_workflows: bool,
     pub onboarded: bool,
     pub live: Live,
-    /// How long raw data stays (plan.md §3): 30, 90 or 365 days, `None` for forever.
+    /// How long raw data stays: 30, 90 or 365 days, `None` for forever.
     pub retention_days: Option<u32>,
     /// Above this many megabytes of raw data, the oldest days go first. `None` for no cap.
     pub storage_cap_mb: Option<u32>,

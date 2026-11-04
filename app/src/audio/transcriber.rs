@@ -1,5 +1,5 @@
 //! The ASR thread: loads the model when speech starts, transcribes the segments the lanes cut,
-//! and unloads the model after five quiet minutes (plan.md §4).
+//! and unloads the model after five quiet minutes.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

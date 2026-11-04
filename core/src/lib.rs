@@ -1,4 +1,4 @@
-//! Sextant logic without OS APIs: storage, work graph, routines. See plan.md §7.
+//! Sextant logic without OS APIs: storage, work graph, routines.
 
 pub mod agent;
 pub mod audio;

@@ -1,4 +1,4 @@
-//! The live sensors on macOS (plan.md §4): frontmost app, window title and document, secure
+//! The live sensors on macOS: frontmost app, window title and document, secure
 //! input, idle time, lock and sleep state, clipboard changes, browser tab and the window capture.
 //! Timing out or failing never opens a gate: callers treat a missing answer as "do not capture".
 

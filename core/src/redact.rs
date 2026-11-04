@@ -1,4 +1,4 @@
-//! Redaction before storage (plan.md §4). Emails become `<email:hash>` so entity linking still works.
+//! Redaction before storage. Emails become `<email:hash>` so entity linking still works.
 
 use std::sync::LazyLock;
 

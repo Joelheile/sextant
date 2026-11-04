@@ -1,4 +1,4 @@
-//! What live capture needs from the OS (plan.md §4, §12). `platform` implements [`Sensors`] and
+//! What live capture needs from the OS. `platform` implements [`Sensors`] and
 //! [`Ocr`] for macOS; `fake` replays a script so the gate tests run without any permission.
 
 use std::fmt;

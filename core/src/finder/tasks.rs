@@ -1,4 +1,4 @@
-//! Tasks (routines-plan.md T2): activities joined in time order by shared anchors, where time goes.
+//! Tasks: activities joined in time order by shared anchors, where time goes.
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
@@ -44,7 +44,7 @@ impl Task {
     }
 }
 
-/// Joins activities in time order (routines-plan.md T2). An activity with an anchor joins the open task
+/// Joins activities in time order. An activity with an anchor joins the open task
 /// it shares the most anchors with, seen in the last 7 days. An activity with no anchor joins only the
 /// task of an activity in the same object that ended within 2 minutes. Otherwise it stays unassigned.
 /// A final pass merges tasks that share an anchor when they are at most 14 days apart.

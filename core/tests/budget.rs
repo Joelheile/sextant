@@ -1,4 +1,4 @@
-//! Plan.md §10 budgets. Run with `cargo test -p sextant-core --release -- --nocapture`.
+//! Performance budgets. Run with `cargo test -p sextant-core --release -- --nocapture`.
 //! Debug builds skip them: the numbers mean nothing without optimisations.
 
 use std::time::{Duration, Instant};

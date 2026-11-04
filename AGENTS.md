@@ -1,6 +1,6 @@
 # Sextant for agents
 
-Read this first, then `CLAUDE.md` for commands and rules, `plan.md` for the spec and `docs/routines-plan.md` for the task graph and LLM layer.
+Read this first, then `CLAUDE.md` for commands and rules.
 
 ## The problem
 
@@ -40,17 +40,17 @@ The user does nothing beyond installing and granting permissions. The map fills 
 
 ## How we measure it
 
-| Measure    | Definition                                                     |
-| ---------- | -------------------------------------------------------------- |
+| Measure    | Definition                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------- |
 | Aha moment | A notification names a routine you recognize, with its hours. At most one a week, with an off switch |
-| Activation | The first routine handed to an agent within 14 days of install |
-| North star | Hours a week handed to agents that still run after 30 days     |
+| Activation | The first routine handed to an agent within 14 days of install                                       |
+| North star | Hours a week handed to agents that still run after 30 days                                           |
 
-The M2 validation gate in `plan.md` §13 (10 people, count handovers within a week) has not run yet.
+The validation gate (10 people, count handovers within a week) has not run yet.
 
 ## Principles
 
-- **Private by construction.** Text only. Pixels, audio and keystrokes never touch disk. One encrypted database. No telemetry, no cloud, network code in one file and a CI check that enforces it. Data leaves the Mac only when the user's own agent reads it. The agent bridge gives Claude only Sextant's MCP tools. Codex has no such mode, so it runs `exec --sandbox read-only` with the network off, without user config or rules, and with web search, apps, plugins, the browser, computer use and hooks off (`plan.md` §10).
+- **Private by construction.** Text only. Pixels, audio and keystrokes never touch disk. One encrypted database. No telemetry, no cloud, network code in one file and a CI check that enforces it. Data leaves the Mac only when the user's own agent reads it. The agent bridge gives Claude only Sextant's MCP tools. Codex has no such mode, so it runs `exec --sandbox read-only` with the network off, without user config or rules, and with web search, apps, plugins, the browser, computer use and hooks off (see Privacy rules).
 - **Semantic capture beats pixels.** macOS Accessibility already says which button was pressed and which field was filled. Sextant reads that instead of running a vision model on every event, so it costs no model calls per event and can run all day.
 - **Code compiles, models judge.** Code builds the graph and the day pages and checks every claim a model makes. Agents answer questions about a day more accurately from a page compiled by code than from a summary a model wrote ([Activity Frames](https://arxiv.org/html/2608.05784)). Your Claude Code or Codex searches, finds routines and writes skills.
 - **Explain everything.** Every score shows its reasons and evidence. Every skill step cites what was observed. No ungrounded step ships.
@@ -60,12 +60,12 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
 
 ## Words
 
-| Word     | Meaning                                                                   | Example                      |
-| -------- | ------------------------------------------------------------------------- | ---------------------------- |
-| action   | One press or edit: app, role, label template                              | Mail · AXButton · send       |
-| activity | One focus span on one object, with its actions                           | 8 minutes on one Mail thread |
-| task     | Activities joined by a shared anchor (invoice number, email, amount)      | Invoice 4711 for Acme        |
-| routine  | Tasks that repeat, found by your agent and checked by code                | Monthly invoicing            |
+| Word     | Meaning                                                              | Example                      |
+| -------- | -------------------------------------------------------------------- | ---------------------------- |
+| action   | One press or edit: app, role, label template                         | Mail · AXButton · send       |
+| activity | One focus span on one object, with its actions                       | 8 minutes on one Mail thread |
+| task     | Activities joined by a shared anchor (invoice number, email, amount) | Invoice 4711 for Acme        |
+| routine  | Tasks that repeat, found by your agent and checked by code           | Monthly invoicing            |
 
 ## How it works
 
@@ -85,19 +85,19 @@ The M2 validation gate in `plan.md` §13 (10 people, count handovers within a we
  skills         SKILL.md to Claude Cowork, Claude Code and Codex
 ```
 
-| Layer              | What it holds                                                                                                                                 | Where                                     | Status                      |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------- |
-| Capture            | Focused app, window, URL, screen text, presses on labelled controls, the value left in each text field, meeting transcripts. Gated, redacted. | `app/src/platform`, `core/src/capture`    | shipped                     |
-| Raw store          | Events, screen lines and transcripts, with full-text search. This is rewind.                                                                  | `core/src/store.rs`, `core/src/search.rs` | shipped                     |
-| Activities (T1)    | Focus spans with their actions. Values get a type (email, id, amount, date).                                                                  | `core/src/finder/actions.rs`              | shipped                     |
-| Tasks (T2)         | Activities joined by shared identifiers. Answers "where does time go".                                                                        | `core/src/finder/tasks.rs`                | shipped                     |
-| Pages (E1)         | Week, day and task pages compiled by code, read through MCP tools                                                                             | `core/src/pages.rs`, `core/src/mcp`       | shipped                     |
-| Discovery (E2, E3) | Your agent finds routines through the tools and saves them. Code checks every cited id and computes the hours.                                | `core/src/routines.rs`, `app/src/agent.rs` | shipped                     |
-| Skills (E4)        | `SKILL.md` per routine with cited steps, written by your agent and checked by `check_skill`                                                  | `core/src/routines.rs`, `core/src/mcp`    | shipped                     |
-| Search (E5)        | Local embeddings next to full-text search, and "similar" edges between activities                                                             | not in the tree                           | deprecated                  |
-| Input classes (T4) | Where each step's values come from: fixed, copied, derived or judgment                                                                        | not yet                                   | deferred                    |
+| Layer              | What it holds                                                                                                                                 | Where                                      | Status     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------- |
+| Capture            | Focused app, window, URL, screen text, presses on labelled controls, the value left in each text field, meeting transcripts. Gated, redacted. | `app/src/platform`, `core/src/capture`     | shipped    |
+| Raw store          | Events, screen lines and transcripts, with full-text search. This is rewind.                                                                  | `core/src/store.rs`, `core/src/search.rs`  | shipped    |
+| Activities (T1)    | Focus spans with their actions. Values get a type (email, id, amount, date).                                                                  | `core/src/finder/actions.rs`               | shipped    |
+| Tasks (T2)         | Activities joined by shared identifiers. Answers "where does time go".                                                                        | `core/src/finder/tasks.rs`                 | shipped    |
+| Pages (E1)         | Week, day and task pages compiled by code, read through MCP tools                                                                             | `core/src/pages.rs`, `core/src/mcp`        | shipped    |
+| Discovery (E2, E3) | Your agent finds routines through the tools and saves them. Code checks every cited id and computes the hours.                                | `core/src/routines.rs`, `app/src/agent.rs` | shipped    |
+| Skills (E4)        | `SKILL.md` per routine with cited steps, written by your agent and checked by `check_skill`                                                   | `core/src/routines.rs`, `core/src/mcp`     | shipped    |
+| Search (E5)        | Local embeddings next to full-text search, and "similar" edges between activities                                                             | not in the tree                            | deprecated |
+| Input classes (T4) | Where each step's values come from: fixed, copied, derived or judgment                                                                        | not yet                                    | deferred   |
 
-The workflow finder, its scores, corrections and the Results tab are gone (E4b, `schema_v9.sql`). `steps` stays only to name activities on the week and day pages.
+The workflow finder, its scores, corrections and the Results tab are gone (E4b). `steps` stays only to name activities on the week and day pages.
 
 ## Quality bars
 
@@ -114,12 +114,46 @@ If a budget can't be met, stop and report numbers and options. Never loosen one.
 
 Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-desktop-testing.md`.
 
+## Privacy rules
+
+- Pixels and audio never touch disk, logs or panic messages. Only test fixtures may hold images or audio.
+- Capture reads only the focused window, and only after all gates pass.
+- Network code lives only in `app/src/models.rs` (the model download, with a pinned URL and SHA-256, after consent) and the Tauri updater plugin, which `app/src/update.rs` runs at start and then daily. The updater installs only an archive signed with the release key (`docs/RELEASING.md`). `scripts/check-network.sh` fails on network crates outside the updater, or `std::net` anywhere else.
+- The agent bridge spawns the user's own CLI in an empty temp folder, only when the user picks an agent, with Sextant as its only MCP server. Claude runs with `--strict-mcp-config`, `--tools ""` and only Sextant's tools allowed. Codex runs `exec --sandbox read-only` with the network off, `--ignore-user-config`, `--ignore-rules`, and web search, apps, plugins, the browser, computer use and hooks off. The prompt holds no data, every answer writes a `sent` row, and a run stops after 15 minutes.
+- Logs hold counts and timings, never text, titles, URLs or transcripts.
+- Enjoyment and value come only from the user. Never infer emotions.
+
+## Budgets
+
+Measured by `sextant bench` on fixtures and `sextant bench --live 3600` on a real session. Reference: M1 MacBook Air.
+
+| Metric                                           | Budget                        |
+| ------------------------------------------------ | ----------------------------- |
+| CPU idle / working (1 h average)                 | < 0.5 % / < 3 %               |
+| RAM without / with ASR loaded                    | < 150 MB / < 1.3 GB           |
+| OCR per window, p95                              | < 250 ms, off the main thread |
+| Capture to searchable                            | < 5 s                         |
+| Storage per workday                              | < 15 MB                       |
+| MCP tool response, p95                           | < 200 ms                      |
+| App download without models                      | < 30 MB                       |
+| ASR real-time factor                             | ≤ 0.2                         |
+| Energy Impact in Activity Monitor, working (1 h) | "Low", under 1 on average     |
+
+## Working rules
+
+- Bug fix: failing test first.
+- Logic goes in core when it needs no OS API. Platform code implements a trait with `macos` and `fake` impls; `fake` replays fixtures so gate tests run without permissions. `#[cfg]` at module level only.
+- Never block the Tauri main thread. Never hold a database transaction across a capture or OCR call.
+- Prefer one more function over one more crate.
+- Snapshots: read `.snap.new`, then `cargo insta accept`.
+- Bundle: `minimumSystemVersion` 26.0. Permissions are asked only when the matching step in `sextant setup` needs them.
+
 ## Never
 
 - Store pixels, audio, keystrokes or secure field values.
 - Record password managers, private browser windows or secure input.
-- Add telemetry, analytics, a crash reporter or an auto-updater.
-- Put network code outside `app/src/models.rs`.
+- Add telemetry, analytics or a crash reporter.
+- Put network code outside `app/src/models.rs` and the updater plugin (`app/src/update.rs`).
 - Read the real data folder or keychain entry from an agent, or capture the real screen. Use fixtures and fakes.
 - Claim "nothing leaves your Mac". Say it stays on the Mac until the user's agent reads it.
 - Let an answer reach an agent without a row in the sent log.
@@ -134,6 +168,6 @@ Before a PR, run the agent-desktop-testing skill. Its recipe is `.agents/agent-d
 ## Status
 
 - **Shipped in the tree:** capture with AX-first text, actions v1, signals, activities and tasks, stable ids, the `week`, `day` and `task` pages over MCP (E1), the debug report (D1), `save_routine` (E2) the agent bridge running your agent on those tools (E3), skills from routines with `check_skill` (E4a), routines in place of workflows (E4b), and the `sextant` CLI and TUI in place of the window (C1).
-- **Next:** L2 (connect to ChatGPT, `.mcpb`) in `docs/routines-plan.md`. The OCR comparison (O1) kept Apple Vision: `docs/ocr-comparison.md`.
+- **Next:** L2, connect to ChatGPT and ship a `.mcpb` bundle. The OCR comparison (O1) kept Apple Vision: `docs/ocr-comparison.md`.
 - **Deferred:** input classes (T4), until people ask what to automate.
-- **Deprecated on 2026-11-02 (removed from the code):** local embeddings (E5, measured, see `docs/routines-plan.md`), the rewind panel and Apple's model (`docs/rewind-and-apple-model.md`), backfill, the popover, Today, the React window, task types (T3), incremental refresh (T5) and evaluation (L3).
+- **Deprecated on 2026-11-02 (removed from the code):** local embeddings (E5, measured), the rewind panel and Apple's on-device model, backfill, the popover, Today, the React window, task types (T3), incremental refresh (T5) and evaluation (L3).

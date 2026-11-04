@@ -1,4 +1,4 @@
-//! Routines (routines-plan.md E2): your agent proposes a routine and cites the tasks and repeated
+//! Routines: your agent proposes a routine and cites the tasks and repeated
 //! activities it read. Code checks every citation, measures the hours and stores the time spans.
 
 use std::collections::{BTreeMap, BTreeSet};

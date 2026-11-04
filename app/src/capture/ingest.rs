@@ -1,4 +1,4 @@
-//! Batches finished records for the writer (plan.md §5): the database thread pushes what the
+//! Batches finished records for the writer: the database thread pushes what the
 //! capture and OCR threads send and flushes about once a second, so a flush is one transaction
 //! and nothing waits on the database during capture or OCR.
 

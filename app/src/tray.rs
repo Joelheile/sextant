@@ -1,4 +1,4 @@
-//! The menu bar icon (plan.md §9): filled while capturing, outline while paused, a dot while a call
+//! The menu bar icon: filled while capturing, outline while paused, a dot while a call
 //! is transcribed and an exclamation mark when capture is on but macOS blocks it. A click opens a
 //! menu with the status line, "Pause 1 h", "Stop audio", Open and Quit. The status refreshes
 //! every few seconds. Open starts `sextant tui` in Terminal, or `sextant setup` until setup is

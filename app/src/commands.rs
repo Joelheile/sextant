@@ -1,4 +1,4 @@
-//! The typed commands the UI calls (plan.md §9). The async commands run off the main
+//! The typed commands the UI calls. The async commands run off the main
 //! thread. `relaunch` is sync and quick. Slow work goes through the engine's worker thread and
 //! reports by events.
 

@@ -1,4 +1,4 @@
-//! What to keep from an OCR result (plan.md §4): lines with enough confidence, boxes on the
+//! What to keep from an OCR result: lines with enough confidence, boxes on the
 //! 256 grid of `frames.packed`.
 
 use crate::model::OcrLine;

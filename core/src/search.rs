@@ -1,4 +1,4 @@
-//! FTS search over screen lines and transcripts (plan.md §5, §8).
+//! FTS search over screen lines and transcripts.
 
 use std::collections::HashSet;
 

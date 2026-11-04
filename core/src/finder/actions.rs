@@ -1,4 +1,4 @@
-//! Actions (routines-plan.md T1): presses and edits, each attached to the activity it happened in.
+//! Actions: presses and edits, each attached to the activity it happened in.
 
 use super::entities::{ValueType, value_type};
 use crate::model::Payload;

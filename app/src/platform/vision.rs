@@ -1,4 +1,4 @@
-//! Vision text recognition (plan.md §4) on a captured window, plus the grayscale thumbnail the
+//! Vision text recognition on a captured window, plus the grayscale thumbnail the
 //! diff gate compares. Pixels stay in [`Frame`]: it prints only its size and nothing here logs.
 
 use std::fmt;

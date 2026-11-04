@@ -1,4 +1,4 @@
-//! Fake platform (plan.md §12): replays a scripted session, so the gates, the pipeline and the
+//! Fake platform: replays a scripted session, so the gates, the pipeline and the
 //! bench run without any permission. Pictures are stand-ins: a seed that decides the thumbnail
 //! and the lines the "OCR" returns.
 

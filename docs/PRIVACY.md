@@ -6,7 +6,7 @@
 - It notes which labelled buttons you click and the text left in a field when you move on. It never records keystrokes and never reads secure (password) fields.
 - Emails, IBANs, card numbers, API keys and tokens are redacted before anything is stored.
 - Sextant runs no language model of its own. Your agent answers questions by calling Sextant's search tools, and each answer it gets is listed in the sent log.
-- The only network call is the speech model download you start yourself, from pinned URLs with a SHA-256 check. There is no telemetry, crash reporter, analytics or auto-updater.
+- Sextant makes two kinds of network call. The speech model download you start yourself, from pinned URLs with a SHA-256 check. And a daily update check: it asks GitHub for the latest release, and if there is a newer one, downloads it, checks its signature and installs it. The check sends no data about you, though GitHub sees your IP address as with any download. There is no telemetry, crash reporter or analytics.
 - In Low Power Mode, Sextant takes no screenshots and runs no OCR.
 - You choose how long raw data stays: 30, 90 or 365 days, or forever, and how much space it may use: 1, 2, 5 or 10 GB, or no limit. Past the limit, the oldest days go first. "Delete recent" deletes the last 15 minutes, hour or day. "Delete everything" empties the data folder. "Uninstall" does that, removes Sextant from Claude Desktop and moves the app to the Trash.
 - If you tell your agent to read from Sextant, the text it reads goes to wherever that agent's model runs, which may be the cloud. Excluded apps and redaction apply to that output too. "Sent to your agent" in Privacy lists each answer an agent got, with the time, the client, the tool and the size.

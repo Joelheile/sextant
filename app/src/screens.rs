@@ -1,4 +1,4 @@
-//! Privacy (plan.md §9), for the window and the control socket. Reads go through the
+//! Privacy, for the window and the control socket. Reads go through the
 //! read-only connection, changes through the worker thread. Text from the database is redacted
 //! again on the way out, as in the MCP server.
 

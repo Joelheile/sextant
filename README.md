@@ -5,8 +5,8 @@
 <h1 align="center">Sextant</h1>
 
 <p align="center">
-  <b>Find the work worth automating.</b><br>
-  A text-only record of your Mac work, with no screenshots, no audio and no telemetry.
+  <b>Find the work worth handing to your AI agent.</b><br>
+  A private, text-only record of how you work on your Mac. No screenshots, no audio, no telemetry.
 </p>
 
 <p align="center">
@@ -15,67 +15,101 @@
   <img src="https://img.shields.io/badge/macOS%2026-Apple%20silicon-black" alt="macOS 26 on Apple silicon">
 </p>
 
-You repeat the same steps every week, and you can't see where the hours go. Sextant runs in your menu bar, keeps a private record of how you work, and shows you which routines to hand to an agent. Each one comes with a skill file that Claude can run.
-
-It's for anyone who works on a Mac: developers, ops people, founders, consultants, assistants.
+Agents like Claude Code and Codex can take over much of the repeated work you do at a computer. The hard part is knowing what to hand over and explaining how you do it. Sextant sits in your menu bar, records how you work as text, and lets your agent find your routines, measure the hours they take and write a skill it can run.
 
 <p align="center">
   <img src="docs/assets/demo.gif" width="800" alt="Sextant shows where the week went and flags the invoice routine. Claude is asked what to automate and picks invoices. Sextant then writes a SKILL.md for it. Sample data.">
 </p>
 
+## What you get
+
+- **Where your time goes.** Day and week pages grouped by task, such as "invoice 4711 for Acme", not by app.
+- **Your routines, with their hours.** Your agent reads those pages and saves the tasks you repeat as routines. Sextant checks every task it cites and computes the hours a week.
+- **A skill for each routine.** Your agent writes a `SKILL.md` that Claude or Codex can run. Every step cites what Sextant saw you do.
+- **Search over your past work.** Ask your agent "Find the invoice number I saw yesterday" or "What did Anna say about pricing on Tuesday?"
+
+## Requirements
+
+- A Mac with Apple silicon and macOS 26 or later.
+- An agent to read the data: Claude Desktop, Claude Code or Codex.
+
 ## Install
+
+Run this in Terminal:
 
 ```sh
 curl -fsSL https://github.com/Joelheile/sextant/releases/latest/download/install.sh | sh
 ```
 
-Or download [`Sextant.dmg`](https://github.com/Joelheile/sextant/releases/latest) and drag the app to `/Applications`. You need a Mac with Apple silicon and macOS 26 or later. The app is about 17 MB.
+The script:
 
-The script checks the disk image against the SHA-256 published with the release before it installs anything.
+1. Downloads `Sextant.dmg` from the latest release and checks it against the SHA-256 published with it.
+2. Checks that the app is signed and notarized by Apple.
+3. Copies `Sextant.app` into `/Applications`. If Sextant is already running, it stops it first.
+4. Links the `sextant` command into `/usr/local/bin` when that folder is writable. If it isn't, the script prints the `sudo ln` command to run.
+5. Opens Sextant.
 
-## What it does
-
-- **Shows where your time goes.** Sextant groups what you do into tasks across apps and days, like "invoices: Mail, then Excel, then lexoffice".
-- **Finds your routines.** Tasks you repeat become routines with their steps, how often you run them and the hours they take.
-- **Ranks what to automate.** Each routine gets a score from the hours it takes and how much of it an agent could do, such as values you copy by hand between apps.
-- **Writes the skill.** Every routine becomes a `SKILL.md` with its steps, example cases and rules, ready for Claude.
-- **Makes your work searchable by your agent.** Ask it "Find the invoice number I saw yesterday" or "What did Anna say about pricing on Tuesday?"
-
-## Set it up
-
-Sextant runs in the menu bar. You control it from the terminal with the `sextant` command; the installer links it into `/usr/local/bin` when it can.
+If you can't write to `/Applications`, install into your own folder:
 
 ```sh
-sextant setup      # grant access and start capture
-sextant connect    # add Sextant to Claude Desktop and print the Claude Code command
-sextant tui        # status, routines, your agent, privacy and the sent log on one screen
-sextant help       # every command
+curl -fsSL https://github.com/Joelheile/sextant/releases/latest/download/install.sh | SEXTANT_INSTALL_DIR=~/Applications sh
 ```
 
-"Open Sextant" in the menu bar menu opens `sextant tui` in Terminal. Sextant starts at login and restarts after a crash; Quit keeps it off until the next login.
+You can also download [`Sextant.dmg`](https://github.com/Joelheile/sextant/releases/latest) and drag the app to `/Applications`. The app is about 17 MB.
 
-## Use it with Claude
+## Get started
 
-`sextant connect` adds Sextant to Claude Desktop. For Claude Code, run:
+1. **Grant access.** On first launch, Sextant opens `sextant setup` in Terminal. It walks you through Accessibility, Screen Recording and browser Automation, one at a time, and starts capture.
+2. **Connect your agent.** Run `sextant connect` for Claude Desktop, or see the next section for Claude Code and Codex.
+3. **Work as usual for a few days.** Sextant needs to see a task more than once before it counts as a routine.
+4. **Ask your agent:**
+   - "What should I automate first?"
+   - "How did I spend last week?"
+   - "Write a skill for my invoice routine."
 
-```sh
-claude mcp add sextant -- /Applications/Sextant.app/Contents/MacOS/sextant mcp
-```
+Sextant starts at login and restarts after a crash. Quit in the menu bar menu keeps it off until your next login.
 
-Then ask Claude:
+## Connect your agent
 
-- "What should I automate first?"
-- "How did I spend last week?"
-- "Write a skill for my invoice routine."
+| Agent          | How to connect                                                                   |
+| -------------- | -------------------------------------------------------------------------------- |
+| Claude Desktop | `sextant connect` adds Sextant to its config. Restart Claude Desktop.            |
+| Claude Code    | `claude mcp add sextant -- /Applications/Sextant.app/Contents/MacOS/sextant mcp` |
+| Codex          | `sextant agent use codex`, then `sextant agent run`. Sextant runs Codex for you. |
+
+Your agent reads Sextant through `sextant mcp`, a local MCP server it starts when it needs it. If you installed into `~/Applications`, use that path in the Claude Code command.
+
+`sextant agent use claude` or `sextant agent use codex` lets Sextant run your agent itself, in a locked-down mode where its only tools are Sextant's. Add `--weekly` to have it look for new routines once a week.
+
+## Everyday commands
+
+| Command                    | What it does                                                         |
+| -------------------------- | -------------------------------------------------------------------- |
+| `sextant status`           | What Sextant captures right now                                      |
+| `sextant tui`              | Status, routines, your agent, privacy and the sent log on one screen |
+| `sextant pause` / `resume` | Pause capture for an hour, or resume it                              |
+| `sextant routines`         | The routines your agent saved, with their hours a week               |
+| `sextant sent`             | Every answer an agent got from Sextant, newest first                 |
+| `sextant privacy`          | What is captured, what agents can read, how long data stays          |
+| `sextant audio on`         | Transcribe calls. The first time downloads the speech models         |
+| `sextant help`             | Every command                                                        |
+
+"Open Sextant" in the menu bar menu opens `sextant tui` in Terminal.
+
+## Updates
+
+Sextant updates itself. The installed app checks GitHub for a new release at start and then once a day. When there is one, it downloads it, checks its signature against the key built into the app, replaces itself and opens again. Your permissions stay granted, because every release is signed by the same developer.
+
+To update by hand, run the install command again.
 
 ## Privacy at a glance
 
-- **Stored:** text only. App and window names, URLs, text on screen, buttons you click, what you leave in text fields, and meeting transcripts.
-- **Never stored:** pixels, audio, keystrokes or passwords. Password managers, messengers and private browser windows are skipped by default.
+- **Stored:** text only. App and window names, URLs, text on screen, buttons you click, what you leave in text fields, and call transcripts if you turn them on.
+- **Never stored:** pixels, audio, keystrokes or passwords. Password managers, messengers, private browser windows, and bank and payment sites are skipped by default.
 - **Redacted before storage:** emails, IBANs, card numbers, API keys and tokens.
 - **Where it lives:** one encrypted database on your Mac. The key is in your Keychain.
-- **Network:** none, except the optional speech model download you start yourself. There is no telemetry, analytics, crash reporter or auto-updater. A CI check fails the build if network code appears outside one file.
-- **Agents:** your data stays on your Mac until you ask an agent to read it. What the agent reads goes to wherever its model runs.
+- **Network:** the speech model download, only if you start it, and the daily update check. There is no telemetry, analytics or crash reporter, and a CI check fails the build if network code appears anywhere else.
+- **Agents:** your data stays on your Mac until your agent reads it. What it reads goes to wherever its model runs. `sextant sent` lists each answer it got.
 
 Read the details in [docs/PRIVACY.md](docs/PRIVACY.md).
 
@@ -85,17 +119,27 @@ Read the details in [docs/PRIVACY.md](docs/PRIVACY.md).
 flowchart LR
   A[Focused window<br>and clicks] --> B[Text only,<br>redacted]
   B --> C[(Encrypted<br>database)]
-  C --> D[Tasks and<br>routines]
-  D --> E[Ranked list<br>and SKILL.md]
-  C -. MCP .-> F[Claude]
-  E -. MCP .-> F
+  C --> D[Tasks and<br>day pages]
+  D -. MCP .-> F[Your agent]
+  F -- routines and skills --> G[Checked by<br>Sextant]
+  G --> C
 ```
 
-1. Sextant reads the focused window through macOS Accessibility, and falls back to on-device text recognition when an app exposes no text.
+1. Sextant reads the focused window through macOS Accessibility. When an app exposes no text, it falls back to Apple's on-device text recognition.
 2. It redacts the text and stores it in an encrypted SQLite database.
-3. It groups activity into tasks and finds the tasks you repeat.
-4. It scores each routine and writes a skill file for it.
-5. Claude reads all of this through a local MCP server, `sextant mcp`, which Claude starts when it needs it.
+3. Code groups your activity into tasks, joined by shared values such as an invoice number or an email address, and compiles day and week pages.
+4. Your agent reads those pages through MCP, proposes routines and writes skills. Sextant rejects any claim that cites a task it never saw.
+
+## Uninstall
+
+Run `sextant uninstall`. It deletes all captured data, removes Sextant from Claude Desktop and moves the app to the Trash. To keep the app but delete the data, run `sextant privacy delete-everything`.
+
+## Troubleshooting
+
+- **The menu bar icon shows "!".** Capture stopped, usually because a permission was turned off. Run `sextant status` to see why, then `sextant setup` to grant access again.
+- **`sextant: command not found`.** The installer could not write to `/usr/local/bin`. Run the `sudo ln -sf` command it printed, or call `/Applications/Sextant.app/Contents/MacOS/sextant` directly.
+- **macOS asks for Screen Recording again.** macOS asks apps that read the screen to confirm once a month. Click Allow.
+- **Something else.** Run `sextant debug` and paste its report into a [GitHub issue](https://github.com/Joelheile/sextant/issues). It holds error kinds and timings only, never your text.
 
 ## FAQ
 
@@ -103,16 +147,16 @@ flowchart LR
 No. It notes which labelled button you clicked and the text left in a field when you move on. It never reads password fields.
 
 **Who can read my data?**
-Only you, on your Mac. The database is encrypted and nothing is uploaded. An agent sees the data only when you connect it and it calls Sextant.
+Only you, on your Mac. The database is encrypted and nothing is uploaded. An agent sees your data only when you connect it and it calls Sextant.
 
 **Why macOS 26?**
-Sextant is built and tested on macOS 26. It no longer uses Apple's on-device model, so a lower minimum may follow once it is tested.
+Sextant is built and tested on macOS 26. A lower minimum may follow once it is tested there.
 
-**How do I delete everything?**
-Run `sextant privacy delete-everything`. You can also choose how long raw data stays with `sextant privacy keep 30`, `90`, `365` or `forever`.
+**How long does Sextant keep data?**
+You choose: `sextant privacy keep 30`, `90`, `365` or `forever`. `sextant privacy forget 1h` deletes the last hour.
 
 **Can Sextant transcribe calls?**
-Yes, with the optional speech models (about 670 MB, downloaded only after `sextant audio on` asks and you agree). Sextant listens only while a call app or a browser has the microphone open, and keeps the transcript as text, never the audio. Call audio follows the same rules as screen capture: it does not start for an excluded app (Apple Passwords is excluded by default) or a private browser window. "Stop audio" in the menu bar menu ends it at once, and pausing capture ends it too. Transcribing people without consent is a crime in some countries, including Germany. Tell the other side first.
+Yes, with the optional speech models (about 670 MB, downloaded only after `sextant audio on` asks and you agree). Sextant listens only while a call app or a browser has the microphone open, and keeps the transcript as text, never the audio. It does not start for an excluded app or a private browser window. "Stop audio" in the menu bar menu ends it at once. Transcribing people without consent is a crime in some countries, including Germany, so tell the other side first.
 
 ## Contributing
 

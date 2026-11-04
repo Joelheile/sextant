@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager};
 use crate::commands::{AppState, Reply, msg};
 use crate::engine::{AudioState, CaptureState};
 use crate::platform::{Prompt, SettingsPane};
-use crate::{agent, commands, data, debug, engine, platform, prefs, screens, tray};
+use crate::{agent, commands, data, debug, engine, login, platform, prefs, screens, tray};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "kebab-case")]
@@ -117,7 +117,7 @@ pub fn serve(app: AppHandle) -> Result<()> {
                 let spawned = thread::Builder::new().name("sextant-request".into()).spawn(
                     move || match answer(stream, &app.state::<AppState>()) {
                         After::Nothing => {}
-                        After::Restart => app.restart(),
+                        After::Restart => restart(&app),
                         After::Quit => app.exit(0),
                     },
                 );
@@ -128,6 +128,20 @@ pub fn serve(app: AppHandle) -> Result<()> {
         })
         .context("starting the control thread")?;
     Ok(())
+}
+
+/// Opens Sextant again. The socket goes first, so the new copy does not take this one for a
+/// running app and quit. Under the launch agent, launchd kills every process this one spawns
+/// when it exits, so Sextant exits with an error instead and launchd starts it again.
+pub fn restart(app: &AppHandle) -> ! {
+    if let Err(err) = fs::remove_file(socket_path(&app.state::<AppState>().dir)) {
+        eprintln!("could not remove the control socket before restarting: {err}");
+    }
+    if login::started_by_launchd() {
+        app.cleanup_before_exit();
+        std::process::exit(login::RELAUNCH_CODE);
+    }
+    app.restart()
 }
 
 /// Whether a Sextant app answers on the socket in `dir`.

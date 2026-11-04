@@ -1,4 +1,4 @@
-//! The database key (plan.md §10): 32 random bytes in the macOS Keychain. Debug builds use their
+//! The database key: 32 random bytes in the macOS Keychain. Debug builds use their
 //! own Keychain service, and `SEXTANT_DEV_KEY` (64 hex digits) skips the Keychain for tests.
 
 use anyhow::{Context, Result, bail};

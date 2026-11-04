@@ -1,4 +1,4 @@
-//! When to look (plan.md §4): a focus change after 300 ms of settling, one second after the last
+//! When to look: a focus change after 300 ms of settling, one second after the last
 //! input, every 10 s while active, and never while idle, locked or asleep. The caller samples the
 //! OS and passes time in, so this is deterministic.
 

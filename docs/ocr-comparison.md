@@ -4,8 +4,8 @@ Written on 2026-11-02. Decision: keep Apple Vision `.fast`. No candidate beats i
 
 ## What Sextant needs
 
-- Screen text of the focused window, English and German, as lines with a box and a confidence (plan.md §5).
-- p95 under 250 ms per window, off the main thread (plan.md §11), on a MacBook at 1440x900 and 2880x1800.
+- Screen text of the focused window, English and German, as lines with a box and a confidence.
+- p95 under 250 ms per window, off the main thread, on a MacBook at 1440x900 and 2880x1800.
 - No download for the default path, no network at run time, no Python.
 - Text a person reads on screen: UI labels, mail, spreadsheets, invoices, code. Not scanned documents or handwriting.
 
@@ -41,7 +41,7 @@ Not measured here: this environment cannot reach crates.io or the model hosts. T
 
 - Vision already meets the budget at about a third of it and reads every fixture string.
 - Every open engine adds a download, code to maintain, and CPU or ANE time that Vision gets from the OS.
-- The plan's reason for Vision (plan.md §2: ships with the OS, no download, Neural Engine) still holds.
+- The original reason for Vision (ships with the OS, no download, Neural Engine) still holds.
 
 ## What would reopen O1
 

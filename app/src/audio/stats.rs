@@ -1,4 +1,4 @@
-//! Counts of the audio pipeline. Numbers only, never audio or text (plan.md §10).
+//! Counts of the audio pipeline. Numbers only, never audio or text.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 

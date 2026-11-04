@@ -1,5 +1,5 @@
-//! The audio pipeline against the fake devices and models (plan.md §12): who counts as a call,
-//! what each side of the call becomes, and the done-when checks of M4 that need no model:
+//! The audio pipeline against the fake devices and models: who counts as a call,
+//! what each side of the call becomes, and the checks that need no model:
 //! nothing audio reaches the data folder, and switching audio off closes the streams within 1 s.
 
 use std::fs;

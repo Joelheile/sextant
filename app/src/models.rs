@@ -1,4 +1,4 @@
-//! The consented model download (plan.md §4, §12). This is the only file in Sextant that talks to
+//! The consented model download. This is the only file in Sextant that talks to
 //! the network, and only after the user pressed "Download": pinned URLs, SHA-256 checked, written
 //! into `<data dir>/models` by an atomic rename. `scripts/check-network.sh` keeps it that way.
 
@@ -20,7 +20,7 @@ pub struct Asset {
 }
 
 /// Everything speech to text needs: the voice activity model and NVIDIA Parakeet TDT 0.6B v3
-/// (CC-BY-4.0), int8. ONNX Runtime ships inside the app (plan.md §14).
+/// (CC-BY-4.0), int8. ONNX Runtime ships inside the app.
 pub const ASSETS: &[Asset] = &[
     Asset {
         file: "vad/silero_vad.onnx",

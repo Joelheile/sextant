@@ -1,6 +1,6 @@
 # Sextant
 
-Read `AGENTS.md` first for the vision, then `plan.md`. It is the spec: principles, privacy rules (§10), budgets (§11), working rules (§12) and milestones (§13). Do one milestone per session.
+Read `AGENTS.md` first: vision, principles, privacy rules, budgets and working rules.
 
 ## Layout
 
@@ -10,29 +10,29 @@ Read `AGENTS.md` first for the vision, then `plan.md`. It is the spec: principle
 
 ## Commands
 
-| Task | Command |
-|---|---|
-| Install the Tauri CLI (release builds only) | `bun install` |
-| Run the app | `cargo run` |
-| Use the running dev app | `cargo run -q -- status` (or `tui`, `routines`, `privacy`, `help`) |
-| Format | `cargo fmt --all` |
-| Lint | `cargo clippy --workspace --all-targets -q -- -D warnings` |
-| Test | `cargo test --workspace -q` |
-| Test core only | `cargo test -p sextant-core -q` |
-| Budget tests (MCP p95, search, refresh) | `cargo test -p sextant-core --release -- --nocapture` |
+| Task                                                                                                                                | Command                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Install the Tauri CLI (release builds only)                                                                                         | `bun install`                                                                                                                    |
+| Run the app                                                                                                                         | `cargo run`                                                                                                                      |
+| Use the running dev app                                                                                                             | `cargo run -q -- status` (or `tui`, `routines`, `privacy`, `help`)                                                               |
+| Format                                                                                                                              | `cargo fmt --all`                                                                                                                |
+| Lint                                                                                                                                | `cargo clippy --workspace --all-targets -q -- -D warnings`                                                                       |
+| Test                                                                                                                                | `cargo test --workspace -q`                                                                                                      |
+| Test core only                                                                                                                      | `cargo test -p sextant-core -q`                                                                                                  |
+| Budget tests (MCP p95, search, refresh)                                                                                             | `cargo test -p sextant-core --release -- --nocapture`                                                                            |
 | OCR budget on synthetic fixtures (macOS; the test enforces the budget only with `SEXTANT_BUDGET_TESTS=1`, which the Stop hook sets) | `SEXTANT_BUDGET_TESTS=1 cargo test -p sextant-app --release ocr -- --nocapture` or `cargo run -p sextant-app --release -- bench` |
-| Live capture bench (user step: needs Screen Recording; agents never run it) | `cargo run -p sextant-app --release -- bench --live 60` |
-| Fetch ONNX Runtime into `app/frameworks` (needed once for `bench --asr`, `tauri build`) | `scripts/fetch-onnxruntime.sh` |
-| Build the signed DMG (CI only; see `docs/RELEASING.md`) | `bun tauri build --target aarch64-apple-darwin` |
-| Fetch speech fixtures (dev network; LibriSpeech and MLS German) | `scripts/fetch-speech.sh` |
-| Fetch the audio models into `.dev-data/models` (about 670 MB, dev network) | `cargo run -p sextant-app --release -- bench --fetch-models` |
-| ASR budget: RTF, WER, memory on the fixtures (add `--coreml` to compare) | `cargo run -p sextant-app --release -- bench --asr` |
-| MCP server over stdio | `SEXTANT_HOME=.dev-data cargo run -q -- mcp` (or `sextant mcp` from a build) |
-| Network check | `scripts/check-network.sh` |
-| All checks (Stop hook) | `scripts/stop-hook.sh` |
+| Live capture bench (user step: needs Screen Recording; agents never run it)                                                         | `cargo run -p sextant-app --release -- bench --live 60`                                                                          |
+| Fetch ONNX Runtime into `app/frameworks` (needed once for `bench --asr`, `tauri build`)                                             | `scripts/fetch-onnxruntime.sh`                                                                                                   |
+| Build the signed DMG (CI only; see `docs/RELEASING.md`)                                                                             | `bun tauri build --target aarch64-apple-darwin`                                                                                  |
+| Fetch speech fixtures (dev network; LibriSpeech and MLS German)                                                                     | `scripts/fetch-speech.sh`                                                                                                        |
+| Fetch the audio models into `.dev-data/models` (about 670 MB, dev network)                                                          | `cargo run -p sextant-app --release -- bench --fetch-models`                                                                     |
+| ASR budget: RTF, WER, memory on the fixtures (add `--coreml` to compare)                                                            | `cargo run -p sextant-app --release -- bench --asr`                                                                              |
+| MCP server over stdio                                                                                                               | `SEXTANT_HOME=.dev-data cargo run -q -- mcp` (or `sextant mcp` from a build)                                                     |
+| Network check                                                                                                                       | `scripts/check-network.sh`                                                                                                       |
+| All checks (Stop hook)                                                                                                              | `scripts/stop-hook.sh`                                                                                                           |
 
 ## Rules
 
 - Dev builds read and write only `./.dev-data` (`SEXTANT_HOME`, set in `.cargo/config.toml`). Never read `~/Library/Application Support/Sextant`, the Claude Desktop config, or the `sextant` keychain entry. Dev builds use the `sextant-dev` entry; tests set `SEXTANT_DEV_KEY` (64 hex digits, debug only) instead.
-- Network code only in `app/src/models.rs`.
+- Network code only in `app/src/models.rs`, plus the Tauri updater plugin called from `app/src/update.rs`.
 - No `unwrap()` outside tests. `thiserror` in core, `anyhow` in app.

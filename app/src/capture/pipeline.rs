@@ -1,4 +1,4 @@
-//! The live pipeline (plan.md §4): a capture thread that runs triggers, gates and the diff gate,
+//! The live pipeline: a capture thread that runs triggers, gates and the diff gate,
 //! a queue that drops the oldest frame under load, and an OCR thread. Frames live in memory only
 //! and are dropped right after OCR. Neither thread is the Tauri main thread, and no database
 //! transaction is open while they work: finished records go to the writer through a sink.

@@ -1,4 +1,4 @@
-//! "Connect to Claude" (plan.md §8): the text the app writes into Claude Desktop's config and
+//! "Connect to Claude": the text the app writes into Claude Desktop's config and
 //! shows for Claude Code. File access stays in the app.
 
 use serde_json::{Value, json};

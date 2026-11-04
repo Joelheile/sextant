@@ -1,4 +1,4 @@
-//! Audio logic without OS APIs (plan.md §3, §4): when a call is on, the 30 s ring buffer, 16 kHz
+//! Audio logic without OS APIs: when a call is on, the 30 s ring buffer, 16 kHz
 //! mono conversion, speech segmentation around a VAD probability stream, the ASR model lifecycle
 //! and utterance assembly. Samples live in memory only. Time and OS state are passed in.
 

@@ -1,4 +1,4 @@
-//! Utterance assembly (plan.md §4): the mic stream is "me" and the system stream is "them", so
+//! Utterance assembly: the mic stream is "me" and the system stream is "them", so
 //! the speaker is known without diarization.
 
 use super::RATE;

@@ -1,4 +1,4 @@
-//! Which window to capture (plan.md §4, §10: only the focused window). Platform code lists the
+//! Which window to capture (only the focused window). Platform code lists the
 //! on-screen windows of the focused app and this rule picks one or refuses.
 
 /// The index of the focused window among `titles`, the on-screen windows of the focused app

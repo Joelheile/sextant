@@ -1,4 +1,4 @@
-//! MCP client test (plan.md §8, §13 M2): drives the server through its JSON-RPC lines against the
+//! MCP client test: drives the server through its JSON-RPC lines against the
 //! fixture week and times every tool. Budget numbers: `cargo test -p sextant-core --release --test mcp -- --nocapture`.
 
 use std::cell::RefCell;
