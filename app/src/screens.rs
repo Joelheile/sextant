@@ -2,11 +2,12 @@
 //! read-only connection, changes through the worker thread. Text from the database is redacted
 //! again on the way out, as in the MCP server.
 
+use serde_json::Value;
 use sextant_core::{Live, Sent, Settings};
 
 use crate::commands::{AppState, Reply, msg};
 use crate::keys::Keychain;
-use crate::{clock, connect, login, platform};
+use crate::{clock, connect, login, platform, prefs};
 
 const RETENTION_CHOICES: [Option<u32>; 4] = [Some(30), Some(90), Some(365), None];
 const STORAGE_CAP_CHOICES: [Option<u32>; 5] =
@@ -14,6 +15,8 @@ const STORAGE_CAP_CHOICES: [Option<u32>; 5] =
 /// "Delete the last 15 minutes, hour or day".
 const FORGET_CHOICES: [i64; 3] = [15, 60, 1440];
 const SENT_ROWS: usize = 50;
+const WEEK_DAYS: i64 = 7;
+const DAY_S: i64 = 24 * 60 * 60;
 
 pub(crate) fn exclude_apps(state: &AppState, apps: Vec<String>) -> Reply<Settings> {
     let apps: Vec<String> = apps
@@ -91,6 +94,16 @@ pub(crate) fn sent(state: &AppState) -> Reply<Vec<Sent>> {
     state
         .engine()?
         .read(|store| store.sent(SENT_ROWS))
+        .map_err(msg)
+}
+
+pub(crate) fn week(state: &AppState, at: i64) -> Reply<Value> {
+    let settings = prefs::load(&state.dir).map_err(msg)?;
+    let utc_offset_s = clock::utc_offset(at);
+    let start = at - (WEEK_DAYS - 1) * DAY_S;
+    state
+        .engine()?
+        .read(move |store| store.week_page(&settings, start, utc_offset_s))
         .map_err(msg)
 }
 

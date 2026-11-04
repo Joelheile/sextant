@@ -35,7 +35,7 @@ The install script also updates: running it again stops Sextant and its launch a
 
 ## Check a release
 
-Run the install command on a Mac that has never seen Sextant. It must open without a Gatekeeper warning, open `sextant setup` in Terminal, ask for each permission only when setup reaches it, and `sextant status` must show capture running.
+Run the install command on a Mac that has never seen Sextant. It must open without a Gatekeeper warning, open the panel with the setup steps, ask for each permission only when setup reaches it, and `sextant status` must show capture running.
 
 To check the updater, install the previous release, publish the new one, then quit and open Sextant. Within a minute it opens again, `defaults read /Applications/Sextant.app/Contents/Info.plist CFBundleShortVersionString` prints the new version, and `sextant status` shows capture still running.
 

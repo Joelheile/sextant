@@ -59,7 +59,7 @@ You can also download [`Sextant.dmg`](https://github.com/Joelheile/sextant/relea
 
 ## Get started
 
-1. **Grant access.** On first launch, Sextant opens `sextant setup` in Terminal. It walks you through Accessibility, Screen Recording and browser Automation, one at a time, and starts capture.
+1. **Grant access.** On first launch, the Sextant panel opens under the menu bar icon and shows how Sextant works. Click Set up, then Allow next to Screen Recording, Accessibility and Automation, one at a time, then Start capture.
 2. **Connect your agent.** Run `sextant connect` for Claude Desktop, or see the next section for Claude Code and Codex.
 3. **Work as usual for a few days.** Sextant needs to see a task more than once before it counts as a routine.
 4. **Ask your agent:**
@@ -67,7 +67,7 @@ You can also download [`Sextant.dmg`](https://github.com/Joelheile/sextant/relea
    - "How did I spend last week?"
    - "Write a skill for my invoice routine."
 
-Sextant starts at login and restarts after a crash. Quit in the menu bar menu keeps it off until your next login.
+Sextant starts at login and restarts after a crash. Quit in the menu bar menu keeps it off until you open it again or log in again. It updates itself from GitHub releases once a day.
 
 ## Connect your agent
 
@@ -94,7 +94,7 @@ Your agent reads Sextant through `sextant mcp`, a local MCP server it starts whe
 | `sextant audio on`         | Transcribe calls. The first time downloads the speech models         |
 | `sextant help`             | Every command                                                        |
 
-"Open Sextant" in the menu bar menu opens `sextant tui` in Terminal.
+Click the menu bar icon, or open Sextant.app again, to see the panel.
 
 ## Updates
 
@@ -136,7 +136,7 @@ Run `sextant uninstall`. It deletes all captured data, removes Sextant from Clau
 
 ## Troubleshooting
 
-- **The menu bar icon shows "!".** Capture stopped, usually because a permission was turned off. Run `sextant status` to see why, then `sextant setup` to grant access again.
+- **The menu bar icon shows "!".** Capture stopped, usually because a permission was turned off. Click the icon to see why, allow the missing permission in the panel, then click Open again.
 - **`sextant: command not found`.** The installer could not write to `/usr/local/bin`. Run the `sudo ln -sf` command it printed, or call `/Applications/Sextant.app/Contents/MacOS/sextant` directly.
 - **macOS asks for Screen Recording again.** macOS asks apps that read the screen to confirm once a month. Click Allow.
 - **Something else.** Run `sextant debug` and paste its report into a [GitHub issue](https://github.com/Joelheile/sextant/issues). It holds error kinds and timings only, never your text.

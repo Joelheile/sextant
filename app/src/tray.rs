@@ -1,21 +1,19 @@
 //! The menu bar icon: filled while capturing, outline while paused, a dot while a call
-//! is transcribed and an exclamation mark when capture is on but macOS blocks it. A click opens a
-//! menu with the status line, "Pause 1 h", "Stop audio", Open and Quit. The status refreshes
-//! every few seconds. Open starts `sextant tui` in Terminal, or `sextant setup` until setup is
-//! done.
+//! is transcribed and an exclamation mark when capture is on but macOS blocks it. A left click
+//! opens the panel (`panel.rs`). A right click opens a menu with the status line, "Pause 1 h",
+//! "Stop audio", Open and Quit. The status refreshes every few seconds. Open shows the panel too.
 
-use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIcon, TrayIconBuilder};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::commands::AppState;
 use crate::engine::{AudioState, CaptureState};
-use crate::{platform, prefs};
+use crate::{panel, prefs};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
 
@@ -55,7 +53,7 @@ fn perform(app: &AppHandle, action: MenuAction) -> tauri::Result<()> {
             turn_audio_off(app);
             refresh(app);
         }
-        MenuAction::Open => open_terminal(&app.state::<AppState>().dir),
+        MenuAction::Open => open_panel(app),
         MenuAction::Quit => app.exit(0),
     }
     Ok(())
@@ -105,6 +103,19 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .icon_as_template(true)
         .tooltip("Sextant")
         .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|icon, event| {
+            if let TrayIconEvent::Click {
+                rect,
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+                && let Err(err) = panel::toggle(icon.app_handle(), rect)
+            {
+                eprintln!("opening the panel failed: {err}");
+            }
+        })
         .on_menu_event(|app, event| {
             if let Some(action) = MenuAction::from_id(event.id().as_ref())
                 && let Err(err) = perform(app, action)
@@ -212,7 +223,7 @@ pub fn look(state: &AppState) -> Look {
         && !crate::commands::capture_blockers(&state.dir).is_empty();
     let (text, icon) = if blocked {
         (
-            "Capture is blocked: run `sextant setup`".into(),
+            "Capture is blocked: open Sextant to allow access".into(),
             Icon::Alert,
         )
     } else {
@@ -249,65 +260,18 @@ fn refresh(app: &AppHandle) {
     let _ = tray.icon.set_icon_as_template(true);
 }
 
-/// The first launch has nothing to show in the menu yet, so it opens setup.
+/// The first launch opens the panel, which walks through setup.
 pub fn open_on_first_launch(app: &AppHandle) {
-    let dir = &app.state::<AppState>().dir;
-    if !prefs::load(dir).is_ok_and(|settings| settings.onboarded) {
-        open_terminal(dir);
+    if !prefs::load(&app.state::<AppState>().dir).is_ok_and(|settings| settings.onboarded) {
+        open_panel(app);
     }
 }
 
-pub fn open_terminal(dir: &Path) {
-    let opened = std::env::current_exe()
-        .map_err(anyhow::Error::from)
-        .and_then(|exe| {
-            let command = if prefs::load(dir).is_ok_and(|settings| settings.onboarded) {
-                "tui"
-            } else {
-                "setup"
-            };
-            let script = dir.join("open.command");
-            std::fs::write(&script, terminal_script(&exe, dir, command))?;
-            std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
-            platform::open_in_terminal(&script)
-        });
-    if let Err(err) = opened {
-        eprintln!("opening Terminal failed: {err:#}");
-    }
-}
-
-/// A shell script that runs `sextant <command>`. Dev builds pass their data folder along.
-fn terminal_script(exe: &Path, dir: &Path, command: &str) -> String {
-    let home = if cfg!(debug_assertions) {
-        format!("export SEXTANT_HOME={}\n", quote(dir))
-    } else {
-        String::new()
-    };
-    format!("#!/bin/sh\n{home}exec {} {command}\n", quote(exe))
-}
-
-fn quote(path: &Path) -> String {
-    format!("'{}'", path.to_string_lossy().replace('\'', r"'\''"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_terminal_script_quotes_paths_and_keeps_dev_data_in_dev() {
-        let script = terminal_script(
-            Path::new("/Applications/Joel's Apps/Sextant.app/Contents/MacOS/sextant"),
-            Path::new("/tmp/dev data"),
-            "tui",
-        );
-        assert!(script.starts_with("#!/bin/sh\n"));
-        assert!(script.ends_with(
-            "exec '/Applications/Joel'\\''s Apps/Sextant.app/Contents/MacOS/sextant' tui\n"
-        ));
-        assert_eq!(
-            script.contains("export SEXTANT_HOME='/tmp/dev data'\n"),
-            cfg!(debug_assertions)
-        );
+pub fn open_panel(app: &AppHandle) {
+    let rect = app
+        .try_state::<Tray>()
+        .and_then(|tray| tray.icon.rect().ok().flatten());
+    if let Err(err) = panel::show(app, rect) {
+        eprintln!("opening the panel failed: {err}");
     }
 }

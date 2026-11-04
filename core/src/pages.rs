@@ -15,6 +15,8 @@ use crate::time::{DAY, WEEK_DAYS, date, day, iso, weekday};
 const MAX_VALUES: usize = 3;
 /// Tasks per day in `week`.
 const TOP_TASKS: usize = 3;
+/// Tasks for the whole week in `week`.
+const TOP_WEEK_TASKS: usize = 5;
 /// Repeated activity labels in `week`.
 const TOP_REPEATS: usize = 25;
 /// Folded labels outside tasks in `day`, by minutes. The rest is summed.
@@ -37,7 +39,7 @@ pub(crate) struct Activity {
     pub(crate) end: i64,
     pub(crate) app: String,
     pub(crate) label: String,
-    task: Option<(i64, String)>,
+    pub(crate) task: Option<(i64, String)>,
 }
 
 pub(crate) fn minutes(seconds: i64) -> f64 {
@@ -223,8 +225,8 @@ impl Store {
         Ok(page)
     }
 
-    /// Seven days from the day that holds `start`: minutes and top tasks per day, and the task
-    /// kinds and activity labels that repeat on 2 or more days.
+    /// Seven days from the day that holds `start`: minutes, the task count and top tasks for the
+    /// week and per day, and the task kinds and activity labels that repeat on 2 or more days.
     pub fn week_page(&self, settings: &Settings, start: i64, utc_offset_s: i32) -> Result<Value> {
         let first = day(start, utc_offset_s);
         let from = midnight(first, utc_offset_s);
@@ -241,29 +243,23 @@ impl Store {
         let days: Vec<Value> = (first..first + WEEK_DAYS)
             .map(|d| {
                 let list = by_day.get(&d).map(Vec::as_slice).unwrap_or(&[]);
-                let mut tasks: BTreeMap<i64, (&str, i64)> = BTreeMap::new();
-                for a in list {
-                    if let Some((id, label)) = &a.task {
-                        tasks.entry(*id).or_insert((label, 0)).1 += a.end - a.start;
-                    }
-                }
-                let mut tasks: Vec<_> = tasks.into_iter().collect();
-                tasks.sort_by_key(|(id, (_, seconds))| (-seconds, *id));
                 json!({
                     "date": date(d),
                     "weekday": weekday(d),
                     "active_minutes": minutes(active_s(list)),
-                    "top_tasks": tasks.iter().take(TOP_TASKS).map(|(id, (label, seconds))| json!({
-                        "id": id, "label": label, "minutes": minutes(*seconds),
-                    })).collect::<Vec<_>>(),
+                    "top_tasks": task_list(&longest_tasks(list), TOP_TASKS),
                 })
             })
             .collect();
 
+        let all: Vec<&Activity> = activities.iter().collect();
+        let tasks = longest_tasks(&all);
         Ok(json!({
             "from": date(first),
             "to": date(first + WEEK_DAYS - 1),
-            "active_minutes": minutes(active_s(&activities.iter().collect::<Vec<_>>())),
+            "active_minutes": minutes(active_s(&all)),
+            "task_count": tasks.len(),
+            "top_tasks": task_list(&tasks, TOP_WEEK_TASKS),
             "days": days,
             "repeated_tasks": repeated_tasks(&activities, utc_offset_s),
             "repeated_activities": repeated_activities(&activities, utc_offset_s),
@@ -372,6 +368,27 @@ impl Store {
     }
 }
 
+/// Each task in `activities` with its label and seconds, longest first.
+fn longest_tasks<'a>(activities: &[&'a Activity]) -> Vec<(i64, (&'a str, i64))> {
+    let mut tasks: BTreeMap<i64, (&str, i64)> = BTreeMap::new();
+    for a in activities {
+        if let Some((id, label)) = &a.task {
+            tasks.entry(*id).or_insert((label, 0)).1 += a.end - a.start;
+        }
+    }
+    let mut tasks: Vec<_> = tasks.into_iter().collect();
+    tasks.sort_by_key(|(id, (_, seconds))| (-seconds, *id));
+    tasks
+}
+
+fn task_list(tasks: &[(i64, (&str, i64))], top: usize) -> Vec<Value> {
+    tasks
+        .iter()
+        .take(top)
+        .map(|(id, (label, seconds))| json!({"id": id, "label": label, "minutes": minutes(*seconds)}))
+        .collect()
+}
+
 /// Task labels (numbers already templated, so "inv #") held by 2 or more tasks on 2 or more days.
 fn repeated_tasks(activities: &[Activity], utc_offset_s: i32) -> Vec<Value> {
     let mut kinds: BTreeMap<&str, (BTreeSet<i64>, BTreeSet<i64>, i64)> = BTreeMap::new();
@@ -475,6 +492,32 @@ mod tests {
             assert_eq!(found["tasks"], invoices.len(), "{found}");
             assert_eq!(found["days"], days.len(), "{found}");
         }
+    }
+
+    #[test]
+    fn the_week_counts_every_task_and_lists_the_longest_first() {
+        let (_db, store, _) = invoice_week("pages-week-tasks");
+        let page = week(&store, &Settings::default());
+        let started: i64 = store
+            .conn
+            .query_row(
+                "SELECT count(DISTINCT t.task_id) FROM task_activities t
+                 JOIN activities a ON a.id = t.activity_id
+                 WHERE a.start_ts >= ?1 AND a.start_ts < ?1 + 7 * 86400",
+                [WEEK_START],
+                |row| row.get(0),
+            )
+            .expect("count");
+        assert!(started > 0);
+        assert_eq!(page["task_count"], started, "{page}");
+        let minutes: Vec<f64> = page["top_tasks"]
+            .as_array()
+            .expect("top tasks")
+            .iter()
+            .map(|task| task["minutes"].as_f64().expect("minutes"))
+            .collect();
+        assert!(!minutes.is_empty());
+        assert!(minutes.is_sorted_by(|a, b| a >= b), "{minutes:?}");
     }
 
     #[test]

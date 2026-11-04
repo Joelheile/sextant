@@ -1,10 +1,12 @@
-//! Starts Sextant at login and again after a crash, through a launch agent. Quit from the menu
-//! exits cleanly, so launchd leaves Sextant off until the next login.
+//! Starts Sextant at login and again after a crash, through a launch agent. Opening the app from
+//! Finder hands it to the agent too, so launchd always runs the one copy. Quit from the menu
+//! exits cleanly, so launchd leaves Sextant off until the app is opened again or the next login.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 
 const LABEL: &str = "app.sextant.desktop";
 
@@ -29,8 +31,12 @@ fn agent_path() -> Result<PathBuf> {
         .join(format!("{LABEL}.plist")))
 }
 
-/// The installed app, or `None` for a binary outside an app bundle such as a cargo build.
-pub(crate) fn bundled_exe() -> Option<PathBuf> {
+/// The installed app, or `None` for a dev build or a binary outside an app bundle such as a
+/// cargo build.
+pub(crate) fn installed_exe() -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        return None;
+    }
     let exe = std::env::current_exe().ok()?;
     let in_bundle = exe
         .ancestors()
@@ -75,21 +81,52 @@ fn agent(exe: &Path) -> String {
     )
 }
 
-/// Writes the launch agent for the installed app. Dev builds and cargo builds never start at
-/// login.
-pub fn enable() -> Result<()> {
-    let Some(exe) = bundled_exe().filter(|_| !cfg!(debug_assertions)) else {
-        return Ok(());
-    };
+/// Writes the launch agent for the installed app at `exe`.
+fn enable(exe: &Path) -> Result<PathBuf> {
     let path = agent_path()?;
-    let text = agent(&exe);
+    let text = agent(exe);
     if fs::read_to_string(&path).is_ok_and(|old| old == text) {
-        return Ok(());
+        return Ok(path);
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("creating ~/Library/LaunchAgents")?;
     }
-    fs::write(&path, text).context("writing the launch agent")
+    fs::write(&path, text).context("writing the launch agent")?;
+    Ok(path)
+}
+
+/// Starts the installed app through its launch agent, loading the agent first if launchd does not
+/// know it yet, and returns whether it did. A copy opened from Finder runs outside launchd, so
+/// nothing would start it again after a crash. Dev builds and cargo builds run in place.
+pub fn hand_to_launchd() -> Result<bool> {
+    let Some(exe) = installed_exe().filter(|_| !started_by_launchd()) else {
+        return Ok(false);
+    };
+    let path = enable(&exe)?;
+    // SAFETY: getuid has no preconditions and cannot fail.
+    let domain = format!("gui/{}", unsafe { libc::getuid() });
+    let job = format!("{domain}/{LABEL}");
+    if launchctl(&["print", &job]).is_err() {
+        launchctl(&["bootstrap", &domain, &path.to_string_lossy()])?;
+    }
+    launchctl(&["kickstart", &job])?;
+    Ok(true)
+}
+
+fn launchctl(args: &[&str]) -> Result<()> {
+    let status = Command::new("/bin/launchctl")
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("running launchctl")?;
+    ensure!(
+        status.success(),
+        "launchctl {} failed: {status}",
+        args.join(" ")
+    );
+    Ok(())
 }
 
 /// Removes the launch agent, for the uninstall.

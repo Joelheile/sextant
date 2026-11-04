@@ -18,8 +18,7 @@ const DAY_S: i64 = 24 * 60 * 60;
 const WAKE_EVERY: Duration = Duration::from_secs(60 * 60);
 
 pub fn spawn_daily(app: AppHandle) -> Result<()> {
-    let installed = !cfg!(debug_assertions) && login::bundled_exe().is_some();
-    if !installed {
+    if login::installed_exe().is_none() {
         return Ok(());
     }
     thread::Builder::new()

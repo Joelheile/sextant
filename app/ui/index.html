@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sextant</title>
+    <link rel="stylesheet" href="panel.css" />
+    <script src="panel.js" defer></script>
+  </head>
+  <body>
+    <header class="reveal">
+      <span id="pulse" class="pulse"><span></span></span>
+      <p class="status">
+        <span id="line" class="strong">Starting</span>
+        <span id="now" class="caption"></span>
+      </p>
+      <button id="stop-audio" class="pill" hidden>Stop audio</button>
+      <button id="pause" class="pill">Pause 1 h</button>
+    </header>
+
+    <p id="problem" class="notice reveal" hidden></p>
+
+    <section id="intro" class="intro reveal" hidden>
+      <p class="eyebrow">How Sextant works</p>
+      <h1>
+        It reads, groups, then spots repeats.
+        <span>This fills up over a week.</span>
+      </h1>
+      <div class="funnel empty" aria-hidden="true"></div>
+      <dl class="terms">
+        <dt>Captured</dt>
+        <dd>the text on screen, never pictures.</dd>
+        <dt>Tasks</dt>
+        <dd>what you worked on, like "invoice 4711".</dd>
+        <dt>Routines</dt>
+        <dd>tasks you repeat, ready for your agent.</dd>
+      </dl>
+      <button id="begin-setup" class="pill primary wide">Set up</button>
+    </section>
+
+    <section id="setup" class="setup reveal" hidden>
+      <h1>Allow access. <span>macOS asks for each one.</span></h1>
+      <p class="caption">
+        When System Settings opens, turn on Sextant, then click the Sextant icon
+        in the menu bar to come back.
+      </p>
+      <ol id="permissions" class="permissions"></ol>
+      <button id="finish-setup" class="pill primary wide">Start capture</button>
+    </section>
+
+    <main id="week" class="week reveal">
+      <div class="row">
+        <h2 class="grow">This week <span>last 7 days</span></h2>
+        <span class="caption">Pick a stage</span>
+      </div>
+      <div id="funnel" class="funnel" role="tablist" aria-label="Stages"></div>
+      <section id="stage" class="stage" role="tabpanel" aria-live="polite">
+        <p id="stage-note" class="eyebrow"></p>
+        <div id="stage-body"></div>
+        <button id="find" class="pill" hidden>Find routines</button>
+      </section>
+    </main>
+
+    <footer class="reveal">
+      <span id="storage" class="caption"></span>
+      <button id="quit" class="ghost">Quit</button>
+    </footer>
+  </body>
+</html>

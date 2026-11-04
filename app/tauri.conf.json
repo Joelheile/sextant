@@ -4,8 +4,15 @@
   "mainBinaryName": "sextant",
   "version": "0.1.0",
   "identifier": "app.sextant.desktop",
+  "build": {
+    "frontendDist": "ui"
+  },
   "app": {
-    "windows": []
+    "windows": [],
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
   },
   "bundle": {
     "active": true,

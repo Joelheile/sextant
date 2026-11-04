@@ -146,7 +146,7 @@ Measured by `sextant bench` on fixtures and `sextant bench --live 3600` on a rea
 - Never block the Tauri main thread. Never hold a database transaction across a capture or OCR call.
 - Prefer one more function over one more crate.
 - Snapshots: read `.snap.new`, then `cargo insta accept`.
-- Bundle: `minimumSystemVersion` 26.0. Permissions are asked only when the matching step in `sextant setup` needs them.
+- Bundle: `minimumSystemVersion` 26.0. Permissions are asked only when the matching setup step in the panel or `sextant setup` needs them.
 
 ## Never
 

@@ -27,6 +27,8 @@ use crate::{agent, commands, data, debug, engine, login, platform, prefs, screen
 #[serde(tag = "cmd", rename_all = "kebab-case")]
 pub enum Request {
     Status,
+    /// Opens the panel, for a second copy of the app that was opened while this one runs.
+    Show,
     Pause,
     Resume,
     Audio {
@@ -49,6 +51,10 @@ pub enum Request {
         weekly: bool,
     },
     RunAgent,
+    /// The seven days that end with the day holding `at`, as the MCP `week` tool shows them.
+    Week {
+        at: i64,
+    },
     Sent,
     Capture {
         live: Live,
@@ -95,6 +101,7 @@ pub struct Status {
 #[derive(Debug, PartialEq, Eq)]
 pub enum After {
     Nothing,
+    ShowPanel,
     Restart,
     Quit,
 }
@@ -117,6 +124,7 @@ pub fn serve(app: AppHandle) -> Result<()> {
                 let spawned = thread::Builder::new().name("sextant-request".into()).spawn(
                     move || match answer(stream, &app.state::<AppState>()) {
                         After::Nothing => {}
+                        After::ShowPanel => tray::open_panel(&app),
                         After::Restart => restart(&app),
                         After::Quit => app.exit(0),
                     },
@@ -190,6 +198,7 @@ fn answer(stream: UnixStream, state: &AppState) -> After {
 
 fn after(request: &Request) -> After {
     match request {
+        Request::Show => After::ShowPanel,
         Request::DeleteEverything | Request::Relaunch => After::Restart,
         Request::Uninstall => After::Quit,
         _ => After::Nothing,
@@ -203,6 +212,7 @@ fn json(value: impl Serialize) -> Reply<Value> {
 pub fn handle(state: &AppState, request: Request) -> Reply<Value> {
     match request {
         Request::Status => json(status(state)),
+        Request::Show => json(()),
         Request::Pause => {
             state.engine()?.pause_capture();
             json(status(state))
@@ -231,6 +241,7 @@ pub fn handle(state: &AppState, request: Request) -> Reply<Value> {
         Request::Agent => json(agent::bridge(state)?),
         Request::ChooseAgent { agent, weekly } => json(agent::choose(state, agent, weekly)?),
         Request::RunAgent => json(agent::run_now(state)?),
+        Request::Week { at } => json(screens::week(state, at)?),
         Request::Sent => json(screens::sent(state)?),
         Request::Capture { live } => json(screens::capture_sources(state, live)?),
         Request::Mcp { rewind, workflows } => {
@@ -312,8 +323,18 @@ mod tests {
         load(&mut store, &week(), WEEK_NOW).expect("test setup");
         store.refresh(local(WEEK_NOW)).expect("test setup");
         drop(store);
+        // The engine runs retention on the real clock as it starts, which would delete the
+        // fixture week.
+        prefs::update(&dir, |settings| settings.retention_days = None).expect("test setup");
         let state = AppState::new(dir.clone());
         state.start(|dir| Engine::start(dir, &TEST_KEY));
+        // The engine rebuilds the work graph on the real clock as it starts, which leaves the
+        // fixture week out. Its jobs run in order, so this rebuild comes after that one.
+        state
+            .engine()
+            .expect("started")
+            .write(|store| store.refresh(local(WEEK_NOW)).map(|_| ()))
+            .expect("test setup");
         let listener = bind(&dir).expect("binds");
         thread::spawn(move || {
             for stream in listener.incoming().flatten() {
@@ -343,6 +364,17 @@ mod tests {
         );
         let sent: Vec<Sent> = call(&dir, &Request::Sent).expect("answers");
         assert!(sent.is_empty());
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn the_panel_reads_the_week() {
+        let dir = serving("week");
+        let week: Value = call(&dir, &Request::Week { at: WEEK_NOW }).expect("answers");
+        let days = week["days"].as_array().expect("days");
+        assert_eq!(days.len(), 7);
+        assert!(days[6]["active_minutes"].as_f64().expect("minutes") > 0.0);
+        assert!(week["task_count"].as_u64().expect("task count") > 0);
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
@@ -382,6 +414,7 @@ mod tests {
     fn only_a_successful_wipe_restarts_the_app() {
         assert_eq!(after(&Request::DeleteEverything), After::Restart);
         assert_eq!(after(&Request::Uninstall), After::Quit);
+        assert_eq!(after(&Request::Show), After::ShowPanel);
         assert_eq!(after(&Request::Status), After::Nothing);
     }
 }

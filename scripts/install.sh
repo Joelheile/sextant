@@ -11,7 +11,6 @@ repo="Joelheile/sextant"
 base="https://github.com/$repo/releases/latest/download"
 dest="${SEXTANT_INSTALL_DIR:-/Applications}"
 label="app.sextant.desktop"
-agent="$HOME/Library/LaunchAgents/$label.plist"
 domain="gui/$(id -u)"
 
 fail() {
@@ -75,10 +74,5 @@ else
   echo "To use the sextant command, run: sudo ln -sf '$bin' $links/sextant"
 fi
 
-# An update starts through the launch agent, so launchd restarts Sextant after a crash right
-# away. A first install opens the app, which writes the agent for the next login.
-if [ -f "$agent" ] && grep -q "<string>$bin</string>" "$agent"; then
-  launchctl bootstrap "$domain" "$agent"
-else
-  open "$dest/Sextant.app"
-fi
+# The app hands itself to its launch agent, so launchd restarts it after a crash.
+open "$dest/Sextant.app"

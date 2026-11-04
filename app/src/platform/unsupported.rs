@@ -21,10 +21,6 @@ pub fn trash_app() -> anyhow::Result<()> {
     anyhow::bail!("needs macOS")
 }
 
-pub fn open_in_terminal(_script: &std::path::Path) -> anyhow::Result<()> {
-    anyhow::bail!("needs macOS")
-}
-
 pub fn os_version() -> String {
     "unknown".to_owned()
 }
