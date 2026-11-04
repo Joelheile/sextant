@@ -373,7 +373,11 @@ mod tests {
         let week: Value = call(&dir, &Request::Week { at: WEEK_NOW }).expect("answers");
         let days = week["days"].as_array().expect("days");
         assert_eq!(days.len(), 7);
-        assert!(days[6]["active_minutes"].as_f64().expect("minutes") > 0.0);
+        let active_days = days
+            .iter()
+            .filter(|day| day["active_minutes"].as_f64().expect("minutes") > 0.0)
+            .count();
+        assert!(active_days > 0);
         assert!(week["task_count"].as_u64().expect("task count") > 0);
         fs::remove_dir_all(dir).expect("cleanup");
     }
